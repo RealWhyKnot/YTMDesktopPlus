@@ -26,7 +26,8 @@ function stateFixture(overrides: Record<string, unknown> = {}) {
       continueWhereYouLeftOffPaused: true,
       progressInTaskbar: false,
       enableSpeakerFill: false,
-      ratioVolume: false
+      ratioVolume: false,
+      loudnessNormalization: false
     },
     integrations: {
       companionServerEnabled: false,

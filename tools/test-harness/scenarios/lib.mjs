@@ -28,7 +28,12 @@ export async function obtainCompanionToken(ctx) {
 
   await ctx.waitTarget(/authorize-companion/, 15000);
   // Retry the click until the button exists and the click lands.
-  await ctx.waitOnTarget(/authorize-companion/, "document.querySelector('button.allow') ? (document.querySelector('button.allow').click(), true) : false", clicked => clicked === true, 15000);
+  await ctx.waitOnTarget(
+    /authorize-companion/,
+    "document.querySelector('button.allow') ? (document.querySelector('button.allow').click(), true) : false",
+    clicked => clicked === true,
+    15000
+  );
 
   const tokenResponse = await tokenPromise;
   if (tokenResponse.status !== 200 || !tokenResponse.body?.token) {

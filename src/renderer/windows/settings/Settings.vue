@@ -66,6 +66,7 @@ const stagedRefs: Record<StagedSettingKey, Ref<unknown>> = {
   "playback.progressInTaskbar": ref<unknown>(playback.progressInTaskbar),
   "playback.enableSpeakerFill": ref<unknown>(playback.enableSpeakerFill),
   "playback.ratioVolume": ref<unknown>(playback.ratioVolume),
+  "playback.loudnessNormalization": ref<unknown>(playback.loudnessNormalization),
   "integrations.companionServerEnabled": ref<unknown>(integrations.companionServerEnabled),
   "integrations.companionServerCORSWildcardEnabled": ref<unknown>(integrations.companionServerCORSWildcardEnabled),
   "integrations.discordPresenceEnabled": ref<unknown>(integrations.discordPresenceEnabled),
@@ -99,6 +100,7 @@ const continueWhereYouLeftOffPaused = stagedRefs["playback.continueWhereYouLeftO
 const progressInTaskbar = stagedRefs["playback.progressInTaskbar"];
 const enableSpeakerFill = stagedRefs["playback.enableSpeakerFill"];
 const ratioVolume = stagedRefs["playback.ratioVolume"];
+const loudnessNormalization = stagedRefs["playback.loudnessNormalization"];
 const companionServerEnabled = stagedRefs["integrations.companionServerEnabled"];
 const companionServerCORSWildcardEnabled = stagedRefs["integrations.companionServerCORSWildcardEnabled"];
 const discordPresenceEnabled = stagedRefs["integrations.discordPresenceEnabled"];
@@ -428,6 +430,13 @@ window.ytmd.handleUpdateDownloaded(() => {
           <YTMDSetting v-model="progressInTaskbar" type="checkbox" name="Show track progress on taskbar" @change="stageChanged" />
           <YTMDSetting v-model="enableSpeakerFill" type="checkbox" restart-required name="Enable speaker fill" @change="stageChanged" />
           <YTMDSetting v-model="ratioVolume" type="checkbox" name="Ratio volume" @change="stageChanged" />
+          <YTMDSetting
+            v-model="loudnessNormalization"
+            type="checkbox"
+            name="Loudness normalization"
+            description="Levels tracks against each other using YouTube's measured loudness. Loud tracks come down; quiet tracks are never boosted"
+            @change="stageChanged"
+          />
         </div>
 
         <div v-if="currentTab === 4" class="integrations-tab">

@@ -27,9 +27,13 @@ const VIDEO_ID = "dQw4w9WgXcQ";
 
 export default async function playback(ctx) {
   let token;
-  await ctx.step("obtain token", async () => {
-    token = await obtainCompanionToken(ctx);
-  }, 90000);
+  await ctx.step(
+    "obtain token",
+    async () => {
+      token = await obtainCompanionToken(ctx);
+    },
+    90000
+  );
 
   await ctx.step("hooks ready", () => ctx.waitYtm("!!window.__YTMD_HOOK__", hooked => hooked === true, 90000), 95000);
 

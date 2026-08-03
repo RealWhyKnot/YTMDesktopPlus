@@ -44,7 +44,11 @@ export const fixture = {
 export default async function configMigration(ctx) {
   await ctx.step("migrations run", () => ctx.waitMainLog(/Performing store migration/, 30000), 35000);
 
-  await ctx.step("app loads with migrated config", () => ctx.waitMain("window.ytmd.memoryStore.get('ytmViewLoading')", loading => loading === false, 90000), 95000);
+  await ctx.step(
+    "app loads with migrated config",
+    () => ctx.waitMain("window.ytmd.memoryStore.get('ytmViewLoading')", loading => loading === false, 90000),
+    95000
+  );
 
   await ctx.step("settings survive and gaps are filled", async () => {
     const config = JSON.parse(readFileSync(path.join(ctx.profileDir, "config.json"), "utf8"));

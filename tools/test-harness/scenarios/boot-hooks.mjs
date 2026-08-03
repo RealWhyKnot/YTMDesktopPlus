@@ -16,7 +16,16 @@ export default async function bootHooks(ctx) {
 
   await ctx.step("store hook installs", () => ctx.waitYtm("!!window.__YTMD_HOOK__", hooked => hooked === true, 90000), 95000);
 
-  await ctx.step("player api ready", () => ctx.waitYtm("(() => { try { return !!document.querySelector('ytmusic-app-layout>ytmusic-player-bar')?.playerApi?.isReady?.(); } catch { return false; } })()", ready => ready === true, 90000), 95000);
+  await ctx.step(
+    "player api ready",
+    () =>
+      ctx.waitYtm(
+        "(() => { try { return !!document.querySelector('ytmusic-app-layout>ytmusic-player-bar')?.playerApi?.isReady?.(); } catch { return false; } })()",
+        ready => ready === true,
+        90000
+      ),
+    95000
+  );
 
   await ctx.step(
     "loading overlay clears",

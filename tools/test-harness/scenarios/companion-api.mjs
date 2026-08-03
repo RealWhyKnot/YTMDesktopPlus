@@ -16,9 +16,13 @@ export const fixture = {
 
 export default async function companionApi(ctx) {
   let token;
-  await ctx.step("obtain token", async () => {
-    token = await obtainCompanionToken(ctx);
-  }, 90000);
+  await ctx.step(
+    "obtain token",
+    async () => {
+      token = await obtainCompanionToken(ctx);
+    },
+    90000
+  );
 
   await ctx.step("metadata lists api v1", async () => {
     const res = await ctx.companion.request("/metadata");

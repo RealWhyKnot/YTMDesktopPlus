@@ -16,9 +16,13 @@ export const fixture = {
 
 export default async function companionAuth(ctx) {
   let token;
-  await ctx.step("authorization flow issues token", async () => {
-    token = await obtainCompanionToken(ctx);
-  }, 90000);
+  await ctx.step(
+    "authorization flow issues token",
+    async () => {
+      token = await obtainCompanionToken(ctx);
+    },
+    90000
+  );
 
   await ctx.step("token grants api access", async () => {
     const state = await ctx.companion.request("/api/v1/state", { token });

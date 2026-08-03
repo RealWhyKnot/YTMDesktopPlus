@@ -36,6 +36,7 @@ export type StoreSchema = {
     enableSpeakerFill: boolean;
     progressInTaskbar: boolean;
     ratioVolume: boolean;
+    loudnessNormalization: boolean;
   };
   integrations: {
     companionServerEnabled: boolean;

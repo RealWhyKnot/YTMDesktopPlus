@@ -35,6 +35,7 @@ import DiscordPresence from "./integrations/discord-presence";
 import LastFM from "./integrations/last-fm";
 import NowPlayingNotifications from "./integrations/notifications";
 import VolumeRatio from "./integrations/volume-ratio";
+import LoudnessNormalization from "./integrations/loudness-normalization";
 import ListenAlong from "./integrations/listen-along";
 import { initializeTestSeams, isTestRun } from "./test-seams";
 import { migrateLegacyProfile } from "./profile-migration";
@@ -161,6 +162,7 @@ const lastFMScrobbler = new LastFM();
 const listenAlong = new ListenAlong();
 const nowPlayingNotifications = new NowPlayingNotifications();
 const ratioVolume = new VolumeRatio();
+const loudnessNormalization = new LoudnessNormalization();
 
 const ytmViewIntegrationScripts: { [name: string]: { [name: string]: string } } = {};
 
@@ -423,7 +425,8 @@ const store = new Conf<StoreSchema>({
       continueWhereYouLeftOffPaused: true,
       enableSpeakerFill: false,
       progressInTaskbar: false,
-      ratioVolume: false
+      ratioVolume: false,
+      loudnessNormalization: false
     },
     integrations: {
       companionServerEnabled: false,
@@ -616,6 +619,17 @@ store.onDidAnyChange(async (newState, oldState) => {
   } else if (!newState.playback.ratioVolume && oldState.playback.ratioVolume) {
     ratioVolume.disable();
     log.info("Integration disabled: Ratio volume");
+  }
+
+  if (newState.playback.loudnessNormalization) {
+    loudnessNormalization.provide(ytmView);
+  }
+  if (newState.playback.loudnessNormalization && !oldState.playback.loudnessNormalization) {
+    loudnessNormalization.enable();
+    log.info("Integration enabled: Loudness normalization");
+  } else if (!newState.playback.loudnessNormalization && oldState.playback.loudnessNormalization) {
+    loudnessNormalization.disable();
+    log.info("Integration disabled: Loudness normalization");
   }
 
   // Integrations
@@ -1246,6 +1260,7 @@ const createYTMView = (): void => {
   companionServer.provide(store, memoryStore, ytmView);
   customCss.provide(store, ytmView);
   ratioVolume.provide(ytmView);
+  loudnessNormalization.provide(ytmView);
   providePlaybackView(() => ytmView);
 
   // Attach events to ytm view
@@ -1804,6 +1819,7 @@ app.on("ready", async () => {
 
       // TODO: this is just a hack fix for ratio volume to run the enable script
       ratioVolume.ytmViewLoaded();
+      loudnessNormalization.ytmViewLoaded();
       // TODO: this is just a hack fix for custom css to update CSS when the view loads
       customCss.updateCSS();
 
@@ -2263,6 +2279,10 @@ app.on("ready", async () => {
     map[obj.name] = obj.script;
     return map;
   }, {});
+  ytmViewIntegrationScripts["loudnessNormalization"] = loudnessNormalization.getYTMScripts().reduce<{ [name: string]: string }>((map, obj) => {
+    map[obj.name] = obj.script;
+    return map;
+  }, {});
 
   // Create the YouTube Music view
   createYTMView();
@@ -2298,6 +2318,13 @@ app.on("ready", async () => {
     ratioVolume.provide(ytmView);
     ratioVolume.enable();
     log.info("Integration enabled: Ratio volume");
+  }
+
+  // LoudnessNormalization
+  if (store.get("playback").loudnessNormalization) {
+    loudnessNormalization.provide(ytmView);
+    loudnessNormalization.enable();
+    log.info("Integration enabled: Loudness normalization");
   }
 
   // CompanionServer
