@@ -11,6 +11,7 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
 import Store from "../store-ipc/store";
 import { StoreSchema } from "~shared/store/schema";
+import { HOOK_POLL_INTERVAL, HOOK_POLL_MAX_ATTEMPTS, PlayerBarProbeSnapshot, playerBarProbeSource, pollUntil, storeHookProbeSource } from "~shared/hook-probes";
 
 import playerBarControlsScript from "./scripts/playerbarcontrols.script?raw";
 import hookPlayerApiEventsScript from "./scripts/hookplayerapievents.script?raw";
@@ -19,6 +20,13 @@ import toggleLikeScript from "./scripts/togglelike.script?raw";
 import toggleDislikeScript from "./scripts/toggledislike.script?raw";
 
 const store = new Store<StoreSchema>();
+
+// Test seam: force a hook stage to fail so the failure path can be exercised
+// deterministically. Set through the view's additionalArguments by the main
+// process, development builds only.
+const brokenHookStage = process.argv.find(arg => arg.startsWith("--ytmd-test-break-hooks="))?.split("=")[1] ?? null;
+const failingBooleanProbeSource = `(function() { return false; })`;
+const failingPlayerBarProbeSource = `(function() { return { playerBarPresent: false, playerApiPresent: false, playerApiReady: false }; })`;
 
 contextBridge.exposeInMainWorld("ytmd", {
   sendVideoProgress: (volume: number) => ipcRenderer.send("ytmView:videoProgressChanged", volume),
@@ -186,36 +194,43 @@ function getYTMTextRun(runs: { text: string }[]) {
   return final;
 }
 
-// This function helps hook YTM
-(async function () {
-  (
-    await webFrame.executeJavaScript(`
-    (function() {
-      let fakeBaseClass = function() {
-        try {
-          if (!window.__YTMD_HOOK__) {
-            if (this.store && !!this.store.getState && !!this.store.dispatch && !!this.store.subscribe) {
-              let ytmdHook = {
-                ytmStore: this.store
-              };
-              Object.freeze(ytmdHook);
-              window.__YTMD_HOOK__ = ytmdHook;
-            }
+// This hooks YTM's internal store. YouTube Music defines
+// PolymerFakeBaseClassWithoutHtml itself, so whichever side defines the
+// property first wins. executeInMainWorld runs synchronously during preload,
+// before the page can execute anything, which webFrame.executeJavaScript does
+// not guarantee: with the service worker serving the page from cache, YTM's
+// scripts could win that race and the store hook would never install.
+contextBridge.executeInMainWorld({
+  func: () => {
+    type YTMStore = { getState: () => unknown; dispatch: (action: unknown) => unknown; subscribe: (callback: () => void) => unknown };
+    const hookWindow = window as typeof window & { __YTMD_HOOK__?: Readonly<{ ytmStore: YTMStore }> };
+    const fakeBaseClass = function (this: { store?: YTMStore }) {
+      try {
+        if (!hookWindow.__YTMD_HOOK__) {
+          if (this.store && !!this.store.getState && !!this.store.dispatch && !!this.store.subscribe) {
+            const ytmdHook = {
+              ytmStore: this.store
+            };
+            Object.freeze(ytmdHook);
+            hookWindow.__YTMD_HOOK__ = ytmdHook;
           }
-        } catch {}
-      }
-      Object.defineProperty(window, "PolymerFakeBaseClassWithoutHtml", {
-        set: (value) => {},
-        get: () => {
-          return fakeBaseClass
         }
-      })
-    })
-  `)
-  )();
-})();
+      } catch {
+        // Never let the trap break YTM's own bootstrap.
+      }
+    };
+    Object.defineProperty(window, "PolymerFakeBaseClassWithoutHtml", {
+      set: () => undefined,
+      get: () => fakeBaseClass
+    });
+  }
+});
 
-window.addEventListener("load", async () => {
+// Hook setup starts at DOMContentLoaded rather than the load event: a watch
+// page with paused media can hold the load event open indefinitely, and the
+// polls below already wait for everything they need.
+const startHooking = async () => {
+  console.debug(`[ytmd] hook setup starting for ${window.location.hostname} (readyState=${document.readyState})`);
   if (window.location.hostname !== "music.youtube.com") {
     if (window.location.hostname === "consent.youtube.com" || window.location.hostname === "accounts.google.com") {
       ipcRenderer.send("ytmView:loaded");
@@ -223,26 +238,17 @@ window.addEventListener("load", async () => {
     return;
   }
 
-  await new Promise<void>(resolve => {
-    const interval = setInterval(async () => {
-      const hooked = (
-        await webFrame.executeJavaScript(`
-        (function() {
-          if (window.__YTMD_HOOK__) {
-            return true;
-          }
-          
-          return false;
-        })
-      `)
-      )();
-
-      if (hooked) {
-        clearInterval(interval);
-        resolve();
-      }
-    }, 250);
-  });
+  const storeHook = await pollUntil<boolean>(
+    async () => (await webFrame.executeJavaScript(brokenHookStage === "store-hook" ? failingBooleanProbeSource : storeHookProbeSource))(),
+    hooked => hooked,
+    HOOK_POLL_INTERVAL,
+    HOOK_POLL_MAX_ATTEMPTS
+  );
+  console.debug(`[ytmd] hook stage store-hook: done=${storeHook.done} attempts=${storeHook.attempts} lastError=${storeHook.lastError}`);
+  if (!storeHook.done) {
+    ipcRenderer.send("ytmView:hookFailed", "store-hook", { attempts: storeHook.attempts, lastError: storeHook.lastError });
+    return;
+  }
 
   let materialSymbolsLoaded = false;
 
@@ -252,22 +258,26 @@ window.addEventListener("load", async () => {
   };
   document.head.appendChild(materialSymbols);
 
-  await new Promise<void>(resolve => {
-    const interval = setInterval(async () => {
-      const playerApiReady: boolean = (
-        await webFrame.executeJavaScript(`
-          (function() {
-            return document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.isReady();
-          })
-        `)
-      )();
+  const playerBar = await pollUntil<PlayerBarProbeSnapshot>(
+    async () => (await webFrame.executeJavaScript(brokenHookStage === "player-api" ? failingPlayerBarProbeSource : playerBarProbeSource))(),
+    snapshot => snapshot.playerApiReady,
+    HOOK_POLL_INTERVAL,
+    HOOK_POLL_MAX_ATTEMPTS
+  );
+  console.debug(`[ytmd] hook stage player-api: done=${playerBar.done} attempts=${playerBar.attempts} lastError=${playerBar.lastError}`);
+  if (!playerBar.done) {
+    ipcRenderer.send("ytmView:hookFailed", "player-api", { attempts: playerBar.attempts, lastError: playerBar.lastError, ...playerBar.last });
+    return;
+  }
 
-      if (materialSymbolsLoaded && playerApiReady) {
-        clearInterval(interval);
-        resolve();
-      }
-    }, 250);
-  });
+  // The icon font is cosmetic: give it a bounded grace period but never let it
+  // block the app from finishing setup.
+  await pollUntil<boolean>(
+    async () => materialSymbolsLoaded,
+    loaded => loaded,
+    HOOK_POLL_INTERVAL,
+    40
+  );
 
   createStyleSheet();
   createNavigationMenuArrows();
@@ -635,4 +645,12 @@ window.addEventListener("load", async () => {
   });
 
   ipcRenderer.send("ytmView:loaded");
-});
+};
+
+if (document.readyState !== "loading") {
+  startHooking();
+} else {
+  document.addEventListener("DOMContentLoaded", () => {
+    startHooking();
+  });
+}

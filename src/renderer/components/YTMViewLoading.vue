@@ -22,6 +22,10 @@ memoryStore.onStateChanged(newState => {
   ytmViewLoadTimedout.value = newState.ytmViewLoadTimedout;
   ytmViewLoadingStatus.value = newState.ytmViewLoadingStatus;
 });
+
+function retry() {
+  window.ytmd.ytmViewRecreate();
+}
 </script>
 
 <template>
@@ -41,6 +45,7 @@ memoryStore.onStateChanged(newState => {
         </div>
         <p :class="{ 'ytmview-loading-status': true, 'error': ytmViewLoadingError }">{{ ytmViewLoadingStatus }}</p>
         <p v-if="ytmViewLoadTimedout" class="ytmview-loading-timeout">YouTube Music is taking longer than usual to load</p>
+        <button v-if="ytmViewLoadingError" class="ytmview-loading-retry" @click="retry">Retry</button>
       </div>
       <div v-else class="ytmview-loading"></div>
     </Transition>
@@ -72,6 +77,20 @@ memoryStore.onStateChanged(newState => {
 
 .ytmview-loading-timeout {
   color: #f44336;
+}
+
+.ytmview-loading-retry {
+  margin-top: 8px;
+  padding: 6px 24px;
+  border: 1px solid #969696;
+  border-radius: 16px;
+  background: none;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.ytmview-loading-retry:hover {
+  border-color: #ffffff;
 }
 
 .fade-enter-active,
