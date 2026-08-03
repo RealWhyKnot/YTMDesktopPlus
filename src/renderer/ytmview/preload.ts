@@ -22,9 +22,9 @@ import toggleDislikeScript from "./scripts/toggledislike.script?raw";
 const store = new Store<StoreSchema>();
 
 // Test seam: force a hook stage to fail so the failure path can be exercised
-// deterministically. Set through the view's additionalArguments by the main
-// process, development builds only.
-const brokenHookStage = process.argv.find(arg => arg.startsWith("--ytmd-test-break-hooks="))?.split("=")[1] ?? null;
+// deterministically. Asked from the main process per view creation because
+// renderer processes (and their argv) can be reused across view recreations.
+const brokenHookStage: string | null = process.argv.includes("--ytmd-test") ? ipcRenderer.sendSync("ytmdTest:getBrokenHookStage") : null;
 const failingBooleanProbeSource = `(function() { return false; })`;
 const failingPlayerBarProbeSource = `(function() { return { playerBarPresent: false, playerApiPresent: false, playerApiReady: false }; })`;
 

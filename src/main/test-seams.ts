@@ -1,4 +1,4 @@
-import { app } from "electron";
+import { app, ipcMain } from "electron";
 import path from "path";
 
 // Development and test-run seams, all opt-in through environment variables.
@@ -30,6 +30,16 @@ export function initializeTestSeams() {
       if (stage === "store-hook" || stage === "player-api") {
         breakHooks = { stage, once: modifier === "once" };
       }
+    }
+
+    if (process.env.YTMD_TEST) {
+      // The YTM view preload asks for its broken stage synchronously at
+      // startup. This must be per-request rather than an additionalArguments
+      // switch: renderer processes can be reused across view recreations,
+      // which would resurrect a consumed break flag from the old argv.
+      ipcMain.on("ytmdTest:getBrokenHookStage", event => {
+        event.returnValue = takeBrokenHookStage();
+      });
     }
   }
 
