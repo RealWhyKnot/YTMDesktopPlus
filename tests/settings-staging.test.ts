@@ -35,7 +35,8 @@ function stateFixture(overrides: Record<string, unknown> = {}) {
       lastFMEnabled: false
     },
     lastfm: { scrobblePercent: 50 },
-    shortcuts: { playPause: "", next: "", previous: "", thumbsUp: "", thumbsDown: "", volumeUp: "", volumeDown: "" }
+    shortcuts: { playPause: "", next: "", previous: "", thumbsUp: "", thumbsDown: "", volumeUp: "", volumeDown: "" },
+    updates: { autoUpdateEnabled: false, channel: 0 }
   };
   for (const [path, value] of Object.entries(overrides)) {
     const [section, key] = path.split(".");

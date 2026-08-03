@@ -2,7 +2,7 @@
 import { computed, ref, type Ref } from "vue";
 import KeybindInput from "../../components/KeybindInput.vue";
 import YTMDSetting from "../../components/YTMDSetting.vue";
-import { StoreSchema, TrayIconStyle } from "~shared/store/schema";
+import { StoreSchema, TrayIconStyle, UpdateChannel } from "~shared/store/schema";
 import {
   RESTART_REQUIRED_KEYS,
   STAGED_SETTING_KEYS,
@@ -45,6 +45,7 @@ const playback: StoreSchema["playback"] = await store.get("playback");
 const integrations: StoreSchema["integrations"] = await store.get("integrations");
 const shortcuts: StoreSchema["shortcuts"] = await store.get("shortcuts");
 const lastFM: StoreSchema["lastfm"] = await store.get("lastfm");
+const updates: StoreSchema["updates"] = await store.get("updates");
 
 // Draft values for every staged key. Nothing here reaches the store until an
 // explicit save writes the dirty keys in one batch.
@@ -76,7 +77,9 @@ const stagedRefs: Record<StagedSettingKey, Ref<unknown>> = {
   "shortcuts.thumbsUp": ref<unknown>(shortcuts.thumbsUp),
   "shortcuts.thumbsDown": ref<unknown>(shortcuts.thumbsDown),
   "shortcuts.volumeUp": ref<unknown>(shortcuts.volumeUp),
-  "shortcuts.volumeDown": ref<unknown>(shortcuts.volumeDown)
+  "shortcuts.volumeDown": ref<unknown>(shortcuts.volumeDown),
+  "updates.autoUpdateEnabled": ref<unknown>(updates.autoUpdateEnabled),
+  "updates.channel": ref<unknown>(updates.channel)
 };
 
 const hideToTrayOnClose = stagedRefs["general.hideToTrayOnClose"];
@@ -106,6 +109,8 @@ const shortcutThumbsUp = stagedRefs["shortcuts.thumbsUp"];
 const shortcutThumbsDown = stagedRefs["shortcuts.thumbsDown"];
 const shortcutVolumeUp = stagedRefs["shortcuts.volumeUp"];
 const shortcutVolumeDown = stagedRefs["shortcuts.volumeDown"];
+const autoUpdateEnabled = stagedRefs["updates.autoUpdateEnabled"];
+const updateChannel = stagedRefs["updates.channel"];
 
 const companionServerAuthTokens = ref<AuthToken[]>(
   safeStorageAvailable.value ? (JSON.parse(await safeStorage.decryptString(integrations.companionServerAuthTokens)) ?? []) : []
@@ -358,6 +363,24 @@ window.ytmd.handleUpdateDownloaded(() => {
           </div>-->
           <YTMDSetting v-model="disableHardwareAcceleration" type="checkbox" restart-required name="Disable hardware acceleration" @change="stageChanged" />
           <YTMDSetting v-model="debugLogging" type="checkbox" name="Debug logging" @change="stageChanged" />
+          <YTMDSetting
+            v-model="autoUpdateEnabled"
+            type="checkbox"
+            name="Install updates on launch"
+            :disabled="autoUpdaterDisabled"
+            disabled-message="The auto updater is unavailable on this platform"
+            @change="stageChanged"
+          />
+          <YTMDSetting
+            v-if="!autoUpdaterDisabled"
+            v-model="updateChannel"
+            :options-map="{ [UpdateChannel.Auto]: 'Match installed build', [UpdateChannel.Stable]: 'Stable', [UpdateChannel.Beta]: 'Beta' }"
+            type="select"
+            indented
+            name="Update channel"
+            description="Changing the channel applies the matching update when you save"
+            @change="stageChanged"
+          />
         </div>
 
         <div v-if="currentTab === 2" class="appearance-tab">

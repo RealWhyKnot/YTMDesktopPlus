@@ -4,6 +4,12 @@ export enum TrayIconStyle {
   Black = 2
 }
 
+export enum UpdateChannel {
+  Auto = 0,
+  Stable = 1,
+  Beta = 2
+}
+
 export type StoreSchema = {
   metadata: {
     version: 1;
@@ -66,6 +72,11 @@ export type StoreSchema = {
   developer: {
     enableDevTools: boolean;
     debugLogging: boolean;
+  };
+  updates: {
+    autoUpdateEnabled: boolean;
+    channel: UpdateChannel;
+    firstRunPromptShown: boolean;
   };
 };
 

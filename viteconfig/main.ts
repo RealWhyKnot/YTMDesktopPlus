@@ -36,8 +36,6 @@ export default defineConfig({
     }
   },
   define: {
-    YTMD_DISABLE_UPDATES: devBuild,
-    YTMD_UPDATE_FEED_OWNER: process.env.YTMD_UPDATE_FEED_OWNER ? `'${process.env.YTMD_UPDATE_FEED_OWNER}'` : "'ytmdesktop'",
-    YTMD_UPDATE_FEED_REPOSITORY: process.env.YTMD_UPDATE_FEED_REPOSITORY ? `'${process.env.YTMD_UPDATE_FEED_REPOSITORY}'` : "'ytmdesktop'"
+    YTMD_DISABLE_UPDATES: devBuild
   }
 });

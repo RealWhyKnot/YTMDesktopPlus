@@ -29,7 +29,9 @@ export const STAGED_SETTING_KEYS = [
   "shortcuts.thumbsUp",
   "shortcuts.thumbsDown",
   "shortcuts.volumeUp",
-  "shortcuts.volumeDown"
+  "shortcuts.volumeDown",
+  "updates.autoUpdateEnabled",
+  "updates.channel"
 ] as const;
 
 export type StagedSettingKey = (typeof STAGED_SETTING_KEYS)[number];
@@ -41,7 +43,12 @@ export const RESTART_REQUIRED_KEYS: ReadonlySet<StagedSettingKey> = new Set<Stag
 ]);
 
 // Range inputs bound through v-model deliver strings; the store expects numbers.
-const NUMERIC_KEYS: ReadonlySet<StagedSettingKey> = new Set<StagedSettingKey>(["appearance.zoom", "appearance.trayIconStyle", "lastfm.scrobblePercent"]);
+const NUMERIC_KEYS: ReadonlySet<StagedSettingKey> = new Set<StagedSettingKey>([
+  "appearance.zoom",
+  "appearance.trayIconStyle",
+  "lastfm.scrobblePercent",
+  "updates.channel"
+]);
 
 export function normalizeSettingValue(key: StagedSettingKey, value: unknown): unknown {
   if (NUMERIC_KEYS.has(key) && value !== null && value !== undefined && typeof value !== "number") {
