@@ -526,7 +526,7 @@ window.ytmd.handleUpdateDownloaded(() => {
 
         <div v-if="currentTab === 99" class="about-tab">
           <img class="icon" :src="logo" />
-          <h2 class="app-name">YTMDesktopPlus</h2>
+          <h2 class="app-name">YTMDesktop+</h2>
           <p class="made-by">Made by YTMDesktop Team</p>
           <template v-if="!autoUpdaterDisabled">
             <button

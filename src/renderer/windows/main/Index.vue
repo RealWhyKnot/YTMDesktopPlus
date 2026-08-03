@@ -27,7 +27,7 @@ onMounted(() => {
 <template>
   <div ref="keyboardFocusZero" tabindex="0"></div>
   <Suspense>
-    <TitleBar is-main-window has-home-button has-settings-button has-minimize-button has-maximize-button title="YTMDesktopPlus" :icon-file="logo" />
+    <TitleBar is-main-window has-home-button has-settings-button has-minimize-button has-maximize-button title="YTMDesktop+" :icon-file="logo" />
   </Suspense>
   <Suspense>
     <YTMViewLoading />
