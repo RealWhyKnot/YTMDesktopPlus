@@ -18,7 +18,9 @@ for (let i = 0; i < process.argv.length; i++) {
 
 const config: ForgeConfig = {
   packagerConfig: {
-    executableName: "ytmdesktopplus",
+    // Must match the package name: the deb and rpm makers look the binary up
+    // by that name.
+    executableName: "ytmdesktop-plus",
     icon: "./src/assets/icons/ytmd",
     extraResource: [
       "./src/assets/icons/tray.ico",
