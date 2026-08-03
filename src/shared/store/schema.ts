@@ -1,3 +1,5 @@
+import type { RoomSnapshot } from "../room-protocol";
+
 export enum TrayIconStyle {
   Auto = 0,
   White = 1,
@@ -45,6 +47,8 @@ export type StoreSchema = {
     listenAlongHost: string | null; // hostname or address, no scheme
     listenAlongHostPort: number;
     listenAlongToken: string | null; // Encrypted for security
+    listenAlongRoomsEnabled: boolean;
+    listenAlongDisplayName: string | null; // user-typed, never derived from an account
   };
   shortcuts: {
     playPause: string;
@@ -88,6 +92,8 @@ export type MemoryStoreSchema = {
   listenAlongStatusDetail: string | null;
   listenAlongPairingCode: string | null;
   listenAlongPairingError: string | null;
+  listenAlongRoom: RoomSnapshot | null;
+  listenAlongRoomJoinPrompt: string | null;
   shortcutsPlayPauseRegisterFailed: boolean;
   shortcutsNextRegisterFailed: boolean;
   shortcutsPreviousRegisterFailed: boolean;

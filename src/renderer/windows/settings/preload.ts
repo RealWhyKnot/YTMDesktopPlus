@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld("ytmd", {
     encryptString: async (value: string) => await ipcRenderer.invoke("safeStorage:encryptString", value)
   },
   restartApplication: () => ipcRenderer.send("settingsWindow:restartapplication"),
+  openRoomWindow: () => ipcRenderer.send("room:openWindow"),
   restartApplicationForUpdate: () => ipcRenderer.send("app:restartApplicationForUpdate"),
   minimizeWindow: () => ipcRenderer.send("settingsWindow:minimize"),
   maximizeWindow: () => ipcRenderer.send("settingsWindow:maximize"),

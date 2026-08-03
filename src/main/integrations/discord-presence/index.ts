@@ -1,11 +1,14 @@
+import type Conf from "conf";
+
 import playerStateStore, { PlayerState, Thumbnail, VideoDetails, VideoState } from "../../player-state-store";
 import IIntegration from "../integration";
 import MemoryStore from "../../memory-store";
-import { MemoryStoreSchema } from "~shared/store/schema";
+import { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
 import DiscordClient from "./minimal-discord-client";
 import log from "electron-log";
 import { DiscordActivityType } from "./minimal-discord-client/types";
 import { buildListenAlongUrl } from "~shared/protocol-url";
+import type { RoomSnapshot } from "~shared/room-protocol";
 
 const DISCORD_CLIENT_ID = "1533867163079671849";
 
@@ -52,6 +55,7 @@ function stringLimit(str: string, limit: number, minimum: number) {
 }
 
 export default class DiscordPresence implements IIntegration {
+  private store: Conf<StoreSchema>;
   private memoryStore: MemoryStore<MemoryStoreSchema>;
 
   private discordClient: DiscordClient = null;
@@ -101,20 +105,17 @@ export default class DiscordPresence implements IIntegration {
           small_text: getSmallImageText(this.videoState)
         },
         instance: false,
-        buttons: [
-          {
-            label: "Listen Along",
-            url: buildListenAlongUrl({
-              videoId: id,
-              positionSeconds: this.progress,
-              playing,
-              durationSeconds,
-              isLive,
-              adPlaying: this.adPlaying,
-              nowMs
-            })
-          }
-        ]
+        buttons: this.buildButtons(
+          buildListenAlongUrl({
+            videoId: id,
+            positionSeconds: this.progress,
+            playing,
+            durationSeconds,
+            isLive,
+            adPlaying: this.adPlaying,
+            nowMs
+          })
+        )
       });
       this.activityDebounceTimeout = null;
     }, 1000);
@@ -152,8 +153,30 @@ export default class DiscordPresence implements IIntegration {
     }, 30 * 1000);
   }
 
-  public provide(memoryStore: MemoryStore<MemoryStoreSchema>): void {
+  public provide(store: Conf<StoreSchema>, memoryStore: MemoryStore<MemoryStoreSchema>): void {
+    this.store = store;
     this.memoryStore = memoryStore;
+  }
+
+  /** Rebuilds the activity when something other than playback changed it, like a room opening or closing. */
+  public refreshActivity(): void {
+    if (!this.ready) return;
+    this.UpdateActivity();
+  }
+
+  // The master toggle removes the Listen Along surface entirely; Discord has
+  // no disabled state for buttons, so absence is the only off switch. While
+  // hosting a room the share link rides along as a second button.
+  private buildButtons(listenAlongUrl: string): { label: string; url: string }[] | undefined {
+    if (!this.store?.get("integrations").listenAlongRoomsEnabled) return undefined;
+
+    const buttons: { label: string; url: string }[] = [];
+    const room = this.memoryStore.get("listenAlongRoom") as RoomSnapshot | null;
+    if (room && room.phase === "hosting" && room.shareUrl) {
+      buttons.push({ label: "Join Room", url: room.shareUrl });
+    }
+    buttons.push({ label: "Listen Along", url: listenAlongUrl });
+    return buttons;
   }
 
   private retryDiscordConnection() {

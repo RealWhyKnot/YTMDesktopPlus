@@ -70,6 +70,8 @@ const stagedRefs: Record<StagedSettingKey, Ref<unknown>> = {
   "integrations.companionServerCORSWildcardEnabled": ref<unknown>(integrations.companionServerCORSWildcardEnabled),
   "integrations.discordPresenceEnabled": ref<unknown>(integrations.discordPresenceEnabled),
   "integrations.lastFMEnabled": ref<unknown>(integrations.lastFMEnabled),
+  "integrations.listenAlongRoomsEnabled": ref<unknown>(integrations.listenAlongRoomsEnabled),
+  "integrations.listenAlongDisplayName": ref<unknown>(integrations.listenAlongDisplayName),
   "lastfm.scrobblePercent": ref<unknown>(lastFM.scrobblePercent),
   "shortcuts.playPause": ref<unknown>(shortcuts.playPause),
   "shortcuts.next": ref<unknown>(shortcuts.next),
@@ -101,6 +103,8 @@ const companionServerEnabled = stagedRefs["integrations.companionServerEnabled"]
 const companionServerCORSWildcardEnabled = stagedRefs["integrations.companionServerCORSWildcardEnabled"];
 const discordPresenceEnabled = stagedRefs["integrations.discordPresenceEnabled"];
 const lastFMEnabled = stagedRefs["integrations.lastFMEnabled"];
+const listenAlongRoomsEnabled = stagedRefs["integrations.listenAlongRoomsEnabled"];
+const listenAlongDisplayName = stagedRefs["integrations.listenAlongDisplayName"];
 const scrobblePercent = stagedRefs["lastfm.scrobblePercent"];
 const shortcutPlayPause = stagedRefs["shortcuts.playPause"];
 const shortcutNext = stagedRefs["shortcuts.next"];
@@ -263,6 +267,10 @@ function changeTab(newTab: number) {
 
 function restartApplication() {
   window.ytmd.restartApplication();
+}
+
+function openRoomWindow() {
+  window.ytmd.openRoomWindow();
 }
 
 function restartApplicationForUpdate() {
@@ -484,6 +492,28 @@ window.ytmd.handleUpdateDownloaded(() => {
               <td>No authorized companions</td>
             </div>
           </YTMDSetting>
+          <YTMDSetting
+            v-model="listenAlongRoomsEnabled"
+            type="checkbox"
+            name="Listen Along rooms"
+            description="When off, the app never connects to ytmdesktopplus.com and the Listen Along button leaves your Discord presence"
+            @change="stageChanged"
+          />
+          <YTMDSetting
+            v-if="listenAlongRoomsEnabled"
+            v-model="listenAlongDisplayName"
+            type="text"
+            indented
+            maxlength="24"
+            placeholder="Not set"
+            name="Room display name"
+            description="Shown to people in your rooms. You choose it; it is never taken from your account"
+            @change="stageChanged"
+          />
+          <div v-if="listenAlongRoomsEnabled" class="setting indented">
+            <p>Open the Listen Along window</p>
+            <button @click="openRoomWindow">Open</button>
+          </div>
           <YTMDSetting v-model="discordPresenceEnabled" type="checkbox" name="Discord rich presence" @change="stageChanged" />
           <div v-if="discordPresenceEnabled && discordPresenceConnectionFailed" class="setting indented">
             <p class="discord-failure">Discord connection could not be established after 30 attempts</p>

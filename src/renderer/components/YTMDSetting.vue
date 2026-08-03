@@ -1,8 +1,9 @@
-<script setup lang="ts" generic="T extends 'checkbox' | 'file' | 'range' | 'select' | 'custom'">
+<script setup lang="ts" generic="T extends 'checkbox' | 'text' | 'file' | 'range' | 'select' | 'custom'">
 import { computed, ref } from "vue";
 
 type ModelValue = {
   checkbox: boolean;
+  text: string;
   file: string;
   range: number;
   custom: never;
@@ -25,6 +26,8 @@ const props = defineProps<{
   flexColumn?: boolean;
   beta?: boolean;
   optionsMap?: { [key: number]: string }; // This is for the select menu
+  maxlength?: number | string; // This is for the text input
+  placeholder?: string; // This is for the text input
 }>();
 const emit = defineEmits(["update:modelValue", "file-change", "change", "clear"]);
 
@@ -82,6 +85,8 @@ function select(optionKey: string) {
       v-model="value"
       :disabled="disabled"
       :type="props.type"
+      :maxlength="props.maxlength"
+      :placeholder="props.placeholder"
       @change="$emit('change', $event)"
     />
     <div v-if="type == 'range'" class="range-selector">
@@ -155,6 +160,20 @@ function select(optionKey: string) {
 
 .reload-required {
   vertical-align: middle;
+}
+
+input[type="text"] {
+  background-color: #111111;
+  color: #eeeeee;
+  border: 1px solid #323232;
+  border-radius: 4px;
+  padding: 8px 10px;
+  outline: none;
+  min-width: 220px;
+}
+
+input[type="text"]:focus {
+  border-color: #888888;
 }
 
 input[type="checkbox"] {

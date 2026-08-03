@@ -14,12 +14,17 @@
 
 export type PositionAnchor = { kind: "absolute"; seconds: number } | { kind: "anchor"; epochMs: number };
 
-export type ProtocolCommand = {
-  command: "play";
-  videoId: string;
-  playlistId: string | null;
-  anchor: PositionAnchor | null;
-};
+export type ProtocolCommand =
+  | {
+      command: "play";
+      videoId: string;
+      playlistId: string | null;
+      anchor: PositionAnchor | null;
+    }
+  | {
+      command: "room";
+      roomId: string;
+    };
 
 export type ListenAlongUrlArgs = {
   videoId: string;
@@ -34,6 +39,8 @@ export type ListenAlongUrlArgs = {
 
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+// Same alphabet the relay mints room ids from, see ~shared/room-protocol.
+const ROOM_ID_PATTERN = /^[abcdefghjkmnpqrstuvwxyz23456789]{8}$/;
 
 // Seeking this close to the start costs an audible stutter and gains nothing.
 const MIN_SEEK_SECONDS = 3;
@@ -86,6 +93,14 @@ export function parseProtocolUrl(input: string): ProtocolCommand | null {
   if (segments === null) return null;
 
   const command = (url.hostname || segments.shift() || "").toLowerCase();
+
+  if (command === "room") {
+    if (segments.length !== 1) return null;
+    const roomId = segments[0];
+    if (!ROOM_ID_PATTERN.test(roomId)) return null;
+    return { command: "room", roomId };
+  }
+
   if (command !== "play") return null;
   if (segments.length > 2) return null;
 

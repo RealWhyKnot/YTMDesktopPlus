@@ -9,15 +9,8 @@ import playerStateStore, { type PlayerState } from "../../player-state-store";
 import { cueTrack, sendPlaybackCommand } from "../../playback";
 import type { ListenAlongStatus, MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
 import { ListenAlongError, connectRealtime, fetchState, pair, sampleFromRemoteState } from "./client";
-import { BREAKER_WINDOW_MS, decide } from "./sync-engine";
-import type { Decision, Expectation, Sample, SyncPhase } from "./types";
+import { FollowerEngine, type FollowerPhaseEvent } from "./follower-engine";
 
-// How long a command we issued stays attributable to us before a matching local
-// change counts as the user reaching for the controls.
-const EXPECTATION_TTL_MS = 1500;
-// state-update fires on every player mutation, including queue changes carrying
-// the full queue, so the decision loop runs on a floor rather than per message.
-const DECISION_INTERVAL_MS = 200;
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000, 30000];
 const MAX_CONNECTION_ATTEMPTS = 30;
 
@@ -30,17 +23,14 @@ export default class ListenAlong implements IIntegration {
   private stateCallback: ((state: PlayerState) => void) | null = null;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private connectionAttempts = 0;
-
-  private remote: Sample | null = null;
-  private local: Sample | null = null;
-  private previousLocal: Sample | null = null;
   private oneWayMs = 0;
-  private phase: SyncPhase = "idle";
-  private lastSeekAtMs: number | null = null;
-  private lastRemoteUpdateMs: number | null = null;
-  private seekTimestamps: number[] = [];
-  private expectations: Expectation[] = [];
-  private lastDecisionAtMs = 0;
+
+  private engine = new FollowerEngine({
+    cueTrack: request => cueTrack(request),
+    sendCommand: (command, value) => sendPlaybackCommand(command, value),
+    onPhase: event => this.onEnginePhase(event),
+    now: () => Date.now()
+  });
 
   public provide(store: Conf<StoreSchema>, memoryStore: MemoryStore<MemoryStoreSchema>): void {
     this.store = store;
@@ -50,6 +40,25 @@ export default class ListenAlong implements IIntegration {
   private setStatus(status: ListenAlongStatus, detail: string | null = null) {
     this.memoryStore.set("listenAlongStatus", status);
     this.memoryStore.set("listenAlongStatusDetail", detail);
+  }
+
+  private onEnginePhase(event: FollowerPhaseEvent) {
+    if (!this.enabled) return;
+    if (event.phase === "loading") {
+      this.setStatus("loading");
+      return;
+    }
+    if (event.phase === "suspended") {
+      log.info(`Listen along suspended: ${event.reason}`);
+      this.setStatus("suspended", event.reason);
+      return;
+    }
+    // Only promote to synced from states that mean we are actually following;
+    // never clobber connecting/failed/pairing.
+    const status = this.memoryStore.get("listenAlongStatus");
+    if (status === "connected" || status === "loading" || status === "synced" || status === "suspended") {
+      this.setStatus("synced");
+    }
   }
 
   private readToken() {
@@ -104,113 +113,12 @@ export default class ListenAlong implements IIntegration {
     this.setStatus(this.enabled ? "failed" : "disabled", this.enabled ? "Not paired with a host yet" : null);
   }
 
-  // Rejoining after the user took over is a deliberate action, so it clears the
-  // breaker as well as the phase.
   public resume() {
-    if (this.phase !== "suspended") return;
-    this.seekTimestamps = [];
-    this.lastSeekAtMs = null;
-    this.phase = "synced";
-    this.setStatus("synced");
-    this.runDecision(true);
-  }
-
-  private sampleLocal(state: PlayerState): Sample {
-    return {
-      videoId: state.videoDetails?.id ?? null,
-      durationSeconds: state.videoDetails?.durationSeconds ?? 0,
-      progress: state.videoProgress,
-      trackState: state.trackState,
-      adPlaying: state.adPlaying,
-      asOfMs: Date.now()
-    };
-  }
-
-  private expect(kind: Expectation["kind"], target?: string | number) {
-    const now = Date.now();
-    this.expectations = this.expectations.filter(expectation => expectation.expiresAtMs > now);
-    this.expectations.push({ kind, target, expiresAtMs: now + EXPECTATION_TTL_MS });
-  }
-
-  private apply(decision: Decision) {
-    switch (decision.kind) {
-      case "navigate": {
-        this.expect("navigate", decision.videoId);
-        this.setStatus("loading");
-        // The track cue owns the navigate and the seek that follows it, and
-        // supersedes itself when the host skips again.
-        void cueTrack({
-          videoId: decision.videoId,
-          anchor: this.remote ? { kind: "anchor", epochMs: this.remote.asOfMs - this.remote.progress * 1000 } : null
-        }).then(result => {
-          if (this.phase === "loading") {
-            this.phase = result === "no-view" ? "idle" : "synced";
-            if (this.phase === "synced") this.setStatus("synced");
-          }
-        });
-        break;
-      }
-      case "seek": {
-        const now = Date.now();
-        this.expect("seek", decision.seconds);
-        this.lastSeekAtMs = now;
-        this.seekTimestamps = [...this.seekTimestamps.filter(at => now - at < BREAKER_WINDOW_MS), now];
-        this.send("seekTo", decision.seconds);
-        break;
-      }
-      case "play": {
-        this.expect("play");
-        this.send("play");
-        break;
-      }
-      case "pause": {
-        this.expect("pause");
-        this.send("pause");
-        break;
-      }
-      case "suspend": {
-        log.info(`Listen along suspended: ${decision.reason}`);
-        this.setStatus("suspended", decision.reason);
-        break;
-      }
-    }
-  }
-
-  private send(command: string, value?: unknown) {
-    sendPlaybackCommand(command, value);
-  }
-
-  private runDecision(force = false) {
-    if (!this.enabled) return;
-    const now = Date.now();
-    if (!force && now - this.lastDecisionAtMs < DECISION_INTERVAL_MS) return;
-    this.lastDecisionAtMs = now;
-
-    const result = decide({
-      remote: this.remote,
-      local: this.local,
-      previousLocal: this.previousLocal,
-      nowMs: now,
-      phase: this.phase,
-      lastSeekAtMs: this.lastSeekAtMs,
-      lastRemoteUpdateMs: this.lastRemoteUpdateMs,
-      seekTimestamps: this.seekTimestamps,
-      expectations: this.expectations
-    });
-
-    const wasLoading = this.phase === "loading";
-    this.phase = result.phase;
-    for (const decision of result.decisions) this.apply(decision);
-
-    if (!wasLoading && this.phase === "synced" && this.memoryStore.get("listenAlongStatus") === "connected") {
-      this.setStatus("synced");
-    }
+    this.engine.resume();
   }
 
   private onRemoteState(state: Parameters<typeof sampleFromRemoteState>[0]) {
-    this.lastRemoteUpdateMs = Date.now();
-    this.remote = sampleFromRemoteState(state, this.lastRemoteUpdateMs - this.oneWayMs);
-    this.runDecision();
+    this.engine.updateRemote(sampleFromRemoteState(state, Date.now() - this.oneWayMs));
   }
 
   private disconnect() {
@@ -221,9 +129,7 @@ export default class ListenAlong implements IIntegration {
       this.socket.disconnect();
       this.socket = null;
     }
-    this.remote = null;
-    this.lastRemoteUpdateMs = null;
-    this.phase = "idle";
+    this.engine.clearRemote();
   }
 
   private scheduleReconnect() {
@@ -254,8 +160,7 @@ export default class ListenAlong implements IIntegration {
       if (!this.enabled) return;
       if (seed) {
         this.oneWayMs = seed.oneWayMs;
-        this.remote = seed.sample;
-        this.lastRemoteUpdateMs = Date.now();
+        this.engine.updateRemote(seed.sample);
       }
     } catch (error) {
       const detail = error instanceof ListenAlongError ? error.detail : "Could not reach the host";
@@ -286,7 +191,7 @@ export default class ListenAlong implements IIntegration {
     this.socket.on("connect", () => {
       this.connectionAttempts = 0;
       this.setStatus("connected");
-      this.runDecision(true);
+      this.engine.kick();
     });
   }
 
@@ -294,13 +199,8 @@ export default class ListenAlong implements IIntegration {
     if (this.enabled) return;
     this.enabled = true;
     this.connectionAttempts = 0;
-    this.phase = "idle";
 
-    this.stateCallback = state => {
-      this.previousLocal = this.local;
-      this.local = this.sampleLocal(state);
-      this.runDecision();
-    };
+    this.stateCallback = state => this.engine.updateLocal(state);
     playerStateStore.addEventListener(this.stateCallback);
 
     void this.connect();
@@ -315,11 +215,7 @@ export default class ListenAlong implements IIntegration {
       this.stateCallback = null;
     }
 
-    this.local = null;
-    this.previousLocal = null;
-    this.expectations = [];
-    this.seekTimestamps = [];
-    this.lastSeekAtMs = null;
+    this.engine.reset();
     this.setStatus("disabled");
     this.memoryStore.set("listenAlongPairingCode", null);
     this.memoryStore.set("listenAlongPairingError", null);

@@ -17,6 +17,7 @@ declare global {
         encryptString(value: string): Buffer;
       };
       openSettingsWindow(): void;
+      openRoomWindow(): void;
       restartApplication(): void;
       restartApplicationForUpdate(): void;
       getTrueFilePath(file: File): string;
@@ -32,6 +33,14 @@ declare global {
       // YTM view specific
       ytmViewNavigateDefault(): void;
       ytmViewRecreate(): void;
+
+      // Room window specific
+      roomHost(displayName: string): void;
+      roomJoin(roomId: string, displayName: string): void;
+      roomLeave(): void;
+      roomGrant(memberId: string, role: number): void;
+      roomControl(action: string, value?: unknown): void;
+      roomResume(): void;
 
       // Window control
       minimizeWindow(): void;

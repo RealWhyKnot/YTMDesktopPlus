@@ -163,3 +163,18 @@ describe("buildListenAlongUrl", () => {
     expect(resolveStartSeconds(parsed.anchor, now, 200)).toBe(60);
   });
 });
+
+describe("room links", () => {
+  it("parses a room link in both written forms", () => {
+    expect(parseProtocolUrl("ytmdplus://room/abcdefgh")).toEqual({ command: "room", roomId: "abcdefgh" });
+    expect(parseProtocolUrl("ytmdplus:room/abcdefgh")).toEqual({ command: "room", roomId: "abcdefgh" });
+  });
+
+  it("rejects malformed room ids", () => {
+    expect(parseProtocolUrl("ytmdplus://room/ABCDEFGH")).toBeNull();
+    expect(parseProtocolUrl("ytmdplus://room/abcdefg1")).toBeNull();
+    expect(parseProtocolUrl("ytmdplus://room/short")).toBeNull();
+    expect(parseProtocolUrl("ytmdplus://room/abcdefgh/extra")).toBeNull();
+    expect(parseProtocolUrl("ytmdplus://room")).toBeNull();
+  });
+});
