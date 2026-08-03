@@ -175,21 +175,20 @@ let lastPlaylistId = "";
 let companionAuthWindowEnableTimeout: NodeJS.Timeout | null = null;
 let ytmViewLoadTimeout: NodeJS.Timeout | null = null;
 
-// Media keys are the only bindings safe to claim by default: they are what a
-// music player is expected to answer and they collide with nothing a user
-// types. The rest stay unbound, because every plain combination risks taking a
-// shortcut away from whatever application is in the foreground.
+// These are global accelerators: they fire whether or not the window is
+// focused, so binding one takes that key away from every other application.
+// Nothing is bound by default. Media keys are deliberately left alone so
+// Chromium keeps answering them through the page's own media session, which
+// only responds while this app holds audio focus.
 const DEFAULT_SHORTCUTS = {
-  playPause: "MediaPlayPause",
-  next: "MediaNextTrack",
-  previous: "MediaPreviousTrack",
+  playPause: "",
+  next: "",
+  previous: "",
   thumbsUp: "",
   thumbsDown: "",
   volumeUp: "",
   volumeDown: ""
 };
-
-const MEDIA_KEY_SHORTCUTS = ["MediaPlayPause", "MediaNextTrack", "MediaPreviousTrack", "MediaStop"];
 
 // Single Instances Lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -399,8 +398,7 @@ const store = new Conf<StoreSchema>({
       lastPlaylistId: "",
       lastVideoId: "",
       windowBounds: null,
-      windowMaximized: false,
-      shortcutDefaultsApplied: false
+      windowMaximized: false
     },
     lastfm: {
       // Last FM Keys belong to @Alipoodle
@@ -606,28 +604,6 @@ if (store.get("general").disableHardwareAcceleration) {
 
 if (store.get("playback").enableSpeakerFill) {
   app.commandLine.appendSwitch("try-supported-channel-layouts");
-}
-
-// Installs that predate the shortcut defaults have every binding stored as an
-// empty string. Fill those in once; after this runs, an empty binding means the
-// user cleared it and it stays cleared.
-if (!store.get("state").shortcutDefaultsApplied) {
-  const shortcuts = store.get("shortcuts");
-  for (const [name, accelerator] of Object.entries(DEFAULT_SHORTCUTS)) {
-    if (accelerator && !shortcuts[name as keyof typeof shortcuts]) {
-      store.set(`shortcuts.${name}`, accelerator);
-    }
-  }
-  store.set("state.shortcutDefaultsApplied", true);
-  log.info("Applied default shortcuts");
-}
-
-// Chromium answers the media keys itself through the page's media session. When
-// we register them as global shortcuts too, both handlers fire and play/pause
-// toggles twice, cancelling itself out. Stand Chromium's handler down only when
-// we are actually claiming a media key.
-if (MEDIA_KEY_SHORTCUTS.some(key => Object.values(store.get("shortcuts")).includes(key))) {
-  app.commandLine.appendSwitch("disable-features", "HardwareMediaKeyHandling");
 }
 
 function saveState() {

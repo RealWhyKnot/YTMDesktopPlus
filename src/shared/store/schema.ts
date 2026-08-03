@@ -55,9 +55,6 @@ export type StoreSchema = {
     lastVideoId: string;
     windowBounds: Electron.Rectangle | null;
     windowMaximized: boolean;
-    // Guards the one-time backfill of shortcut defaults so a deliberately
-    // cleared binding is never silently restored.
-    shortcutDefaultsApplied: boolean;
   };
   lastfm: {
     api_key: string;
