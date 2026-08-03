@@ -290,33 +290,30 @@ const startHooking = async () => {
   const integrationScripts: { [integrationName: string]: { [scriptName: string]: string } } = await ipcRenderer.invoke("ytmView:getIntegrationScripts");
 
   const state = await store.get("state");
-  const continueWhereYouLeftOff = (await store.get("playback")).continueWhereYouLeftOff;
+  const playbackSettings = await store.get("playback");
+  const continueWhereYouLeftOff = playbackSettings.continueWhereYouLeftOff;
 
   if (continueWhereYouLeftOff) {
+    if (playbackSettings.continueWhereYouLeftOffPaused && state.lastVideoId) {
+      // The restore is allowed to autoplay so YTM never shows its blocked
+      // autoplay hint. Mute before it starts; the main process pauses it the
+      // moment it reports playing and then restores the mute state.
+      const wasMuted: boolean = (
+        await webFrame.executeJavaScript(`
+          (function() {
+            const playerApi = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi;
+            const muted = playerApi.isMuted();
+            playerApi.mute();
+            return muted;
+          })
+        `)
+      )();
+      ipcRenderer.send("ytmView:launchPauseArmed", state.lastVideoId, wasMuted);
+    }
+
     // The last page the user was on is already a page where it will be playing a song from (no point telling YTM to play it again)
     if (!state.lastUrl.startsWith("https://music.youtube.com/watch")) {
       if (state.lastVideoId) {
-        // This height transition check is a hack to fix the `Start playback` hint from not being in the correct position https://github.com/ytmdesktop/ytmdesktop/issues/1159
-        let heightTransitionCount = 0;
-        const transitionEnd = async (e: TransitionEvent) => {
-          if (e.target === document.querySelector("ytmusic-app-layout>ytmusic-player-bar")) {
-            if (e.propertyName === "height") {
-              (
-                await webFrame.executeJavaScript(`
-                  (function() {
-                    document.querySelector("ytmusic-popup-container").refitPopups_();
-                  })
-                `)
-              )();
-              heightTransitionCount++;
-              if (heightTransitionCount >= 2) {
-                document.querySelector("ytmusic-app-layout>ytmusic-player-bar").removeEventListener("transitionend", transitionEnd);
-              }
-            }
-          }
-        };
-        document.querySelector("ytmusic-app-layout>ytmusic-player-bar").addEventListener("transitionend", transitionEnd);
-
         document.dispatchEvent(
           new CustomEvent("yt-navigate", {
             detail: {

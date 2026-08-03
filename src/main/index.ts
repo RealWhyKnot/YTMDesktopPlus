@@ -38,7 +38,8 @@ import VolumeRatio from "./integrations/volume-ratio";
 import ListenAlong from "./integrations/listen-along";
 import { initializeTestSeams, isTestRun } from "./test-seams";
 import { migrateLegacyProfile } from "./profile-migration";
-import { cancelCue, cueTrack, providePlaybackView } from "./playback";
+import { cancelCue, cueTrack, providePlaybackView, sendPlaybackCommand } from "./playback";
+import { createLaunchPause } from "./playback/launch-pause";
 import { parseProtocolUrl } from "../shared/protocol-url";
 import { buildUpdateFeedUrl } from "../shared/update-feed";
 
@@ -274,6 +275,13 @@ memoryStore.onStateChanged((newState, oldState) => {
   }
 });
 log.info("Created memory store");
+
+// Pauses the restored track once it reports playing, see playback/launch-pause
+const launchPause = createLaunchPause({
+  addEventListener: listener => playerStateStore.addEventListener(listener),
+  removeEventListener: listener => playerStateStore.removeEventListener(listener),
+  send: command => sendPlaybackCommand(command)
+});
 
 function shouldDisableUpdates() {
   // macOS can't have auto updates without a code signature
@@ -1114,13 +1122,11 @@ const createYTMView = (): void => {
       contextIsolation: true,
       partition: app.isPackaged ? "persist:ytmview" : "persist:ytmview-dev",
       preload: path.join(__dirname, `../renderer/windows/ytmview/preload.js`),
-      // Following another player means starting playback without anyone
-      // touching this window, which the gesture requirement would block
-      // silently.
-      autoplayPolicy:
-        store.get("playback.continueWhereYouLeftOffPaused") && !store.get("integrations").listenAlongEnabled
-          ? "document-user-activation-required"
-          : "no-user-gesture-required",
+      // Gating autoplay on a user gesture makes YTM render its blocked-autoplay
+      // hint and silently swallows every programmatic play, including restoring
+      // the last track and following another player. Pause on launch is handled
+      // by muting the restore and pausing once it reports playing instead.
+      autoplayPolicy: "no-user-gesture-required",
       // The view is only attached to the window once its hooks are ready. A
       // detached view is treated as a background page and gets its timers
       // throttled, which stalls the hook polls it needs to become ready.
@@ -1749,6 +1755,15 @@ app.on("ready", async () => {
     if (event.sender !== ytmView.webContents) return;
 
     playerStateStore.updateFromStore(queue, likeStatus, volume, muted, adPlaying);
+  });
+
+  ipcMain.on("ytmView:launchPauseArmed", (event, videoId: string, wasMuted: boolean) => {
+    if (event.sender !== ytmView.webContents) return;
+    if (typeof videoId !== "string" || videoId.length === 0) return;
+
+    launchPause.arm(videoId, wasMuted === true).then(result => {
+      log.info(`Launch pause for ${videoId}: ${result}`);
+    });
   });
 
   ipcMain.on("ytmView:switchFocus", (event, context) => {
