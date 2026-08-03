@@ -6,20 +6,32 @@ A desktop app for YouTube Music. It wraps the real music.youtube.com player, so 
 
 ## Download
 
-Grab the installer for your platform from [releases](https://github.com/RealWhyKnot/YTMDesktopPlus/releases). Windows builds update themselves automatically. Nightly beta builds are published when there are new changes and ship with debug logging enabled by default; stable builds keep logging off unless you turn it on in settings.
+Grab the installer for your platform from [releases](https://github.com/RealWhyKnot/YTMDesktopPlus/releases). Nightly beta builds are published when there are new changes and ship with debug logging enabled by default; stable builds keep logging off unless you turn it on in settings.
+
+On Windows the app can install updates on launch, like Discord does. It asks once on first run and the choice can be changed in settings at any time. The update channel follows the installed build, so a stable install stays on stable and a nightly install follows nightlies, and you can override the channel in settings; changing it applies the matching update when you save.
 
 ## Features
 
 - The full YouTube Music web player with your existing account
+- Listen Along rooms: friends follow your playback in sync over the internet
 - Global shortcuts and media key support
 - Discord rich presence
 - Last.fm scrobbling
+- Loudness normalization: levels tracks against each other using YouTube's own measured loudness, without ever boosting quiet tracks
 - Native notifications on song change
 - Custom CSS injection with live reload
 - Companion server: a local REST and WebSocket API on port 9863 that remote control apps can use after a one-time authorization
 - `ytmdplus://play/<videoId>` protocol links, including a Listen Along button on your Discord presence that opens the track where you are in it
 
+Settings apply when you save them, and the window tells you when there are unsaved changes.
+
 Settings from a previous YouTube Music Desktop App installation, including your sign-in, are picked up automatically on first launch.
+
+## Listen Along rooms
+
+Start a room from the tray menu or the settings window and share the link; it also appears as a Join Room button on your Discord presence while you host. Friends join by link or by typing the 8 letter room code, so it works without Discord too. Everyone joins as a listener and follows your playback in sync; you can promote anyone to controller, which lets them skip, seek, pause, and change the track for the room.
+
+You pick a display name before hosting or joining. It is never taken from your account, and the room service keeps no record of names, members, or rooms once they close. Turning the Listen Along toggle off in settings means the app opens no connection to the room service at all and removes the Listen Along button from your Discord presence.
 
 ## Developing
 
