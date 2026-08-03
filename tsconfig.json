@@ -8,19 +8,17 @@
     "esModuleInterop": true,
     "noImplicitAny": true,
     "sourceMap": true,
-    "baseUrl": ".",
     "outDir": "dist",
     "resolveJsonModule": true,
     "paths": {
-      "*": [
-        "node_modules/*"
-      ],
       "~shared/*": [
-        "src/shared/*"
+        "./src/shared/*"
       ],
       "~assets/*": [
-        "src/assets/*"
+        "./src/assets/*"
       ]
     }
-  }
+  },
+  "include": ["src", "vite.d.ts"],
+  "exclude": ["node_modules", ".vite", "out", "dist"]
 }

@@ -12,10 +12,11 @@
     "publish:dry": "electron-forge publish --dry-run",
     "publish:fromdry": "electron-forge publish --from-dry-run",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx,.vue .",
-    "lint:fix": "eslint --ext .ts,.tsx,.vue .",
-    "prettier": "prettier --check *.{ts,tsx,vue}",
-    "prettier:fix": "prettier --write *.{ts,tsx,vue}",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix .",
+    "typecheck": "tsc --noEmit",
+    "prettier": "prettier --check \"src/**/*.{ts,tsx,vue}\" \"viteconfig/**/*.ts\" \"*.{ts,mjs}\"",
+    "prettier:fix": "prettier --write \"src/**/*.{ts,tsx,vue}\" \"viteconfig/**/*.ts\" \"*.{ts,mjs}\"",
     "postinstall": "husky install"
   },
   "keywords": [],
@@ -35,23 +36,23 @@
     "@electron-forge/plugin-vite": "~7.11.1",
     "@electron-forge/publisher-github": "~7.11.1",
     "@electron/fuses": "^2.0.0",
+    "@eslint/js": "^10.0.1",
     "@types/electron-squirrel-startup": "^1.0.2",
     "@types/node": "^22.19.11",
-    "@typescript-eslint/eslint-plugin": "^8.55.0",
-    "@typescript-eslint/parser": "^8.55.0",
     "@vitejs/plugin-vue": "^5.2.4",
     "electron": "^40.4.0",
-    "eslint": "^8.57.1",
-    "eslint-config-prettier": "^9.1.2",
-    "eslint-import-resolver-typescript": "^3.10.1",
-    "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-vue": "^9.33.0",
+    "eslint": "10",
+    "eslint-config-prettier": "10",
+    "eslint-plugin-vue": "10",
+    "globals": "^17.9.0",
     "husky": "^9.1.7",
     "lint-staged": "^15.5.2",
     "prettier": "3.8.1",
     "ts-node": "^10.9.2",
     "typescript": "~5.9.3",
-    "vite": "^5.4.21"
+    "typescript-eslint": "8",
+    "vite": "^5.4.21",
+    "vue-eslint-parser": "10"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
@@ -74,5 +75,8 @@
       "eslint --cache --fix"
     ]
   },
-  "packageManager": "yarn@4.5.1"
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "yarn@4.18.0"
 }

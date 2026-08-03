@@ -3,8 +3,8 @@ import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { execSync } from "node:child_process";
 
-let gitBranch: string = "";
-let gitCommitHash: string = "";
+let gitBranch: string;
+let gitCommitHash: string;
 try {
   gitBranch = execSync("git rev-parse --abbrev-ref HEAD").toString();
   gitCommitHash = execSync("git rev-parse HEAD").toString();

@@ -1,5 +1,5 @@
 import IIntegration from "../integration";
-import Fastify, { FastifyInstance } from "fastify";
+import Fastify, { FastifyError, FastifyInstance } from "fastify";
 import FastifyIO from "fastify-socket.io/dist/index";
 import CompanionServerAPIv1 from "./api/v1";
 import { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
@@ -7,8 +7,7 @@ import Conf from "conf";
 import { BrowserView, safeStorage } from "electron";
 import { TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import { AuthToken } from "~shared/integrations/companion-server/types";
-import { RemoteSocket } from "socket.io";
-import { DefaultEventsMap } from "socket.io/dist/typed-events";
+import { RemoteSocket, DefaultEventsMap } from "socket.io";
 import cors from "@fastify/cors";
 import MemoryStore from "../../memory-store";
 import log from "electron-log";
@@ -52,7 +51,8 @@ export default class CompanionServer implements IIntegration {
     });
     this.fastifyServer.setErrorHandler((error, request, reply) => {
       if (!isDefinedAPIError(error)) {
-        if (!error.statusCode || error.statusCode >= 500) {
+        const statusCode = (error as FastifyError).statusCode;
+        if (!statusCode || statusCode >= 500) {
           log.error(error);
           reply.send(new Error("An internal server error occurred"));
           return;

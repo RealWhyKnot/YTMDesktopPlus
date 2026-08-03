@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
 
-let gitBranch: string = "";
+let gitBranch: string;
 try {
   gitBranch = execSync("git rev-parse --abbrev-ref HEAD").toString();
 } catch (e) {
