@@ -18,13 +18,14 @@ function getHighestResThumbnail(thumbnails: Thumbnail[]): string {
 
 function getSmallImageKey(state: VideoState) {
   // Developer Note:
-  // You can add "-invert" to the end of the image key to invert (Black with White Border)
+  // These are asset keys on the Discord application, not files in this repo.
+  // Add "-inverted" to either key for the dark variant (white glyph on black).
   switch (state) {
     case VideoState.Playing: {
-      return "play-border";
+      return "start";
     }
     default: {
-      return "pause-border";
+      return "pause";
     }
   }
 }
@@ -93,7 +94,7 @@ export default class DiscordPresence implements IIntegration {
           end: playing ? nowMs + (durationSeconds - this.progress) * 1000 : undefined
         },
         assets: {
-          large_image: (thumbnail?.length ?? 0) <= 256 ? thumbnail : "ytmd-logo",
+          large_image: (thumbnail?.length ?? 0) <= 256 ? thumbnail : "icon",
           large_text: album ? stringLimit(album, 128, 2) : undefined,
           large_url: albumId ? `https://music.youtube.com/browse/${albumId}` : undefined,
           small_image: getSmallImageKey(this.videoState),
