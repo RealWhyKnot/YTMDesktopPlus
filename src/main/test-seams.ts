@@ -33,15 +33,19 @@ export function initializeTestSeams() {
     }
   }
 
-  if (process.env.YTMD_TEST) {
-    // A test runner holds this process's stdin open for the whole run. If the
-    // runner dies for any reason the pipe closes and the app exits with it,
-    // so runs can never leave an orphaned instance behind.
-    process.stdin.resume();
-    const exitWithRunner = () => app.exit(43);
-    process.stdin.on("end", exitWithRunner);
-    process.stdin.on("close", exitWithRunner);
-    process.stdin.on("error", exitWithRunner);
+  const runnerPid = Number(process.env.YTMD_TEST_RUNNER_PID);
+  if (process.env.YTMD_TEST && runnerPid) {
+    // Watch the test runner's process. If the runner dies for any reason the
+    // app exits with it, so runs can never leave an orphaned instance behind.
+    // (Stdin cannot carry this signal: Windows GUI processes do not reliably
+    // inherit console pipe handles.)
+    setInterval(() => {
+      try {
+        process.kill(runnerPid, 0);
+      } catch {
+        app.exit(43);
+      }
+    }, 5000);
   }
 }
 

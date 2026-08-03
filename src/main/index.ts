@@ -213,7 +213,8 @@ function handleProtocol(url: string) {
 }
 
 // This will register the protocol in development, this is intentional and should stay this way for development purposes
-if (!app.isDefaultProtocolClient("ytmd")) {
+// Test runs skip it: they should never change system-wide handler registrations.
+if (!isTestRun() && !app.isDefaultProtocolClient("ytmd")) {
   if (process.defaultApp) {
     if (process.argv.length >= 2) {
       log.info("Application set as default protcol client for 'ytmd'");
