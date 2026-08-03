@@ -35,6 +35,10 @@ export type StoreSchema = {
     companionServerCORSWildcardEnabled: boolean;
     discordPresenceEnabled: boolean;
     lastFMEnabled: boolean;
+    listenAlongEnabled: boolean;
+    listenAlongHost: string | null; // hostname or address, no scheme
+    listenAlongHostPort: number;
+    listenAlongToken: string | null; // Encrypted for security
   };
   shortcuts: {
     playPause: string;
@@ -51,6 +55,9 @@ export type StoreSchema = {
     lastVideoId: string;
     windowBounds: Electron.Rectangle | null;
     windowMaximized: boolean;
+    // Guards the one-time backfill of shortcut defaults so a deliberately
+    // cleared binding is never silently restored.
+    shortcutDefaultsApplied: boolean;
   };
   lastfm: {
     api_key: string;
@@ -65,8 +72,14 @@ export type StoreSchema = {
   };
 };
 
+export type ListenAlongStatus = "disabled" | "pairing" | "connecting" | "connected" | "loading" | "synced" | "suspended" | "failed";
+
 export type MemoryStoreSchema = {
   discordPresenceConnectionFailed: boolean;
+  listenAlongStatus: ListenAlongStatus;
+  listenAlongStatusDetail: string | null;
+  listenAlongPairingCode: string | null;
+  listenAlongPairingError: string | null;
   shortcutsPlayPauseRegisterFailed: boolean;
   shortcutsNextRegisterFailed: boolean;
   shortcutsPreviousRegisterFailed: boolean;

@@ -1,8 +1,8 @@
-# YTMDesktopPlus
+# YTMDesktop+
 
 A desktop app for YouTube Music. It wraps the real music.youtube.com player, so the interface always matches the current web version, and adds the things a browser tab can't do: media keys and global shortcuts, Discord rich presence, Last.fm scrobbling, native notifications, custom CSS, and a remote control API for companion apps.
 
-![YTMDesktopPlus](.github/images/readme_main_app.png)
+![YTMDesktop+](.github/images/readme_main_app.png)
 
 ## Download
 
@@ -17,7 +17,7 @@ Grab the installer for your platform from [releases](https://github.com/RealWhyK
 - Native notifications on song change
 - Custom CSS injection with live reload
 - Companion server: a local REST and WebSocket API on port 9863 that remote control apps can use after a one-time authorization
-- `ytmdplus://play/<videoId>` protocol links
+- `ytmdplus://play/<videoId>` protocol links, including a Listen Along button on your Discord presence that opens the track where you are in it
 
 Settings from a previous YouTube Music Desktop App installation, including your sign-in, are picked up automatically on first launch.
 
@@ -46,4 +46,4 @@ On Linux, building the deb and rpm packages needs `fakeroot`, `dpkg`, and `rpm`.
 
 GPL-3.0. Based on [ytmdesktop](https://github.com/ytmdesktop/ytmdesktop) (GPL-3.0); modified since August 2026. The original history is preserved on the `upstream` branch.
 
-YTMDesktopPlus has no affiliation with Google or YouTube.
+YTMDesktop+ has no affiliation with Google or YouTube.

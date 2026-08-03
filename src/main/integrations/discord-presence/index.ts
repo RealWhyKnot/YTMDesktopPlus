@@ -5,8 +5,9 @@ import { MemoryStoreSchema } from "~shared/store/schema";
 import DiscordClient from "./minimal-discord-client";
 import log from "electron-log";
 import { DiscordActivityType } from "./minimal-discord-client/types";
+import { buildListenAlongUrl } from "~shared/protocol-url";
 
-const DISCORD_CLIENT_ID = "1143202598460076053";
+const DISCORD_CLIENT_ID = "1533867163079671849";
 
 function getHighestResThumbnail(thumbnails: Thumbnail[]): string {
   return thumbnails.reduce(
@@ -63,6 +64,7 @@ export default class DiscordPresence implements IIntegration {
   private videoState: VideoState | null = null;
   private videoDetails: Partial<VideoDetails> | null = null;
   private progress: number | null = null;
+  private adPlaying = false;
 
   private connectionRetries: number = 0;
 
@@ -73,8 +75,12 @@ export default class DiscordPresence implements IIntegration {
         this.discordClient.clearActivity();
         return;
       }
-      const { title, author, album, id, thumbnails, durationSeconds, channelId, albumId } = this.videoDetails;
+      const { title, author, album, id, thumbnails, durationSeconds, channelId, albumId, isLive } = this.videoDetails;
       const thumbnail = getHighestResThumbnail(thumbnails);
+      const playing = this.videoState === VideoState.Playing;
+      // One clock read, so the elapsed bar and the listen along link agree.
+      const nowMs = Date.now();
+      const startEpochMs = nowMs - this.progress * 1000;
       this.discordClient.setActivity({
         type: DiscordActivityType.Listening,
         status_display_type: 1,
@@ -83,8 +89,8 @@ export default class DiscordPresence implements IIntegration {
         state: stringLimit(author, 128, 2),
         state_url: `https://music.youtube.com/channel/${channelId}`,
         timestamps: {
-          start: this.videoState === VideoState.Playing ? Date.now() - this.progress * 1000 : undefined,
-          end: this.videoState === VideoState.Playing ? Date.now() + (durationSeconds - this.progress) * 1000 : undefined
+          start: playing ? startEpochMs : undefined,
+          end: playing ? nowMs + (durationSeconds - this.progress) * 1000 : undefined
         },
         assets: {
           large_image: (thumbnail?.length ?? 0) <= 256 ? thumbnail : "ytmd-logo",
@@ -96,8 +102,16 @@ export default class DiscordPresence implements IIntegration {
         instance: false,
         buttons: [
           {
-            label: "Play on YTMDesktop",
-            url: `ytmdplus://play/${id}`
+            label: "Listen Along",
+            url: buildListenAlongUrl({
+              videoId: id,
+              positionSeconds: this.progress,
+              playing,
+              durationSeconds,
+              isLive,
+              adPlaying: this.adPlaying,
+              nowMs
+            })
           }
         ]
       });
@@ -113,6 +127,7 @@ export default class DiscordPresence implements IIntegration {
       this.discordClient.clearActivity();
       return;
     }
+    this.adPlaying = state.adPlaying;
     const oldState = this.videoState ?? null;
     const oldId = this.videoDetails?.id ?? null;
     const oldProgress = this.progress ?? null;
