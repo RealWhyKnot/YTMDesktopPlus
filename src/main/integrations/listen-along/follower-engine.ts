@@ -34,6 +34,7 @@ export class FollowerEngine {
   private seekTimestamps: number[] = [];
   private expectations: Expectation[] = [];
   private lastDecisionAtMs = 0;
+  private pendingDecision: NodeJS.Timeout | null = null;
 
   constructor(private readonly deps: FollowerDeps) {}
 
@@ -83,6 +84,8 @@ export class FollowerEngine {
 
   reset() {
     this.clearRemote();
+    if (this.pendingDecision) clearTimeout(this.pendingDecision);
+    this.pendingDecision = null;
     this.local = null;
     this.previousLocal = null;
     this.expectations = [];
@@ -143,7 +146,20 @@ export class FollowerEngine {
 
   private runDecision(force = false) {
     const now = this.deps.now();
-    if (!force && now - this.lastDecisionAtMs < DECISION_INTERVAL_MS) return;
+    if (!force && now - this.lastDecisionAtMs < DECISION_INTERVAL_MS) {
+      // Room anchors arrive once, not per mutation, so a decision swallowed by
+      // the floor must be retried or it would never run at all.
+      if (!this.pendingDecision) {
+        this.pendingDecision = setTimeout(
+          () => {
+            this.pendingDecision = null;
+            this.runDecision(true);
+          },
+          DECISION_INTERVAL_MS - (now - this.lastDecisionAtMs) + 1
+        );
+      }
+      return;
+    }
     this.lastDecisionAtMs = now;
 
     const result = decide({

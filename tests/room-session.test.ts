@@ -43,6 +43,7 @@ function makeHarness() {
     },
     sendCommand: (command, value) => commands.push([command, value]),
     publish: snapshot => snapshots.push(snapshot),
+    getPlayerState: () => playerState(null, VideoState.Unknown),
     now: () => nowMs
   });
 

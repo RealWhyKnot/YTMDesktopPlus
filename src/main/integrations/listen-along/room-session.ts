@@ -40,6 +40,7 @@ export interface RoomSessionDeps {
   cueTrack(request: { videoId: string; anchor: { kind: "anchor"; epochMs: number } | null }): Promise<CueResult>;
   sendCommand(command: string, value?: unknown): void;
   publish(snapshot: RoomSnapshot): void;
+  getPlayerState(): PlayerState;
   now(): number;
 }
 
@@ -205,6 +206,9 @@ export class RoomSession {
         } else {
           this.role = frame.role;
           this.phase = "listening";
+          // The player may be idle with no state events flowing, so the engine
+          // gets seeded with a local sample it can decide against.
+          this.updateLocalState(this.deps.getPlayerState());
         }
         this.publish();
         return;

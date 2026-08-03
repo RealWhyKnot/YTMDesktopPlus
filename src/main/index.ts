@@ -285,6 +285,10 @@ memoryStore.onStateChanged((newState, oldState) => {
     settingsWindow.webContents.send("memoryStore:stateChanged", newState, oldState);
   }
 
+  if (roomWindow !== null) {
+    roomWindow.webContents.send("memoryStore:stateChanged", newState, oldState);
+  }
+
   if (ytmView !== null) {
     ytmView.webContents.send("memoryStore:stateChanged", newState, oldState);
   }
@@ -309,6 +313,7 @@ const roomSession = new RoomSession({
     // The Join Room presence button follows the hosting state.
     discordPresence.refreshActivity();
   },
+  getPlayerState: () => playerStateStore.getState(),
   now: () => Date.now()
 });
 memoryStore.set("listenAlongRoom", roomSession.snapshot);
