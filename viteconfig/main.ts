@@ -1,3 +1,4 @@
+import path from "node:path";
 import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
 
@@ -23,6 +24,11 @@ const devBuild = gitBranch !== "HEAD" && process.env.NODE_ENV === "development";
 
 // https://vitejs.dev/config
 export default defineConfig({
+  resolve: {
+    alias: {
+      "~shared": path.resolve(__dirname, "../src/shared")
+    }
+  },
   build: {
     outDir: ".vite/main",
     rollupOptions: {
