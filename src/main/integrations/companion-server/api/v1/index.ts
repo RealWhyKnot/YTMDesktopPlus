@@ -1,7 +1,8 @@
 import { BrowserView, BrowserWindow, ipcMain } from "electron";
 import Conf from "conf";
 import { FastifyPluginCallback, FastifyPluginOptions } from "fastify";
-import { StoreSchema } from "~shared/store/schema";
+import { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
+import MemoryStore from "../../../../memory-store";
 import playerStateStore, { PlayerState, RepeatMode } from "../../../../player-state-store";
 import { createAuthToken, getIsTemporaryAuthCodeValidAndRemove, getTemporaryAuthCode, isAuthValid, isAuthValidMiddleware } from "../../api-shared/auth";
 import fastifyRateLimit from "@fastify/rate-limit";
@@ -84,6 +85,7 @@ const transformPlayerState = (state: PlayerState) => {
 
 interface CompanionServerAPIv1Options extends FastifyPluginOptions {
   getStore: () => Conf<StoreSchema>;
+  getMemoryStore: () => MemoryStore<MemoryStoreSchema>;
   getYtmView: () => BrowserView;
 }
 
@@ -147,7 +149,8 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
 
         case "seekTo": {
           const position = commandRequest.data;
-          if (isNaN(position) || position < 0 || position > playerStateStore.getState().videoDetails.durationSeconds) {
+          const seekTarget = playerStateStore.getState().videoDetails;
+          if (!seekTarget || isNaN(position) || position < 0 || position > seekTarget.durationSeconds) {
             throw new InvalidPositionError(position);
           }
           ytmView.webContents.send("remoteControl:execute", "seekTo", position);
