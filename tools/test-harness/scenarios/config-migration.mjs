@@ -60,5 +60,8 @@ export default async function configMigration(ctx) {
     if (config.__internal__?.migrations?.version === "2.0.6") {
       throw new Error("migration version was not advanced");
     }
+    if (typeof config.developer?.debugLogging !== "boolean") {
+      throw new Error("developer.debugLogging was not backfilled");
+    }
   });
 }

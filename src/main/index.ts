@@ -419,6 +419,13 @@ const store = new Conf<StoreSchema>({
 
 // Development builds always write logs. Packaged builds only write them when
 // the debug logging setting is on.
+//
+// Configs migrated from before the setting existed lack the key entirely and
+// conf does not deep-merge defaults into stored sections, so backfill it once
+// with the channel default: on for beta builds, off for stable.
+if (store.get("developer").debugLogging === undefined) {
+  store.set("developer.debugLogging", app.getVersion().includes("-beta"));
+}
 const applyDebugLogging = () => setLogOutputEnabled(!app.isPackaged || store.get("developer").debugLogging);
 applyDebugLogging();
 
