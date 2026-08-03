@@ -1,4 +1,8 @@
+import { readFileSync } from "fs";
+import path from "path";
 import type { ForgeConfig } from "@electron-forge/shared-types";
+
+const appVersion: string = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8")).version;
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { MakerDeb } from "@electron-forge/maker-deb";
@@ -71,9 +75,13 @@ const config: ForgeConfig = {
       name: "@electron-forge/publisher-github",
       config: {
         repository: {
-          owner: process.env.YTMD_UPDATE_FEED_OWNER ?? "ytmdesktop",
-          name: process.env.YTMD_UPDATE_FEED_REPOSITORY ?? "ytmdesktop"
-        }
+          owner: process.env.YTMD_UPDATE_FEED_OWNER ?? "RealWhyKnot",
+          name: process.env.YTMD_UPDATE_FEED_REPOSITORY ?? "YTMDesktopPlus"
+        },
+        // Releases go out published, not as drafts. Betas are flagged as
+        // prereleases so the update feed keeps serving the latest stable.
+        draft: false,
+        prerelease: appVersion.includes("-beta")
       }
     }
   ],

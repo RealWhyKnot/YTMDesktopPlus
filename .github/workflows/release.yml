@@ -149,14 +149,20 @@ jobs:
         run: |
           $notes = (./scripts/Update-Changelog.ps1 -Mode Notes -Tag $env:TAG) -join "`n"
           gh release download $env:TAG --repo $env:REPO --dir assets
-          $table = "| Asset | SHA-256 |`n| --- | --- |"
-          Get-ChildItem assets -File | ForEach-Object {
-            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
-            $table += "`n| $($_.Name) | ``$hash`` |"
+          $setup = Get-ChildItem assets -Filter "*.Setup.exe" | Select-Object -First 1
+          $install = ""
+          if ($setup) {
+            $install = "`n`nWindows: download and run [$($setup.Name)](https://github.com/$env:REPO/releases/download/$env:TAG/$($setup.Name)). Installed copies update on their own."
           }
-          $body = "$notes`n`n$table"
+          $table = "| Asset | Size | SHA-256 |`n| --- | --- | --- |"
+          Get-ChildItem assets -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            $size = "{0:N1} MB" -f ($_.Length / 1MB)
+            $table += "`n| $($_.Name) | $size | ``$hash`` |"
+          }
+          $body = "$notes$install`n`n$table"
           $body | Set-Content notes.md
-          $flags = @("--notes-file", "notes.md")
+          $flags = @("--notes-file", "notes.md", "--draft=false")
           if ($env:PRERELEASE -eq 'true') { $flags += @("--prerelease", "--latest=false") }
           gh release edit $env:TAG --repo $env:REPO --verify-tag @flags
       - name: Push promoted changelog to main
