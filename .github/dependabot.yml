@@ -1,24 +1,38 @@
+# Weekly dependency updates, grouped to keep the PR count sane. Patch-level
+# updates are auto-merged by dependabot-automerge.yml once CI passes.
 version: 2
 updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "daily"
-    pull-request-branch-name:
-      separator: "/"
-    labels:
-      - "Dependencies"
-    reviewers:
-      - "RealWhyKnot"
-    target-branch: "development"
+      interval: "weekly"
     open-pull-requests-limit: 10
+    target-branch: "main"
+    labels:
+      - "dependencies"
     commit-message:
-      prefix: "⬆️ "
+      prefix: "build(deps)"
     groups:
-      # Forge uses the same version for every individual package. This keeps the pull request for forge grouped together
-      electron-forge-dependencies:
+      electron-forge:
         patterns:
           - "@electron-forge/*"
+      eslint:
+        patterns:
+          - "eslint*"
+          - "typescript-eslint"
+          - "vue-eslint-parser"
     ignore:
-      - dependency-name: "electron"
-        update-types: ["version-update:semver-patch"]
+      # Vite is pinned to 5.x until electron-forge's vite plugin supports
+      # newer majors in a stable release.
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    target-branch: "main"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "ci"

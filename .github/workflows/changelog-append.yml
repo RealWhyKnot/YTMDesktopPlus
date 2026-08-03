@@ -1,0 +1,85 @@
+# Appends pushed commit subjects under "## Unreleased" in CHANGELOG.md.
+#
+# The commit back to main goes through the GraphQL createCommitOnBranch
+# mutation so GitHub signs it server-side. Recursion guards, belt and braces:
+# the bot's own commits carry [skip changelog], the actor check skips bot
+# pushes entirely, and changelog-only pushes are filtered by paths-ignore.
+# The concurrency group is shared with release.yml so an append can never race
+# a promote.
+name: changelog-append
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - CHANGELOG.md
+
+concurrency:
+  group: changelog-writes
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  append:
+    name: append commit subjects
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip changelog]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Collect subjects from this push
+        id: subjects
+        shell: pwsh
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          $range = "$env:BEFORE..$env:AFTER"
+          if ($env:BEFORE -match '^0+$') { $range = $env:AFTER }
+          $subjects = git log --no-merges --format='%s' $range | Where-Object {
+            $_ -notmatch '\[skip changelog\]' -and $_ -notmatch '^chore\(release\)'
+          }
+          if (-not $subjects) {
+            Write-Output "skip=true" >> $env:GITHUB_OUTPUT
+            Write-Output "Nothing to append"
+          } else {
+            $subjects | Set-Content subjects.txt
+            Write-Output "skip=false" >> $env:GITHUB_OUTPUT
+          }
+      - name: Update changelog
+        if: steps.subjects.outputs.skip == 'false'
+        shell: pwsh
+        run: |
+          $subjects = Get-Content subjects.txt
+          ./scripts/Update-Changelog.ps1 -Mode Append -Subjects $subjects
+      - name: Commit signed changelog update
+        if: steps.subjects.outputs.skip == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EXPECTED_HEAD: ${{ github.event.after }}
+        run: |
+          $content = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes("CHANGELOG.md"))
+          $request = @{
+            query = "mutation(`$input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: `$input) { commit { oid } } }"
+            variables = @{
+              input = @{
+                branch = @{ repositoryNameWithOwner = $env:REPO; branchName = "main" }
+                expectedHeadOid = $env:EXPECTED_HEAD
+                message = @{ headline = "docs(changelog): append entries [skip changelog]" }
+                fileChanges = @{ additions = @(@{ path = "CHANGELOG.md"; contents = $content }) }
+              }
+            }
+          } | ConvertTo-Json -Depth 12 -Compress
+          $result = $request | gh api graphql --input - 2>&1
+          # gh api graphql exits 0 on a 200 that carries errors; check explicitly.
+          if ($LASTEXITCODE -ne 0 -or "$result" -match '"errors"') {
+            Write-Output "::error::Changelog commit failed: $result"
+            exit 1
+          }
+          Write-Output "Changelog updated"

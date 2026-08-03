@@ -1,0 +1,66 @@
+# Cuts a beta prerelease every night when main has moved since the last
+# release tag. The tag is vYYYY.MDD.N-beta for the current UTC date; N starts
+# at 0 and increments if the date already has tags. Tags created with the
+# workflow token do not trigger tag-push workflows, so this dispatches
+# release.yml explicitly.
+name: nightly-beta
+
+on:
+  schedule:
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-beta
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  cut:
+    name: tag beta if main moved
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Decide and tag
+        id: plan
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $head = git rev-parse HEAD
+          # Skip when the newest tag already points at HEAD (no changes since).
+          $latestTag = git tag --list 'v20*' --sort=-creatordate | Select-Object -First 1
+          if ($latestTag) {
+            $tagged = git rev-list -n 1 $latestTag
+            if ($tagged -eq $head) {
+              Write-Output "No changes since $latestTag, skipping"
+              Write-Output "skip=true" >> $env:GITHUB_OUTPUT
+              exit 0
+            }
+          }
+          $now = [DateTime]::UtcNow
+          $minor = $now.Month * 100 + $now.Day
+          $prefix = "v$($now.Year).$minor."
+          $existing = git tag --list "$prefix*" | ForEach-Object {
+            if ($_ -match "^$([regex]::Escape($prefix))(\d+)") { [int]$Matches[1] }
+          } | Sort-Object -Descending | Select-Object -First 1
+          $n = if ($null -eq $existing) { 0 } else { $existing + 1 }
+          $tag = "$prefix$n-beta"
+          git tag $tag $head
+          git push origin $tag
+          Write-Output "Tagged $tag"
+          Write-Output "skip=false" >> $env:GITHUB_OUTPUT
+          Write-Output "tag=$tag" >> $env:GITHUB_OUTPUT
+      - name: Dispatch release
+        if: steps.plan.outputs.skip == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: gh workflow run release.yml -f tag=$env:TAG

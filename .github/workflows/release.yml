@@ -1,0 +1,186 @@
+# Builds and publishes a release from a version tag.
+#
+# Versioning is calendar-based and semver-valid: vYYYY.MDD.N, where the minor
+# is month*100+day (2026-08-03 -> 803) and N counts releases that day. Beta
+# prereleases append -beta. Four-part dates are deliberately avoided: the
+# config store matches migration ranges against the app version with semver
+# and a fourth part does not parse.
+#
+# Flow: validate tag format and package.json version, stamp the version, run
+# forge publish per target (publisher-github uploads the installers and the
+# Squirrel update feed reads from the release), promote the changelog section,
+# attach release notes with a checksum table, and push the changelog commit
+# back to main through the signed-commit mutation.
+#
+# windows arm64 is excluded from the matrix: forge's squirrel maker produces
+# colliding artifact names for it (upstream electron/forge issue 1183 era);
+# revisit when a windows arm64 user base exists.
+name: release
+
+on:
+  push:
+    tags:
+      - "v20*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to re-release
+        required: true
+
+concurrency:
+  group: changelog-writes
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    name: validate tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+    steps:
+      - name: Resolve and validate
+        id: resolve
+        shell: pwsh
+        env:
+          PUSHED_REF: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          $tag = if ($env:EVENT -eq 'workflow_dispatch') { $env:INPUT_TAG } else { $env:PUSHED_REF }
+          if ($tag -notmatch '^v20\d{2}\.([1-9]|1[0-2])\d{2}\.\d+(-beta)?$') {
+            Write-Output "::error::Tag '$tag' does not match vYYYY.MDD.N or vYYYY.MDD.N-beta"
+            exit 1
+          }
+          $version = $tag.Substring(1)
+          $prerelease = if ($tag.EndsWith('-beta')) { 'true' } else { 'false' }
+          Write-Output "tag=$tag" >> $env:GITHUB_OUTPUT
+          Write-Output "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Output "prerelease=$prerelease" >> $env:GITHUB_OUTPUT
+
+  build:
+    name: publish (${{ matrix.os }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 60
+    needs: validate
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: linux
+            image: ubuntu-latest
+            arch: x64
+          - os: linux
+            image: ubuntu-latest
+            arch: arm64
+          - os: windows
+            image: windows-latest
+            arch: x64
+          - os: macos
+            image: macos-latest
+            arch: x64
+          - os: macos
+            image: macos-latest
+            arch: arm64
+    env:
+      ELECTRON_CACHE: ${{ github.workspace }}/.electron-cache
+      YTMD_UPDATE_FEED_OWNER: ${{ vars.YTMD_UPDATE_FEED_OWNER }}
+      YTMD_UPDATE_FEED_REPOSITORY: ${{ vars.YTMD_UPDATE_FEED_REPOSITORY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable corepack
+        run: corepack enable
+      - name: Cache electron binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.electron-cache
+          key: electron-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+          restore-keys: electron-${{ runner.os }}-
+      - name: Install dependencies
+        run: yarn install --immutable
+      - name: Stamp version from tag
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          $package.version = $env:VERSION
+          $package | ConvertTo-Json -Depth 10 | Set-Content package.json
+      - name: Build
+        run: yarn publish:dry --arch ${{ matrix.arch }}
+      - name: Publish to release
+        run: yarn publish:fromdry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  notes:
+    name: changelog + release notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [validate, build]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Promote changelog section
+        shell: pwsh
+        env:
+          TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          ./scripts/Update-Changelog.ps1 -Mode Promote -Tag $env:TAG -RepositoryUrl "https://github.com/${{ github.repository }}"
+      - name: Attach release notes with checksums
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+          REPO: ${{ github.repository }}
+        run: |
+          $notes = (./scripts/Update-Changelog.ps1 -Mode Notes -Tag $env:TAG) -join "`n"
+          gh release download $env:TAG --repo $env:REPO --dir assets
+          $table = "| Asset | SHA-256 |`n| --- | --- |"
+          Get-ChildItem assets -File | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            $table += "`n| $($_.Name) | ``$hash`` |"
+          }
+          $body = "$notes`n`n$table"
+          $body | Set-Content notes.md
+          $flags = @("--notes-file", "notes.md")
+          if ($env:PRERELEASE -eq 'true') { $flags += @("--prerelease", "--latest=false") }
+          gh release edit $env:TAG --repo $env:REPO --verify-tag @flags
+      - name: Push promoted changelog to main
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          $head = git rev-parse HEAD
+          $content = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes("CHANGELOG.md"))
+          $request = @{
+            query = "mutation(`$input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: `$input) { commit { oid } } }"
+            variables = @{
+              input = @{
+                branch = @{ repositoryNameWithOwner = $env:REPO; branchName = "main" }
+                expectedHeadOid = $head
+                message = @{ headline = "docs(changelog): promote unreleased to $env:TAG [skip changelog]" }
+                fileChanges = @{ additions = @(@{ path = "CHANGELOG.md"; contents = $content }) }
+              }
+            }
+          } | ConvertTo-Json -Depth 12 -Compress
+          $result = $request | gh api graphql --input - 2>&1
+          if ($LASTEXITCODE -ne 0 -or "$result" -match '"errors"') {
+            Write-Output "::error::Changelog promote commit failed: $result"
+            exit 1
+          }

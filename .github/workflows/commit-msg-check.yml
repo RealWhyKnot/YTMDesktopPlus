@@ -1,0 +1,45 @@
+# Enforces conventional commit subjects on pull requests so the changelog
+# automation and release notes stay machine-readable. Merge and bot commits
+# are exempt.
+name: commit-msg-check
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: commit-msg-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check:
+    name: conventional subjects
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate commit subjects
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          $pattern = '^(feat|fix|refactor|perf|style|docs|test|build|ci|chore|revert)(\([a-z0-9-]+\))?!?: .+'
+          $commits = gh api "repos/$env:REPO/pulls/$env:PR/commits" --paginate --jq '.[].commit.message' | ForEach-Object { ($_ -split "`n")[0] }
+          $failed = $false
+          foreach ($subject in $commits) {
+            if ($subject -match '^Merge ' -or $subject -match '\[skip changelog\]') { continue }
+            if ($subject -notmatch $pattern) {
+              Write-Output "::error::Not a conventional commit subject: $subject"
+              $failed = $true
+            }
+          }
+          if ($failed) {
+            Write-Output "Subjects must look like: type(scope): description"
+            exit 1
+          }
+          Write-Output "All commit subjects pass"

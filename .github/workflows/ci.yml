@@ -1,0 +1,106 @@
+# Continuous integration for pushes and pull requests.
+#
+# Two layers:
+#   checks - lint, typecheck, formatting, unit tests. Fast, runs on ubuntu.
+#   build  - electron-forge make across the release matrix, artifacts kept two
+#            weeks. windows arm64 is excluded to match the publish matrix.
+# The end-to-end harness (tools/test-harness) needs a display and live network
+# and runs from nightly-ytm-canary.yml instead of here.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - LICENSE
+      - .gitignore
+      - .gitattributes
+      - .editorconfig
+      - ".github/ISSUE_TEMPLATE/**"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: lint + typecheck + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable corepack
+        run: corepack enable
+      - name: Install dependencies
+        run: yarn install --immutable
+      - name: Changelog script self-test
+        shell: pwsh
+        run: ./scripts/Test-Update-Changelog.ps1
+      - name: Lint
+        run: yarn lint
+      - name: Typecheck
+        run: yarn typecheck
+      - name: Formatting
+        run: yarn prettier
+      - name: Unit tests
+        run: yarn test
+
+  build:
+    name: build (${{ matrix.os }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 45
+    needs: checks
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            image: ubuntu-latest
+            arch: x64
+          - os: linux
+            image: ubuntu-latest
+            arch: arm64
+          - os: windows
+            image: windows-latest
+            arch: x64
+          - os: macos
+            image: macos-latest
+            arch: x64
+          - os: macos
+            image: macos-latest
+            arch: arm64
+    env:
+      ELECTRON_CACHE: ${{ github.workspace }}/.electron-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable corepack
+        run: corepack enable
+      - name: Cache electron binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.electron-cache
+          key: electron-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+          restore-keys: electron-${{ runner.os }}-
+      - name: Install dependencies
+        run: yarn install --immutable
+      - name: Build distributables
+        run: yarn make --arch ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
+          path: out/make/**
+          if-no-files-found: error
+          retention-days: 14

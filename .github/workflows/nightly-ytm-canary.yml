@@ -1,0 +1,68 @@
+# Nightly check that the app can still hook the live YouTube Music page.
+# YouTube ships changes to its internals without notice; this turns "users
+# start reporting infinite loading" into "this job went red overnight".
+#
+# Runs the boot-hooks scenario from the repo's test harness under a virtual
+# display. Exit code 5 means the runner IP hit a consent or sign-in wall -
+# common for datacenter addresses - and is reported as neutral rather than a
+# failure, so only genuine hook breakage goes red. Treat one red run as a
+# suspect and two consecutive as confirmed drift.
+name: nightly-ytm-canary
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ytm-canary
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: boot-hooks against live ytm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ELECTRON_CACHE: ${{ github.workspace }}/.electron-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable corepack
+        run: corepack enable
+      - name: Cache electron binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.electron-cache
+          key: electron-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+          restore-keys: electron-${{ runner.os }}-
+      - name: Install dependencies
+        run: yarn install --immutable
+      - name: Run boot-hooks scenario
+        id: canary
+        run: |
+          set +e
+          xvfb-run --auto-servernum node tools/test-harness/run.mjs boot-hooks --timeout 420 | tee canary.jsonl
+          code=$?
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" = "5" ]; then
+            echo "::warning::Environment blocked (consent or sign-in wall) - hooks unverified this run"
+            exit 0
+          fi
+          exit $code
+      - name: Job summary
+        if: always()
+        shell: pwsh
+        run: |
+          "### YTM canary" >> $env:GITHUB_STEP_SUMMARY
+          "Exit code: ${{ steps.canary.outputs.exit }}" >> $env:GITHUB_STEP_SUMMARY
+          if (Test-Path canary.jsonl) {
+            "``````" >> $env:GITHUB_STEP_SUMMARY
+            Get-Content canary.jsonl | Select-String '"event":"(step-pass|step-fail|verdict|environment-blocked|run-failed)"' | Select-Object -Last 12 | ForEach-Object { $_.Line } >> $env:GITHUB_STEP_SUMMARY
+            "``````" >> $env:GITHUB_STEP_SUMMARY
+          }
