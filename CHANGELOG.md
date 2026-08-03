@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- fix(release): publish immediately with prerelease flag and richer notes table
 
 ## [v2026.803.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.803.1-beta) - 2026-08-03
 
