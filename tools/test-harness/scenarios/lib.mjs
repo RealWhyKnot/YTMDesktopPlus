@@ -5,7 +5,10 @@
 // window while the token request long-polls.
 export async function obtainCompanionToken(ctx) {
   await ctx.companion.waitForServer(30000);
-  await ctx.evalMain("window.ytmd.memoryStore.set('companionServerAuthWindowEnabled', true)");
+  // Folded into one bounded retry loop: the main window target exists before
+  // its bridge is exposed, and any individual evaluation can lose its socket.
+  // The set is idempotent, so retrying the whole expression is safe.
+  await ctx.waitMain("window.ytmd ? (window.ytmd.memoryStore.set('companionServerAuthWindowEnabled', true), true) : false", done => done === true, 20000);
 
   const codeResponse = await ctx.companion.request("/api/v1/auth/requestcode", {
     method: "POST",
@@ -24,9 +27,8 @@ export async function obtainCompanionToken(ctx) {
   });
 
   await ctx.waitTarget(/authorize-companion/, 15000);
-  // The window animates in; retry the click until the token round-trip
-  // settles it.
-  await ctx.evalOnTarget(/authorize-companion/, "document.querySelector('button.allow').click()");
+  // Retry the click until the button exists and the click lands.
+  await ctx.waitOnTarget(/authorize-companion/, "document.querySelector('button.allow') ? (document.querySelector('button.allow').click(), true) : false", clicked => clicked === true, 15000);
 
   const tokenResponse = await tokenPromise;
   if (tokenResponse.status !== 200 || !tokenResponse.body?.token) {

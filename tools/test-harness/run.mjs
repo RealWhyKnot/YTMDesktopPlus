@@ -166,6 +166,7 @@ const ctx = {
   waitYtm: (expr, predicate, timeoutMs) => waitForValue(cdpPort, /music\.youtube\.com/, expr, predicate, timeoutMs),
   waitTarget: (pattern, timeoutMs) => waitForTarget(cdpPort, pattern, timeoutMs),
   evalOnTarget: (pattern, expr) => evalOnTarget(cdpPort, pattern, expr),
+  waitOnTarget: (pattern, expr, predicate, timeoutMs) => waitForValue(cdpPort, pattern, expr, predicate, timeoutMs),
   grepMainLog: pattern => grepFile(mainLog, pattern),
   waitMainLog: async (pattern, timeoutMs) => {
     const deadline = Date.now() + timeoutMs;
