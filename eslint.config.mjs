@@ -6,7 +6,7 @@ import prettier from "eslint-config-prettier";
 import globals from "globals";
 
 export default defineConfig(
-  globalIgnores([".vite/", ".yarn/", "out/", "dist/", "node_modules/"]),
+  globalIgnores([".vite/", ".yarn/", "out/", "dist/", "node_modules/", "tools/test-harness/runs/"]),
   js.configs.recommended,
   tseslint.configs.recommended,
   pluginVue.configs["flat/recommended"],

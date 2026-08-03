@@ -91,6 +91,9 @@ typings/
 # Electron-Forge
 out/
 
+# Test harness run artifacts
+tools/test-harness/runs/
+
 # Contributors Export
 scripts/CONTRIBUTORS.md
 
