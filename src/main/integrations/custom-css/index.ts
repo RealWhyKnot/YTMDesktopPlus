@@ -4,7 +4,8 @@ import Conf from "conf";
 
 import IIntegration from "../integration";
 import { StoreSchema } from "~shared/store/schema";
-import { Unsubscribe } from "conf/dist/source/types";
+
+type Unsubscribe = () => void;
 
 export default class CustomCSS implements IIntegration {
   private ytmView: BrowserView;
