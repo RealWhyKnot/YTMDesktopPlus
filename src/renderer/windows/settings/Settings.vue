@@ -30,6 +30,7 @@ const safeStorage = window.ytmd.safeStorage;
 const safeStorageAvailable = ref<boolean>(await memoryStore.get("safeStorageAvailable"));
 
 const general: StoreSchema["general"] = await store.get("general");
+const developer: StoreSchema["developer"] = await store.get("developer");
 const appearance: StoreSchema["appearance"] = await store.get("appearance");
 const playback: StoreSchema["playback"] = await store.get("playback");
 const integrations: StoreSchema["integrations"] = await store.get("integrations");
@@ -41,6 +42,7 @@ const hideToTrayOnClose = ref<boolean>(general.hideToTrayOnClose);
 const showNotificationOnSongChange = ref<boolean>(general.showNotificationOnSongChange);
 const startOnBoot = ref<boolean>(general.startOnBoot);
 const startMinimized = ref<boolean>(general.startMinimized);
+const debugLogging = ref<boolean>(developer.debugLogging);
 
 const alwaysShowVolumeSlider = ref<boolean>(appearance.alwaysShowVolumeSlider);
 const customCSSEnabled = ref<boolean>(appearance.customCSSEnabled);
@@ -79,6 +81,7 @@ store.onDidAnyChange(async newState => {
   showNotificationOnSongChange.value = newState.general.showNotificationOnSongChange;
   startOnBoot.value = newState.general.startOnBoot;
   startMinimized.value = newState.general.startMinimized;
+  debugLogging.value = newState.developer.debugLogging;
 
   alwaysShowVolumeSlider.value = newState.appearance.alwaysShowVolumeSlider;
   customCSSEnabled.value = newState.appearance.customCSSEnabled;
@@ -153,6 +156,7 @@ async function settingsChanged() {
   store.set("general.startOnBoot", startOnBoot.value);
   store.set("general.startMinimized", startMinimized.value);
   store.set("general.disableHardwareAcceleration", disableHardwareAcceleration.value);
+  store.set("developer.debugLogging", debugLogging.value);
 
   store.set("appearance.alwaysShowVolumeSlider", alwaysShowVolumeSlider.value);
   store.set("appearance.customCSSEnabled", customCSSEnabled.value);
@@ -299,6 +303,7 @@ window.ytmd.handleUpdateDownloaded(() => {
             name="Disable hardware acceleration"
             @change="settingChangedRequiresRestart"
           />
+          <YTMDSetting v-model="debugLogging" type="checkbox" name="Debug logging" @change="settingsChanged" />
         </div>
 
         <div v-if="currentTab === 2" class="appearance-tab">

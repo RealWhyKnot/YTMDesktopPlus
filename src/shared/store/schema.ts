@@ -61,6 +61,7 @@ export type StoreSchema = {
   };
   developer: {
     enableDevTools: boolean;
+    debugLogging: boolean;
   };
 };
 
