@@ -348,7 +348,7 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
 
       try {
         // Open the DevTools.
-        if (process.env.NODE_ENV === "development") {
+        if (process.env.NODE_ENV === "development" && !process.env.YTMD_TEST) {
           authorizationWindow.webContents.openDevTools({
             mode: "detach"
           });
