@@ -43,9 +43,11 @@ jobs:
         run: corepack enable
       - name: Install dependencies
         run: yarn install --immutable
-      - name: Changelog script self-test
+      - name: Script self-tests
         shell: pwsh
-        run: ./scripts/Test-Update-Changelog.ps1
+        run: |
+          ./scripts/Test-Update-Changelog.ps1
+          ./scripts/Test-Generate-ReleaseNotes.ps1
       - name: Lint
         run: yarn lint
       - name: Typecheck

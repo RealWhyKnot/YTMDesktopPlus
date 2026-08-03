@@ -133,12 +133,53 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          fetch-tags: true
+      - name: Script self-tests
+        shell: pwsh
+        run: |
+          ./scripts/Test-Update-Changelog.ps1
+          ./scripts/Test-Generate-ReleaseNotes.ps1
       - name: Promote changelog section
         shell: pwsh
         env:
           TAG: ${{ needs.validate.outputs.tag }}
         run: |
           ./scripts/Update-Changelog.ps1 -Mode Promote -Tag $env:TAG -RepositoryUrl "https://github.com/${{ github.repository }}"
+      - name: Build grouped commit notes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          git fetch --tags --force --quiet
+          # A stable release covers everything since the previous stable; a
+          # beta covers everything since the previous tag of any kind. The
+          # first release of a kind falls back to full history.
+          $all = @(git tag --list 'v20*' --sort=creatordate)
+          $candidates = $all
+          if ($env:TAG -notmatch '-beta$') {
+            $candidates = @($all | Where-Object { $_ -notmatch '-beta$' })
+          }
+          $position = [array]::IndexOf($all, $env:TAG)
+          $previous = ""
+          foreach ($candidate in $candidates) {
+            if ([array]::IndexOf($all, $candidate) -lt $position) { $previous = $candidate }
+          }
+          $range = if ($previous) { "$previous..$env:TAG" } else { $env:TAG }
+          # Author logins need one API call per commit; 100 commits bounds it.
+          $raw = git log --no-merges --max-count=100 --format='%H%x09%s' $range
+          $commits = @()
+          foreach ($line in $raw) {
+            $sha, $subject = $line -split "`t", 2
+            if ($subject -match '\[skip changelog\]') { continue }
+            $login = gh api "repos/$env:REPO/commits/$sha" --jq '.author.login // ""' 2>$null
+            $commits += @{ sha = $sha; subject = $subject; login = "$login" }
+          }
+          ConvertTo-Json @($commits) | Set-Content commits.json
+          $arguments = @{ CommitsPath = "commits.json"; Tag = $env:TAG; Repository = $env:REPO }
+          if ($previous) { $arguments.PreviousTag = $previous }
+          (./scripts/Generate-ReleaseNotes.ps1 @arguments) -join "`n" | Set-Content whats-changed.md
       - name: Attach release notes with checksums
         shell: pwsh
         env:
@@ -147,7 +188,7 @@ jobs:
           PRERELEASE: ${{ needs.validate.outputs.prerelease }}
           REPO: ${{ github.repository }}
         run: |
-          $notes = (./scripts/Update-Changelog.ps1 -Mode Notes -Tag $env:TAG) -join "`n"
+          $notes = (Get-Content whats-changed.md -Raw).TrimEnd()
           gh release download $env:TAG --repo $env:REPO --dir assets
           $setup = Get-ChildItem assets -Filter "*.Setup.exe" | Select-Object -First 1
           $install = ""
