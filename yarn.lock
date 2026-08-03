@@ -8858,9 +8858,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"youtube-music-desktop-app@workspace:.":
+"ytmdesktop-plus@workspace:.":
   version: 0.0.0-use.local
-  resolution: "youtube-music-desktop-app@workspace:."
+  resolution: "ytmdesktop-plus@workspace:."
   dependencies:
     "@electron-forge/cli": "npm:~7.11.1"
     "@electron-forge/maker-deb": "npm:~7.11.1"

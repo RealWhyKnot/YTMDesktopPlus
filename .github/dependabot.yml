@@ -9,7 +9,7 @@ updates:
     labels:
       - "Dependencies"
     reviewers:
-      - "novustheory"
+      - "RealWhyKnot"
     target-branch: "development"
     open-pull-requests-limit: 10
     commit-message:

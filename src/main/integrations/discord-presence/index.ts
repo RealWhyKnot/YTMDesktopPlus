@@ -97,7 +97,7 @@ export default class DiscordPresence implements IIntegration {
         buttons: [
           {
             label: "Play on YTMDesktop",
-            url: `ytmd://play/${id}`
+            url: `ytmdplus://play/${id}`
           }
         ]
       });

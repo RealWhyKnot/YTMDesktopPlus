@@ -9,7 +9,7 @@ body:
     options:
     - label: I verified that there is no open/closed issue for the same subject.
       required: true
-    - label: I understand that **YTMDesktop have NO affiliation with Google or YouTube**
+    - label: I understand that **YTMDesktopPlus has no affiliation with Google or YouTube**
       required: true
 - type: textarea
   attributes:
@@ -36,8 +36,8 @@ body:
     required: true
 - type: input
   attributes:
-    label: YTMDesktop
-    description: "YTMDesktop version"
+    label: YTMDesktopPlus
+    description: "YTMDesktopPlus version"
     placeholder: v1.2.3
   validations:
     required: true

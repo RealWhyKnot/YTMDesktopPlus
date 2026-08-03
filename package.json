@@ -1,10 +1,18 @@
 {
-  "name": "youtube-music-desktop-app",
-  "productName": "YouTube Music Desktop App",
+  "name": "ytmdesktop-plus",
+  "productName": "YTMDesktopPlus",
   "version": "2.0.11",
-  "description": "YouTube Music Desktop App",
+  "description": "Desktop app for YouTube Music with companion server, Discord presence, and Last.fm scrobbling",
   "main": ".vite/main/index.js",
   "private": true,
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RealWhyKnot/YTMDesktopPlus.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RealWhyKnot/YTMDesktopPlus/issues"
+  },
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
@@ -22,8 +30,7 @@
   },
   "keywords": [],
   "author": {
-    "name": "NovusTheory",
-    "email": "novustheory@gmail.com"
+    "name": "WhyKnot"
   },
   "license": "GPL-3.0-only",
   "devDependencies": {

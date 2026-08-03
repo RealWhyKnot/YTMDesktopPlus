@@ -526,7 +526,7 @@ window.ytmd.handleUpdateDownloaded(() => {
 
         <div v-if="currentTab === 99" class="about-tab">
           <img class="icon" :src="logo" />
-          <h2 class="app-name">YouTube Music Desktop App</h2>
+          <h2 class="app-name">YTMDesktopPlus</h2>
           <p class="made-by">Made by YTMDesktop Team</p>
           <template v-if="!autoUpdaterDisabled">
             <button
@@ -558,8 +558,7 @@ window.ytmd.handleUpdateDownloaded(() => {
             <p class="commit">Commit: {{ ytmdCommitHash }}</p>
           </span>
           <div class="links">
-            <a href="https://github.com/ytmdesktop/ytmdesktop" target="_blank">GitHub</a>
-            <a href="https://ytmdesktop.github.io/" target="_blank">Website</a>
+            <a href="https://github.com/RealWhyKnot/YTMDesktopPlus" target="_blank">GitHub</a>
           </div>
         </div>
       </div>
