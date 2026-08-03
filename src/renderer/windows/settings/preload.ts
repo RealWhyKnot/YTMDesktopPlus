@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld("ytmd", {
   },
   store: {
     set: (key: string, value: unknown) => store.set(key, value),
+    setMany: (entries: Array<[string, unknown]>) => store.setMany(entries),
     get: async (key: keyof StoreSchema) => await store.get(key),
     reset: (key: keyof StoreSchema) => store.reset(key),
     onDidAnyChange: (callback: (newState: StoreSchema, oldState: StoreSchema) => void) => store.onDidAnyChange(callback)

@@ -1,8 +1,18 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref, type Ref } from "vue";
 import KeybindInput from "../../components/KeybindInput.vue";
 import YTMDSetting from "../../components/YTMDSetting.vue";
 import { StoreSchema, TrayIconStyle } from "~shared/store/schema";
+import {
+  RESTART_REQUIRED_KEYS,
+  STAGED_SETTING_KEYS,
+  SettingsSnapshot,
+  StagedSettingKey,
+  diffSnapshots,
+  mergeExternalState,
+  normalizeSettingValue,
+  snapshotFromState
+} from "~shared/settings-staging";
 import { AuthToken } from "~shared/integrations/companion-server/types";
 import logo from "~assets/icons/ytmd.png";
 
@@ -17,7 +27,6 @@ const isDarwin = window.ytmd.isDarwin;
 const isLinux = window.ytmd.isLinux;
 
 const currentTab = ref(1);
-const requiresRestart = ref(false);
 const checkingForUpdate = ref(false);
 const updateAvailable = ref(await window.ytmd.isAppUpdateAvailable());
 const updateNotAvailable = ref(false);
@@ -37,81 +46,134 @@ const integrations: StoreSchema["integrations"] = await store.get("integrations"
 const shortcuts: StoreSchema["shortcuts"] = await store.get("shortcuts");
 const lastFM: StoreSchema["lastfm"] = await store.get("lastfm");
 
-const disableHardwareAcceleration = ref<boolean>(general.disableHardwareAcceleration);
-const hideToTrayOnClose = ref<boolean>(general.hideToTrayOnClose);
-const showNotificationOnSongChange = ref<boolean>(general.showNotificationOnSongChange);
-const startOnBoot = ref<boolean>(general.startOnBoot);
-const startMinimized = ref<boolean>(general.startMinimized);
-const debugLogging = ref<boolean>(developer.debugLogging);
+// Draft values for every staged key. Nothing here reaches the store until an
+// explicit save writes the dirty keys in one batch.
+const stagedRefs: Record<StagedSettingKey, Ref<unknown>> = {
+  "general.hideToTrayOnClose": ref<unknown>(general.hideToTrayOnClose),
+  "general.showNotificationOnSongChange": ref<unknown>(general.showNotificationOnSongChange),
+  "general.startOnBoot": ref<unknown>(general.startOnBoot),
+  "general.startMinimized": ref<unknown>(general.startMinimized),
+  "general.disableHardwareAcceleration": ref<unknown>(general.disableHardwareAcceleration),
+  "developer.debugLogging": ref<unknown>(developer.debugLogging),
+  "appearance.alwaysShowVolumeSlider": ref<unknown>(appearance.alwaysShowVolumeSlider),
+  "appearance.customCSSEnabled": ref<unknown>(appearance.customCSSEnabled),
+  "appearance.customCSSPath": ref<unknown>(appearance.customCSSPath),
+  "appearance.zoom": ref<unknown>(appearance.zoom),
+  "appearance.trayIconStyle": ref<unknown>(appearance.trayIconStyle),
+  "playback.continueWhereYouLeftOff": ref<unknown>(playback.continueWhereYouLeftOff),
+  "playback.continueWhereYouLeftOffPaused": ref<unknown>(playback.continueWhereYouLeftOffPaused),
+  "playback.progressInTaskbar": ref<unknown>(playback.progressInTaskbar),
+  "playback.enableSpeakerFill": ref<unknown>(playback.enableSpeakerFill),
+  "playback.ratioVolume": ref<unknown>(playback.ratioVolume),
+  "integrations.companionServerEnabled": ref<unknown>(integrations.companionServerEnabled),
+  "integrations.companionServerCORSWildcardEnabled": ref<unknown>(integrations.companionServerCORSWildcardEnabled),
+  "integrations.discordPresenceEnabled": ref<unknown>(integrations.discordPresenceEnabled),
+  "integrations.lastFMEnabled": ref<unknown>(integrations.lastFMEnabled),
+  "lastfm.scrobblePercent": ref<unknown>(lastFM.scrobblePercent),
+  "shortcuts.playPause": ref<unknown>(shortcuts.playPause),
+  "shortcuts.next": ref<unknown>(shortcuts.next),
+  "shortcuts.previous": ref<unknown>(shortcuts.previous),
+  "shortcuts.thumbsUp": ref<unknown>(shortcuts.thumbsUp),
+  "shortcuts.thumbsDown": ref<unknown>(shortcuts.thumbsDown),
+  "shortcuts.volumeUp": ref<unknown>(shortcuts.volumeUp),
+  "shortcuts.volumeDown": ref<unknown>(shortcuts.volumeDown)
+};
 
-const alwaysShowVolumeSlider = ref<boolean>(appearance.alwaysShowVolumeSlider);
-const customCSSEnabled = ref<boolean>(appearance.customCSSEnabled);
-const customCSSPath = ref<string>(appearance.customCSSPath);
-const zoom = ref<number>(appearance.zoom);
-const trayIconStyle = ref<number>(appearance.trayIconStyle);
+const hideToTrayOnClose = stagedRefs["general.hideToTrayOnClose"];
+const showNotificationOnSongChange = stagedRefs["general.showNotificationOnSongChange"];
+const startOnBoot = stagedRefs["general.startOnBoot"];
+const disableHardwareAcceleration = stagedRefs["general.disableHardwareAcceleration"];
+const debugLogging = stagedRefs["developer.debugLogging"];
+const alwaysShowVolumeSlider = stagedRefs["appearance.alwaysShowVolumeSlider"];
+const customCSSEnabled = stagedRefs["appearance.customCSSEnabled"];
+const customCSSPath = stagedRefs["appearance.customCSSPath"];
+const zoom = stagedRefs["appearance.zoom"];
+const trayIconStyle = stagedRefs["appearance.trayIconStyle"];
+const continueWhereYouLeftOff = stagedRefs["playback.continueWhereYouLeftOff"];
+const continueWhereYouLeftOffPaused = stagedRefs["playback.continueWhereYouLeftOffPaused"];
+const progressInTaskbar = stagedRefs["playback.progressInTaskbar"];
+const enableSpeakerFill = stagedRefs["playback.enableSpeakerFill"];
+const ratioVolume = stagedRefs["playback.ratioVolume"];
+const companionServerEnabled = stagedRefs["integrations.companionServerEnabled"];
+const companionServerCORSWildcardEnabled = stagedRefs["integrations.companionServerCORSWildcardEnabled"];
+const discordPresenceEnabled = stagedRefs["integrations.discordPresenceEnabled"];
+const lastFMEnabled = stagedRefs["integrations.lastFMEnabled"];
+const scrobblePercent = stagedRefs["lastfm.scrobblePercent"];
+const shortcutPlayPause = stagedRefs["shortcuts.playPause"];
+const shortcutNext = stagedRefs["shortcuts.next"];
+const shortcutPrevious = stagedRefs["shortcuts.previous"];
+const shortcutThumbsUp = stagedRefs["shortcuts.thumbsUp"];
+const shortcutThumbsDown = stagedRefs["shortcuts.thumbsDown"];
+const shortcutVolumeUp = stagedRefs["shortcuts.volumeUp"];
+const shortcutVolumeDown = stagedRefs["shortcuts.volumeDown"];
 
-const continueWhereYouLeftOff = ref<boolean>(playback.continueWhereYouLeftOff);
-const continueWhereYouLeftOffPaused = ref<boolean>(playback.continueWhereYouLeftOffPaused);
-const enableSpeakerFill = ref<boolean>(playback.enableSpeakerFill);
-const progressInTaskbar = ref<boolean>(playback.progressInTaskbar);
-const ratioVolume = ref<boolean>(playback.ratioVolume);
-
-const companionServerEnabled = ref<boolean>(integrations.companionServerEnabled);
 const companionServerAuthTokens = ref<AuthToken[]>(
   safeStorageAvailable.value ? (JSON.parse(await safeStorage.decryptString(integrations.companionServerAuthTokens)) ?? []) : []
 );
-const companionServerCORSWildcardEnabled = ref<boolean>(integrations.companionServerCORSWildcardEnabled);
-const discordPresenceEnabled = ref<boolean>(integrations.discordPresenceEnabled);
-const lastFMEnabled = ref<boolean>(integrations.lastFMEnabled);
-
-const shortcutPlayPause = ref<string>(shortcuts.playPause);
-const shortcutNext = ref<string>(shortcuts.next);
-const shortcutPrevious = ref<string>(shortcuts.previous);
-const shortcutThumbsUp = ref<string>(shortcuts.thumbsUp);
-const shortcutThumbsDown = ref<string>(shortcuts.thumbsDown);
-const shortcutVolumeUp = ref<string>(shortcuts.volumeUp);
-const shortcutVolumeDown = ref<string>(shortcuts.volumeDown);
-
 const lastFMSessionKey = ref<string>(lastFM.sessionKey);
-const scrobblePercent = ref<number>(lastFM.scrobblePercent);
+
+let pristine: SettingsSnapshot = snapshotFromState({ general, developer, appearance, playback, integrations, shortcuts, lastfm: lastFM });
+
+// Restart is needed when a restart-required key's saved value differs from the
+// value this window opened with, matching how long the banner used to live.
+const launchRestartValues: Partial<SettingsSnapshot> = {};
+for (const key of RESTART_REQUIRED_KEYS) {
+  launchRestartValues[key] = pristine[key];
+}
+
+const dirtyKeys = ref<StagedSettingKey[]>([]);
+const hasUnsavedChanges = computed(() => dirtyKeys.value.length > 0);
+const restartNeeded = ref(false);
+const showCloseConfirm = ref(false);
+let allowClose = false;
+
+function draftSnapshot(): SettingsSnapshot {
+  const draft = {} as SettingsSnapshot;
+  for (const key of STAGED_SETTING_KEYS) {
+    draft[key] = normalizeSettingValue(key, stagedRefs[key].value);
+  }
+  return draft;
+}
+
+function stageChanged() {
+  dirtyKeys.value = diffSnapshots(pristine, draftSnapshot());
+}
+
+function updateRestartNeeded() {
+  restartNeeded.value = [...RESTART_REQUIRED_KEYS].some(key => !Object.is(pristine[key], launchRestartValues[key]));
+}
+
+function saveChanges() {
+  const draft = draftSnapshot();
+  const changed = diffSnapshots(pristine, draft);
+  if (changed.length > 0) {
+    store.setMany(changed.map(key => [key, draft[key]] as [string, unknown]));
+  }
+  pristine = { ...draft };
+  dirtyKeys.value = [];
+  updateRestartNeeded();
+}
+
+function resetChanges() {
+  for (const key of STAGED_SETTING_KEYS) {
+    stagedRefs[key].value = pristine[key];
+  }
+  dirtyKeys.value = [];
+}
 
 store.onDidAnyChange(async newState => {
-  disableHardwareAcceleration.value = newState.general.disableHardwareAcceleration;
-  hideToTrayOnClose.value = newState.general.hideToTrayOnClose;
-  showNotificationOnSongChange.value = newState.general.showNotificationOnSongChange;
-  startOnBoot.value = newState.general.startOnBoot;
-  startMinimized.value = newState.general.startMinimized;
-  debugLogging.value = newState.developer.debugLogging;
+  const merged = mergeExternalState(pristine, draftSnapshot(), newState);
+  pristine = merged.pristine;
+  for (const key of merged.followedKeys) {
+    stagedRefs[key].value = pristine[key];
+  }
+  dirtyKeys.value = diffSnapshots(pristine, draftSnapshot());
+  updateRestartNeeded();
 
-  alwaysShowVolumeSlider.value = newState.appearance.alwaysShowVolumeSlider;
-  customCSSEnabled.value = newState.appearance.customCSSEnabled;
-  customCSSPath.value = newState.appearance.customCSSPath;
-  zoom.value = newState.appearance.zoom;
-  trayIconStyle.value = newState.appearance.trayIconStyle;
-
-  continueWhereYouLeftOff.value = newState.playback.continueWhereYouLeftOff;
-  continueWhereYouLeftOffPaused.value = newState.playback.continueWhereYouLeftOffPaused;
-  enableSpeakerFill.value = newState.playback.enableSpeakerFill;
-  progressInTaskbar.value = newState.playback.progressInTaskbar;
-  ratioVolume.value = newState.playback.ratioVolume;
-
-  companionServerEnabled.value = newState.integrations.companionServerEnabled;
   companionServerAuthTokens.value = safeStorageAvailable.value
     ? (JSON.parse(await safeStorage.decryptString(newState.integrations.companionServerAuthTokens)) ?? [])
     : [];
-  companionServerCORSWildcardEnabled.value = newState.integrations.companionServerCORSWildcardEnabled;
-  discordPresenceEnabled.value = newState.integrations.discordPresenceEnabled;
-  lastFMEnabled.value = newState.integrations.lastFMEnabled;
   lastFMSessionKey.value = newState.lastfm.sessionKey;
-  scrobblePercent.value = newState.lastfm.scrobblePercent;
-
-  shortcutPlayPause.value = newState.shortcuts.playPause;
-  shortcutNext.value = newState.shortcuts.next;
-  shortcutPrevious.value = newState.shortcuts.previous;
-  shortcutThumbsUp.value = newState.shortcuts.thumbsUp;
-  shortcutThumbsDown.value = newState.shortcuts.thumbsDown;
-  shortcutVolumeUp.value = newState.shortcuts.volumeUp;
-  shortcutVolumeDown.value = newState.shortcuts.volumeDown;
 });
 
 const discordPresenceConnectionFailed = ref<boolean>(await memoryStore.get("discordPresenceConnectionFailed"));
@@ -150,45 +212,6 @@ async function memorySettingsChanged() {
   memoryStore.set("companionServerAuthWindowEnabled", companionServerAuthWindowEnabled.value);
 }
 
-async function settingsChanged() {
-  store.set("general.hideToTrayOnClose", hideToTrayOnClose.value);
-  store.set("general.showNotificationOnSongChange", showNotificationOnSongChange.value);
-  store.set("general.startOnBoot", startOnBoot.value);
-  store.set("general.startMinimized", startMinimized.value);
-  store.set("general.disableHardwareAcceleration", disableHardwareAcceleration.value);
-  store.set("developer.debugLogging", debugLogging.value);
-
-  store.set("appearance.alwaysShowVolumeSlider", alwaysShowVolumeSlider.value);
-  store.set("appearance.customCSSEnabled", customCSSEnabled.value);
-  store.set("appearance.zoom", zoom.value);
-  store.set("appearance.trayIconStyle", trayIconStyle.value);
-
-  store.set("playback.continueWhereYouLeftOff", continueWhereYouLeftOff.value);
-  store.set("playback.continueWhereYouLeftOffPaused", continueWhereYouLeftOffPaused.value);
-  store.set("playback.progressInTaskbar", progressInTaskbar.value);
-  store.set("playback.enableSpeakerFill", enableSpeakerFill.value);
-  store.set("playback.ratioVolume", ratioVolume.value);
-
-  store.set("integrations.companionServerEnabled", companionServerEnabled.value);
-  store.set("integrations.companionServerCORSWildcardEnabled", companionServerCORSWildcardEnabled.value);
-  store.set("integrations.discordPresenceEnabled", discordPresenceEnabled.value);
-  store.set("integrations.lastFMEnabled", lastFMEnabled.value);
-  store.set("lastfm.scrobblePercent", scrobblePercent.value);
-
-  store.set("shortcuts.playPause", shortcutPlayPause.value);
-  store.set("shortcuts.next", shortcutNext.value);
-  store.set("shortcuts.previous", shortcutPrevious.value);
-  store.set("shortcuts.thumbsUp", shortcutThumbsUp.value);
-  store.set("shortcuts.thumbsDown", shortcutThumbsDown.value);
-  store.set("shortcuts.volumeUp", shortcutVolumeUp.value);
-  store.set("shortcuts.volumeDown", shortcutVolumeDown.value);
-}
-
-async function settingChangedRequiresRestart() {
-  requiresRestart.value = true;
-  settingsChanged();
-}
-
 async function settingChangedFile(event: Event) {
   const target = event.target as HTMLInputElement;
 
@@ -197,16 +220,21 @@ async function settingChangedFile(event: Event) {
     throw new Error("No setting specified in File Input");
   }
 
-  store.set(setting, target.files.length > 0 ? window.ytmd.getTrueFilePath(target.files[0]) : null);
+  const value = target.files.length > 0 ? window.ytmd.getTrueFilePath(target.files[0]) : null;
+  const stagedKey = setting as StagedSettingKey;
+  if (STAGED_SETTING_KEYS.includes(stagedKey)) {
+    stagedRefs[stagedKey].value = value;
+    stageChanged();
+  } else {
+    store.set(setting, value);
+  }
 
   target.value = null;
 }
 
 async function restartDiscordPresence() {
-  discordPresenceEnabled.value = false;
-  await settingsChanged();
-  discordPresenceEnabled.value = true;
-  await settingsChanged();
+  store.set("integrations.discordPresenceEnabled", false);
+  store.set("integrations.discordPresenceEnabled", true);
 }
 
 async function deleteCompanionAuthToken(appId: string) {
@@ -220,7 +248,8 @@ async function deleteCompanionAuthToken(appId: string) {
 }
 
 function removeCustomCSSPath() {
-  store.set("appearance.customCSSPath", null);
+  customCSSPath.value = null;
+  stageChanged();
 }
 
 function changeTab(newTab: number) {
@@ -242,9 +271,33 @@ function checkForUpdates() {
 
 async function logoutLastFM() {
   store.set("lastfm.sessionKey", null);
+  store.set("integrations.lastFMEnabled", false);
+  pristine = { ...pristine, "integrations.lastFMEnabled": false };
   lastFMEnabled.value = false;
   lastFMSessionKey.value = null;
-  await settingsChanged();
+  dirtyKeys.value = diffSnapshots(pristine, draftSnapshot());
+}
+
+window.onbeforeunload = (event: BeforeUnloadEvent) => {
+  if (hasUnsavedChanges.value && !allowClose) {
+    event.returnValue = false;
+    showCloseConfirm.value = true;
+  }
+};
+
+function keepEditing() {
+  showCloseConfirm.value = false;
+}
+
+function discardAndClose() {
+  allowClose = true;
+  window.ytmd.closeWindow();
+}
+
+function saveAndClose() {
+  saveChanges();
+  allowClose = true;
+  window.ytmd.closeWindow();
 }
 
 window.ytmd.handleCheckingForUpdate(() => {
@@ -284,31 +337,32 @@ window.ytmd.handleUpdateDownloaded(() => {
         <li :class="{ active: currentTab === 99 }" @click="changeTab(99)"><span class="material-symbols-outlined">info</span>About</li>
       </ul>
       <div class="content">
-        <div v-if="requiresRestart" class="restart-banner">
+        <div v-if="hasUnsavedChanges" class="save-bar">
+          <p class="message"><span class="material-symbols-outlined">edit</span> You have unsaved changes</p>
+          <div class="actions">
+            <button class="reset-button" @click="resetChanges">Reset</button>
+            <button class="save-button" @click="saveChanges">Save Changes</button>
+          </div>
+        </div>
+        <div v-else-if="restartNeeded" class="restart-banner">
           <p class="message"><span class="material-symbols-outlined">autorenew</span> Restart app to apply changes</p>
           <button class="restart-button" @click="restartApplication">Restart</button>
         </div>
         <div v-if="currentTab === 1" class="general-tab">
-          <YTMDSetting v-if="!isDarwin" v-model="hideToTrayOnClose" type="checkbox" name="Hide to tray on close" @change="settingsChanged" />
-          <YTMDSetting v-model="showNotificationOnSongChange" type="checkbox" name="Show notification on song change" @change="settingsChanged" />
-          <YTMDSetting v-model="startOnBoot" type="checkbox" name="Start on boot" @change="settingsChanged" />
+          <YTMDSetting v-if="!isDarwin" v-model="hideToTrayOnClose" type="checkbox" name="Hide to tray on close" @change="stageChanged" />
+          <YTMDSetting v-model="showNotificationOnSongChange" type="checkbox" name="Show notification on song change" @change="stageChanged" />
+          <YTMDSetting v-model="startOnBoot" type="checkbox" name="Start on boot" @change="stageChanged" />
           <!--<div class="setting">
             <p>Start minimized</p>
-            <input v-model="startMinimized" @change="settingsChanged" class="toggle" type="checkbox" />
+            <input v-model="startMinimized" @change="stageChanged" class="toggle" type="checkbox" />
           </div>-->
-          <YTMDSetting
-            v-model="disableHardwareAcceleration"
-            type="checkbox"
-            restart-required
-            name="Disable hardware acceleration"
-            @change="settingChangedRequiresRestart"
-          />
-          <YTMDSetting v-model="debugLogging" type="checkbox" name="Debug logging" @change="settingsChanged" />
+          <YTMDSetting v-model="disableHardwareAcceleration" type="checkbox" restart-required name="Disable hardware acceleration" @change="stageChanged" />
+          <YTMDSetting v-model="debugLogging" type="checkbox" name="Debug logging" @change="stageChanged" />
         </div>
 
         <div v-if="currentTab === 2" class="appearance-tab">
-          <YTMDSetting v-model="alwaysShowVolumeSlider" type="checkbox" name="Always show volume slider" @change="settingsChanged" />
-          <YTMDSetting v-model="customCSSEnabled" type="checkbox" name="Custom CSS" @change="settingsChanged" />
+          <YTMDSetting v-model="alwaysShowVolumeSlider" type="checkbox" name="Always show volume slider" @change="stageChanged" />
+          <YTMDSetting v-model="customCSSEnabled" type="checkbox" name="Custom CSS" @change="stageChanged" />
           <YTMDSetting
             v-if="customCSSEnabled"
             v-model="customCSSPath"
@@ -319,30 +373,30 @@ window.ytmd.handleUpdateDownloaded(() => {
             @file-change="settingChangedFile"
             @clear="removeCustomCSSPath"
           />
-          <YTMDSetting v-model="zoom" type="range" max="300" min="30" step="10" name="Zoom" @change="settingsChanged" />
+          <YTMDSetting v-model="zoom" type="range" max="300" min="30" step="10" name="Zoom" @change="stageChanged" />
           <YTMDSetting
             v-if="isLinux"
             v-model="trayIconStyle"
             :options-map="{ [TrayIconStyle.Auto]: 'Auto', [TrayIconStyle.White]: 'White', [TrayIconStyle.Black]: 'Black' }"
             type="select"
             name="Tray icon style"
-            @change="settingsChanged"
+            @change="stageChanged"
           />
         </div>
 
         <div v-if="currentTab === 3" class="playback-tab">
-          <YTMDSetting v-model="continueWhereYouLeftOff" name="Continue where you left off" type="checkbox" @change="settingsChanged" />
+          <YTMDSetting v-model="continueWhereYouLeftOff" name="Continue where you left off" type="checkbox" @change="stageChanged" />
           <YTMDSetting
             v-if="continueWhereYouLeftOff"
             v-model="continueWhereYouLeftOffPaused"
             type="checkbox"
             indented
             name="Pause on application launch"
-            @change="settingsChanged"
+            @change="stageChanged"
           />
-          <YTMDSetting v-model="progressInTaskbar" type="checkbox" name="Show track progress on taskbar" @change="settingsChanged" />
-          <YTMDSetting v-model="enableSpeakerFill" type="checkbox" restart-required name="Enable speaker fill" @change="settingChangedRequiresRestart" />
-          <YTMDSetting v-model="ratioVolume" type="checkbox" name="Ratio volume" @change="settingsChanged" />
+          <YTMDSetting v-model="progressInTaskbar" type="checkbox" name="Show track progress on taskbar" @change="stageChanged" />
+          <YTMDSetting v-model="enableSpeakerFill" type="checkbox" restart-required name="Enable speaker fill" @change="stageChanged" />
+          <YTMDSetting v-model="ratioVolume" type="checkbox" name="Ratio volume" @change="stageChanged" />
         </div>
 
         <div v-if="currentTab === 4" class="integrations-tab">
@@ -352,7 +406,7 @@ window.ytmd.handleUpdateDownloaded(() => {
             name="Companion server"
             :disabled="!safeStorageAvailable"
             disabled-message="This integration cannot be enabled due to safeStorage being unavailable"
-            @change="settingsChanged"
+            @change="stageChanged"
           />
           <YTMDSetting
             v-if="companionServerEnabled && safeStorageAvailable"
@@ -361,7 +415,7 @@ window.ytmd.handleUpdateDownloaded(() => {
             indented
             name="Allow browser communication"
             description="This setting could be dangerous as it allows any website you visit to communicate with the companion server"
-            @change="settingsChanged"
+            @change="stageChanged"
           />
           <YTMDSetting
             v-if="companionServerEnabled && safeStorageAvailable"
@@ -379,7 +433,7 @@ window.ytmd.handleUpdateDownloaded(() => {
             indented
             name="Authorized companions"
             description="This is a list of companions that currently have access to the companion server"
-            @change="settingsChanged"
+            @change="stageChanged"
           >
             <table class="authorized-companions-table">
               <thead>
@@ -407,7 +461,7 @@ window.ytmd.handleUpdateDownloaded(() => {
               <td>No authorized companions</td>
             </div>
           </YTMDSetting>
-          <YTMDSetting v-model="discordPresenceEnabled" type="checkbox" name="Discord rich presence" @change="settingsChanged" />
+          <YTMDSetting v-model="discordPresenceEnabled" type="checkbox" name="Discord rich presence" @change="stageChanged" />
           <div v-if="discordPresenceEnabled && discordPresenceConnectionFailed" class="setting indented">
             <p class="discord-failure">Discord connection could not be established after 30 attempts</p>
             <button @click="restartDiscordPresence">Retry</button>
@@ -418,7 +472,7 @@ window.ytmd.handleUpdateDownloaded(() => {
             name="Last.fm scrobbling"
             :disabled="!safeStorageAvailable"
             disabled-message="This integration cannot be enabled due to safeStorage being unavailable"
-            @change="settingsChanged"
+            @change="stageChanged"
           />
           <div v-if="lastFMEnabled" class="setting indented">
             <div class="name-with-description">
@@ -440,7 +494,7 @@ window.ytmd.handleUpdateDownloaded(() => {
             min="50"
             max="95"
             step="5"
-            @change="settingsChanged"
+            @change="stageChanged"
           />
         </div>
 
@@ -454,7 +508,7 @@ window.ytmd.handleUpdateDownloaded(() => {
                 >error</span
               >
             </p>
-            <KeybindInput v-model="shortcutPlayPause" @change="settingsChanged" />
+            <KeybindInput v-model="shortcutPlayPause" @change="stageChanged" />
           </div>
           <div class="setting">
             <p class="shortcut-title">
@@ -465,7 +519,7 @@ window.ytmd.handleUpdateDownloaded(() => {
                 >error</span
               >
             </p>
-            <KeybindInput v-model="shortcutNext" @change="settingsChanged" />
+            <KeybindInput v-model="shortcutNext" @change="stageChanged" />
           </div>
           <div class="setting">
             <p class="shortcut-title">
@@ -476,7 +530,7 @@ window.ytmd.handleUpdateDownloaded(() => {
                 >error</span
               >
             </p>
-            <KeybindInput v-model="shortcutPrevious" @change="settingsChanged" />
+            <KeybindInput v-model="shortcutPrevious" @change="stageChanged" />
           </div>
           <div class="setting">
             <p class="shortcut-title">
@@ -487,7 +541,7 @@ window.ytmd.handleUpdateDownloaded(() => {
                 >error</span
               >
             </p>
-            <KeybindInput v-model="shortcutThumbsUp" @change="settingsChanged" />
+            <KeybindInput v-model="shortcutThumbsUp" @change="stageChanged" />
           </div>
           <div class="setting">
             <p class="shortcut-title">
@@ -498,7 +552,7 @@ window.ytmd.handleUpdateDownloaded(() => {
                 >error</span
               >
             </p>
-            <KeybindInput v-model="shortcutThumbsDown" @change="settingsChanged" />
+            <KeybindInput v-model="shortcutThumbsDown" @change="stageChanged" />
           </div>
           <div class="setting">
             <p class="shortcut-title">
@@ -509,7 +563,7 @@ window.ytmd.handleUpdateDownloaded(() => {
                 >error</span
               >
             </p>
-            <KeybindInput v-model="shortcutVolumeUp" @change="settingsChanged" />
+            <KeybindInput v-model="shortcutVolumeUp" @change="stageChanged" />
           </div>
           <div class="setting">
             <p class="shortcut-title">
@@ -520,7 +574,7 @@ window.ytmd.handleUpdateDownloaded(() => {
                 >error</span
               >
             </p>
-            <KeybindInput v-model="shortcutVolumeDown" @change="settingsChanged" />
+            <KeybindInput v-model="shortcutVolumeDown" @change="stageChanged" />
           </div>
         </div>
 
@@ -560,6 +614,17 @@ window.ytmd.handleUpdateDownloaded(() => {
           <div class="links">
             <a href="https://github.com/RealWhyKnot/YTMDesktopPlus" target="_blank">GitHub</a>
           </div>
+        </div>
+      </div>
+    </div>
+    <div v-if="showCloseConfirm" class="close-confirm-overlay">
+      <div class="close-confirm">
+        <p class="title">Unsaved changes</p>
+        <p class="body">Your changes have not been saved yet.</p>
+        <div class="actions">
+          <button class="keep-button" @click="keepEditing">Keep editing</button>
+          <button class="discard-button" @click="discardAndClose">Discard and close</button>
+          <button class="save-button" @click="saveAndClose">Save and close</button>
         </div>
       </div>
     </div>
@@ -706,6 +771,88 @@ window.ytmd.handleUpdateDownloaded(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.save-bar {
+  background-color: #212121;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.save-bar .message {
+  display: flex;
+  align-items: center;
+}
+
+.save-bar .message .material-symbols-outlined {
+  margin: 0 8px;
+}
+
+.save-bar .actions {
+  display: flex;
+  align-items: center;
+}
+
+.save-bar .reset-button {
+  margin: 0 4px;
+  background-color: transparent;
+  border: 1px solid #888888;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.save-bar .save-button,
+.close-confirm .save-button {
+  margin: 0 8px 0 4px;
+  background-color: #f44336;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.close-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.close-confirm {
+  background-color: #111111;
+  border: 1px solid #212121;
+  border-radius: 8px;
+  padding: 16px;
+  max-width: 420px;
+}
+
+.close-confirm .title {
+  margin: 0 0 8px 0;
+  font-weight: 600;
+}
+
+.close-confirm .body {
+  margin: 0 0 16px 0;
+  color: #bbbbbb;
+}
+
+.close-confirm .actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.close-confirm .keep-button,
+.close-confirm .discard-button {
+  background-color: transparent;
+  border: 1px solid #888888;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
 }
 
 .restart-banner .message {

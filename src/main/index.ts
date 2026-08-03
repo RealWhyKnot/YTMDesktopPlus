@@ -1796,6 +1796,16 @@ app.on("ready", async () => {
     store.set(key, value);
   });
 
+  ipcMain.on("settings:setMany", (event, entries: Array<[string, unknown]>) => {
+    if (settingsWindow && event.sender !== settingsWindow.webContents) return;
+    if (!Array.isArray(entries)) return;
+
+    for (const entry of entries) {
+      if (!Array.isArray(entry) || typeof entry[0] !== "string") continue;
+      store.set(entry[0], entry[1]);
+    }
+  });
+
   ipcMain.handle("settings:get", (event, key: string) => {
     if (
       mainWindow &&

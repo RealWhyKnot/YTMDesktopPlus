@@ -9,6 +9,10 @@ export default class Store<TSchema> {
     return ipcRenderer.send("settings:set", key, value);
   }
 
+  public setMany(entries: Array<[string, unknown]>) {
+    return ipcRenderer.send("settings:setMany", entries);
+  }
+
   public async get(key: keyof TSchema) {
     return await ipcRenderer.invoke("settings:get", key);
   }
