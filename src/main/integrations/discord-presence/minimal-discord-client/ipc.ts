@@ -35,10 +35,7 @@ export default class IPCClient extends EventEmitter {
         const length = buffer.readInt32LE(4);
         const json = JSON.parse(buffer.toString("utf-8", 8, 8 + length));
 
-        this.emit("data", {
-          op,
-          json
-        });
+        this.emit("data", op, json);
       } catch {
         /* invalid json provided, ignore */
       }
