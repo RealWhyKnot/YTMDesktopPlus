@@ -166,19 +166,18 @@ export default class DiscordPresence implements IIntegration {
     this.UpdateActivity();
   }
 
-  // The master toggle removes the Listen Along surface entirely; Discord has
-  // no disabled state for buttons, so absence is the only off switch. While
-  // hosting a room the share link rides along as a second button.
+  // Buttons exist only while a room is live: without one there is nothing to
+  // join, so the profile shows plain playback and nothing else. Discord has
+  // no disabled state for buttons; absence is the only off switch.
   private buildButtons(listenAlongUrl: string): { label: string; url: string }[] | undefined {
     if (!this.store?.get("integrations").listenAlongRoomsEnabled) return undefined;
 
-    const buttons: { label: string; url: string }[] = [];
     const room = this.memoryStore.get("listenAlongRoom") as RoomSnapshot | null;
-    if (room && room.phase === "hosting" && room.shareUrl) {
-      buttons.push({ label: "Join Room", url: room.shareUrl });
-    }
-    buttons.push({ label: "Listen Along", url: listenAlongUrl });
-    return buttons;
+    if (!room || room.phase !== "hosting" || !room.shareUrl) return undefined;
+    return [
+      { label: "Join Room", url: room.shareUrl },
+      { label: "Listen Along", url: listenAlongUrl }
+    ];
   }
 
   private retryDiscordConnection() {

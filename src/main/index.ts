@@ -12,6 +12,7 @@ import {
   MenuItemConstructorOptions,
   nativeImage,
   nativeTheme,
+  Notification,
   safeStorage,
   screen,
   session,
@@ -39,6 +40,7 @@ import LoudnessNormalization from "./integrations/loudness-normalization";
 import AudioStreamCapture from "./integrations/audio-stream";
 import ListenAlong from "./integrations/listen-along";
 import { AudioPublisher, AudioRelayClient, type AudioCaptureStatus } from "./integrations/listen-along/audio-publisher";
+import { AutoRoom } from "./integrations/listen-along/auto-room";
 import type { BatchPacket } from "~shared/audio-protocol";
 import { initializeTestSeams, isTestRun } from "./test-seams";
 import { migrateLegacyProfile } from "./profile-migration";
@@ -320,6 +322,8 @@ const roomSession = new RoomSession({
     // The Join Room presence button follows the hosting state.
     discordPresence.refreshActivity();
     syncAudioPublisher();
+    // A left or expired room grows back while presence is shared.
+    autoRoom.evaluate();
   },
   getPlayerState: () => playerStateStore.getState(),
   now: () => Date.now()
@@ -342,6 +346,33 @@ function syncAudioPublisher() {
   const enabled = store.get("integrations").listenAlongAudioStreamEnabled;
   audioPublisher.setCredentials(enabled ? roomSession.hostCredentials : null);
 }
+
+// While Discord presence is shared, a room exists without being started, so
+// the presence link always has somewhere to land.
+let autoRoomNotified = false;
+const autoRoom = new AutoRoom({
+  enabled: () => {
+    const integrations = store.get("integrations");
+    return integrations.discordPresenceEnabled && integrations.listenAlongRoomsEnabled && integrations.listenAlongAutoRoomEnabled;
+  },
+  phase: () => roomSession.snapshot.phase,
+  savedDisplayName: () => store.get("integrations").listenAlongDisplayName,
+  host: displayName => {
+    roomSession.host(displayName);
+    // Said out loud once per session: a shareable live surface just opened
+    // without a click, and that should never be a surprise.
+    if (!autoRoomNotified && Notification.isSupported()) {
+      autoRoomNotified = true;
+      const notice = new Notification({
+        title: "Listen Along room opened",
+        body: "Discord presence is on, so your room link is live. Anyone with it can listen along, including in a browser. Manage this in Settings."
+      });
+      notice.on("click", () => createOrShowRoomWindow());
+      notice.show();
+    }
+  },
+  leave: () => roomSession.leave()
+});
 
 playerStateStore.addEventListener(state => {
   roomSession.updateLocalState(state);
@@ -482,7 +513,8 @@ const store = new Conf<StoreSchema>({
       listenAlongToken: null,
       listenAlongRoomsEnabled: true,
       listenAlongDisplayName: null,
-      listenAlongAudioStreamEnabled: true
+      listenAlongAudioStreamEnabled: true,
+      listenAlongAutoRoomEnabled: true
     },
     shortcuts: {
       ...DEFAULT_SHORTCUTS
@@ -566,6 +598,9 @@ if (store.get("integrations").listenAlongRoomsEnabled === undefined) {
 if (store.get("integrations").listenAlongAudioStreamEnabled === undefined) {
   store.set("integrations.listenAlongAudioStreamEnabled", true);
 }
+if (store.get("integrations").listenAlongAutoRoomEnabled === undefined) {
+  store.set("integrations.listenAlongAutoRoomEnabled", true);
+}
 
 const applyUpdateFeed = () =>
   autoUpdater.setFeedURL({
@@ -626,6 +661,14 @@ store.onDidAnyChange(async (newState, oldState) => {
   if (newState.integrations.listenAlongAudioStreamEnabled !== oldState.integrations.listenAlongAudioStreamEnabled) {
     syncAudioPublisher();
     log.info(`Integration ${newState.integrations.listenAlongAudioStreamEnabled ? "enabled" : "disabled"}: Listen Along audio stream`);
+  }
+
+  if (
+    newState.integrations.discordPresenceEnabled !== oldState.integrations.discordPresenceEnabled ||
+    newState.integrations.listenAlongRoomsEnabled !== oldState.integrations.listenAlongRoomsEnabled ||
+    newState.integrations.listenAlongAutoRoomEnabled !== oldState.integrations.listenAlongAutoRoomEnabled
+  ) {
+    autoRoom.syncToggles();
   }
 
   // A saved channel change re-points the feed and applies the update right away
@@ -2046,6 +2089,7 @@ app.on("ready", async () => {
     if (!name) return;
 
     store.set("integrations.listenAlongDisplayName", name);
+    autoRoom.noteManualSession();
     roomSession.host(name);
   });
 
@@ -2056,12 +2100,16 @@ app.on("ready", async () => {
 
     store.set("integrations.listenAlongDisplayName", name);
     memoryStore.set("listenAlongRoomJoinPrompt", null);
+    autoRoom.noteManualSession();
     roomSession.join(roomId, name);
   });
 
   ipcMain.on("room:leave", event => {
     if (!isRoomSender(event.sender)) return;
 
+    // Leaving a room you host is a choice; automation respects it for the
+    // rest of the session instead of instantly reopening one.
+    autoRoom.noteManualLeave(roomSession.snapshot.isHost);
     roomSession.leave();
   });
 
@@ -2430,6 +2478,10 @@ app.on("ready", async () => {
     listenAlong.enable();
     log.info("Integration enabled: Listen along");
   }
+
+  // A room opens with the app while presence is shared, so the profile
+  // buttons and the web link work without anyone touching the room window.
+  autoRoom.evaluate();
 
   nativeTheme.on("updated", setTrayIcon);
 });

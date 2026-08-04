@@ -112,7 +112,8 @@ export class RoomSession {
     this.publish();
   }
 
-  host(displayName: string) {
+  // A null display name hosts anonymously; the wire simply omits it.
+  host(displayName: string | null) {
     this.stopSession();
     this.mode = "host";
     this.displayName = displayName;

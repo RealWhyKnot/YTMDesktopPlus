@@ -33,6 +33,8 @@ Start a room from the tray menu or the settings window and share the link; it al
 
 Friends without the app are not left out: the room link opens a web player that streams your audio live, with the track title and artwork, in any current browser. Web listeners are anonymous and never appear in the roster. Streaming is on while you host and can be turned off in settings; your local volume never affects what the room hears, but muting the app mutes the stream too.
 
+While Discord presence is on, a room opens by itself so the buttons on your profile always lead somewhere; the app tells you when that happens, the room stays anonymous unless you saved a display name, and the profile shows no Listen Along buttons at all when no room is live. Leaving the room keeps it closed for the rest of the session, and a setting turns automatic rooms off entirely.
+
 You pick a display name before hosting or joining. It is never taken from your account, and the room service keeps no record of names, members, or rooms once they close. Turning the Listen Along toggle off in settings means the app opens no connection to the room service at all and removes the Listen Along button from your Discord presence.
 
 ## Developing

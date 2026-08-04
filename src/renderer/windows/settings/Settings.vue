@@ -74,6 +74,7 @@ const stagedRefs: Record<StagedSettingKey, Ref<unknown>> = {
   "integrations.listenAlongRoomsEnabled": ref<unknown>(integrations.listenAlongRoomsEnabled),
   "integrations.listenAlongDisplayName": ref<unknown>(integrations.listenAlongDisplayName),
   "integrations.listenAlongAudioStreamEnabled": ref<unknown>(integrations.listenAlongAudioStreamEnabled),
+  "integrations.listenAlongAutoRoomEnabled": ref<unknown>(integrations.listenAlongAutoRoomEnabled),
   "lastfm.scrobblePercent": ref<unknown>(lastFM.scrobblePercent),
   "shortcuts.playPause": ref<unknown>(shortcuts.playPause),
   "shortcuts.next": ref<unknown>(shortcuts.next),
@@ -109,6 +110,7 @@ const lastFMEnabled = stagedRefs["integrations.lastFMEnabled"];
 const listenAlongRoomsEnabled = stagedRefs["integrations.listenAlongRoomsEnabled"];
 const listenAlongDisplayName = stagedRefs["integrations.listenAlongDisplayName"];
 const listenAlongAudioStreamEnabled = stagedRefs["integrations.listenAlongAudioStreamEnabled"];
+const listenAlongAutoRoomEnabled = stagedRefs["integrations.listenAlongAutoRoomEnabled"];
 const scrobblePercent = stagedRefs["lastfm.scrobblePercent"];
 const shortcutPlayPause = stagedRefs["shortcuts.playPause"];
 const shortcutNext = stagedRefs["shortcuts.next"];
@@ -528,6 +530,15 @@ window.ytmd.handleUpdateDownloaded(() => {
             indented
             name="Stream audio to web listeners"
             description="While you host a room, people who open your room link in a browser hear your playback live. Uses some upload bandwidth"
+            @change="stageChanged"
+          />
+          <YTMDSetting
+            v-if="listenAlongRoomsEnabled"
+            v-model="listenAlongAutoRoomEnabled"
+            type="checkbox"
+            indented
+            name="Open a room automatically with Discord presence"
+            description="While your presence is on, a room stays open so anyone who sees your profile can listen along, with your audio if web streaming is on. Turn off to only share rooms you start yourself"
             @change="stageChanged"
           />
           <div v-if="listenAlongRoomsEnabled" class="setting indented">

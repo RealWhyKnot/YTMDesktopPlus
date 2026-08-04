@@ -20,20 +20,17 @@ describe("buildButtons", () => {
     expect(buildButtons(false, { phase: "hosting", shareUrl: "https://ytmdesktopplus.com/r/abcdefgh" })).toBeUndefined();
   });
 
-  it("offers the listen along link outside a room", () => {
-    expect(buildButtons(true, null)).toEqual([{ label: "Listen Along", url: "https://ytmdesktopplus.com/p/abc123?t=60" }]);
+  it("offers no buttons at all without a live room", () => {
+    expect(buildButtons(true, null)).toBeUndefined();
+    expect(buildButtons(true, { phase: "listening", shareUrl: "https://ytmdesktopplus.com/r/abcdefgh" })).toBeUndefined();
+    expect(buildButtons(true, { phase: "connecting" })).toBeUndefined();
   });
 
-  it("adds the room link first while hosting", () => {
+  it("shows the room link first while hosting", () => {
     expect(buildButtons(true, { phase: "hosting", shareUrl: "https://ytmdesktopplus.com/r/abcdefgh" })).toEqual([
       { label: "Join Room", url: "https://ytmdesktopplus.com/r/abcdefgh" },
       { label: "Listen Along", url: "https://ytmdesktopplus.com/p/abc123?t=60" }
     ]);
-  });
-
-  it("offers no room link as a listener", () => {
-    const buttons = buildButtons(true, { phase: "listening", shareUrl: "https://ytmdesktopplus.com/r/abcdefgh" });
-    expect(buttons).toEqual([{ label: "Listen Along", url: "https://ytmdesktopplus.com/p/abc123?t=60" }]);
   });
 
   it("only ever emits http(s) urls", () => {

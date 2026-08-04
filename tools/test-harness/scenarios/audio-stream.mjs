@@ -62,6 +62,7 @@ export default async function audioStream(ctx) {
       async () => {
         await ctx.evalMain("window.ytmd.openSettingsWindow()");
         await ctx.waitTarget(SETTINGS_WINDOW, 15000);
+        await ctx.waitOnTarget(SETTINGS_WINDOW, "typeof window.ytmd?.openRoomWindow", kind => kind === "function", 15000);
         await ctx.evalOnTarget(SETTINGS_WINDOW, "window.ytmd.openRoomWindow()");
         await ctx.waitTarget(ROOM_WINDOW, 15000);
       },
