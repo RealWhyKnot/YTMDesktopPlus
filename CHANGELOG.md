@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- ci(release): pre-create the release so platform publishes cannot race, keep builds independent, current action majors
 - test(harness): audio capture capability probe and live stream scenario
 - feat(listen-along): stream room audio and artwork to browser listeners
 - fix(discord): route presence buttons through the https share page
