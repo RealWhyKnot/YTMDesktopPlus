@@ -245,7 +245,15 @@ try {
 
     Write-Output "Building the installer..."
     $buildStart = Get-Date
-    Invoke-Yarn @("make", "--platform", "win32", "--arch", $Arch)
+    # Marks the build as local so it never checks an update feed it is already
+    # ahead of.
+    $env:YTMD_LOCAL_BUILD = "1"
+    try {
+        Invoke-Yarn @("make", "--platform", "win32", "--arch", $Arch)
+    }
+    finally {
+        Remove-Item Env:\YTMD_LOCAL_BUILD -ErrorAction SilentlyContinue
+    }
 
     $makeDir = Join-Path $repoRoot ("out\make\squirrel.windows\" + $Arch)
     if (-not (Test-Path $makeDir)) { throw "no installer output at $makeDir" }

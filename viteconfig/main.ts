@@ -36,6 +36,9 @@ export default defineConfig({
     }
   },
   define: {
-    YTMD_DISABLE_UPDATES: devBuild
+    YTMD_DISABLE_UPDATES: devBuild,
+    // Set by scripts/Install-Local.ps1 so a sideloaded build never checks for
+    // updates it is already ahead of.
+    YTMD_LOCAL_BUILD: process.env.YTMD_LOCAL_BUILD === "1"
   }
 });

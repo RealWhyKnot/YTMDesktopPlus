@@ -42,7 +42,7 @@ import { migrateLegacyProfile } from "./profile-migration";
 import { cancelCue, cueTrack, providePlaybackView, sendPlaybackCommand } from "./playback";
 import { createLaunchPause } from "./playback/launch-pause";
 import { parseProtocolUrl } from "../shared/protocol-url";
-import { buildUpdateFeedUrl } from "../shared/update-feed";
+import { buildUpdateFeedUrl, isNewerVersion } from "../shared/update-feed";
 import { CONTROL_ACTIONS, isRoomId, sanitizeDisplayName, type ControlAction, type RoomRole } from "../shared/room-protocol";
 import { RelayClient } from "./integrations/listen-along/relay-client";
 import { RoomSession } from "./integrations/listen-along/room-session";
@@ -53,6 +53,7 @@ import { RoomSession } from "./integrations/listen-along/room-session";
 declare const ALL_WINDOWS_VITE_DEV_SERVER_URL: string;
 
 declare const YTMD_DISABLE_UPDATES: boolean;
+declare const YTMD_LOCAL_BUILD: boolean;
 
 // Must run before anything reads userData (logging, single instance lock,
 // config store).
@@ -325,6 +326,9 @@ function shouldDisableUpdates() {
   // macOS can't have auto updates without a code signature
   // linux is not supported on the update server https://github.com/ytmdesktop/ytmdesktop/issues/1247 (hanging issue resolved)
   if (process.platform !== "win32") return true;
+  // A build installed from a working tree is ahead of anything published, so
+  // checking would only poll a feed that can never have something newer.
+  if (YTMD_LOCAL_BUILD) return true;
 }
 
 function updatesSupported() {
@@ -355,8 +359,20 @@ if (updatesSupported()) {
     channelSwitchInstall = false;
     if (settingsWindow) settingsWindow.webContents.send("app:updateNotAvailable");
   });
-  autoUpdater.on("update-downloaded", () => {
-    log.info("Application update downloaded");
+  autoUpdater.on("update-downloaded", (_event, _releaseNotes, releaseName) => {
+    // Nothing is installed unless it is strictly newer than what is running, so
+    // a feed serving an older or equal release cannot roll the app backwards.
+    // releaseName carries the version on Windows; treat an unreadable one as
+    // not newer rather than guessing.
+    if (!isNewerVersion(releaseName, app.getVersion())) {
+      log.info(`Ignoring downloaded update ${releaseName}: not newer than ${app.getVersion()}`);
+      appLaunchUpdateCheck = false;
+      channelSwitchInstall = false;
+      if (settingsWindow) settingsWindow.webContents.send("app:updateNotAvailable");
+      return;
+    }
+
+    log.info(`Application update downloaded: ${releaseName}`);
     appUpdateDownloaded = true;
     memoryStore.set("appUpdateDownloaded", true);
     if (appLaunchUpdateCheck) autoUpdater.quitAndInstall();
