@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- fix(discord-presence): keep updating the activity after a refresh with no track loaded
 
 ## [v2026.804.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.804.1-beta) - 2026-08-04
 - feat(listen-along): open a room automatically while discord presence is shared
