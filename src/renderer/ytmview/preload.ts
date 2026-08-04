@@ -36,7 +36,10 @@ contextBridge.exposeInMainWorld("ytmd", {
   sendStoreUpdate: (queueState: unknown, likeStatus: string, volume: number, muted: boolean, adPlaying: boolean) =>
     ipcRenderer.send("ytmView:storeStateChanged", queueState, likeStatus, volume, muted, adPlaying),
   sendCreatePlaylistObservation: (playlist: unknown) => ipcRenderer.send("ytmView:createPlaylistObserved", playlist),
-  sendDeletePlaylistObservation: (playlistId: string) => ipcRenderer.send("ytmView:deletePlaylistObserved", playlistId)
+  sendDeletePlaylistObservation: (playlistId: string) => ipcRenderer.send("ytmView:deletePlaylistObserved", playlistId),
+  sendAudioChunks: (packets: { t: number; d: ArrayBuffer }[]) => ipcRenderer.send("ytmView:audioChunks", packets),
+  sendAudioCaptureStatus: (status: { cfg?: { sr: number; ch: number; br: number }; muted?: boolean; error?: string }) =>
+    ipcRenderer.send("ytmView:audioCaptureStatus", status)
 });
 
 function createStyleSheet() {

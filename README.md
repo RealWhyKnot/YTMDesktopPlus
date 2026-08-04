@@ -31,6 +31,8 @@ Settings from a previous YouTube Music Desktop App installation, including your 
 
 Start a room from the tray menu or the settings window and share the link; it also appears as a Join Room button on your Discord presence while you host. Friends join by link or by typing the 8 letter room code, so it works without Discord too. Everyone joins as a listener and follows your playback in sync; you can promote anyone to controller, which lets them skip, seek, pause, and change the track for the room.
 
+Friends without the app are not left out: the room link opens a web player that streams your audio live, with the track title and artwork, in any current browser. Web listeners are anonymous and never appear in the roster. Streaming is on while you host and can be turned off in settings; your local volume never affects what the room hears, but muting the app mutes the stream too.
+
 You pick a display name before hosting or joining. It is never taken from your account, and the room service keeps no record of names, members, or rooms once they close. Turning the Listen Along toggle off in settings means the app opens no connection to the room service at all and removes the Listen Along button from your Discord presence.
 
 ## Developing

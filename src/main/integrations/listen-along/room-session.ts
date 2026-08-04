@@ -62,6 +62,8 @@ export class RoomSession {
 
   private lastLocal: PlayerState | null = null;
   private lastSentAnchor: RoomStateFrame | null = null;
+  private audioStreaming = false;
+  private webListenerCount = 0;
   private clockOffsetMs = 0;
   private attempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
@@ -91,8 +93,23 @@ export class RoomSession {
       listenerCount: this.listenerCount,
       error: this.error,
       syncStatus: this.syncStatus,
-      syncDetail: this.syncDetail
+      syncDetail: this.syncDetail,
+      audioStreaming: this.audioStreaming,
+      webListenerCount: this.webListenerCount
     };
+  }
+
+  /** Present only while hosting an established room. Never leaves main. */
+  get hostCredentials(): { roomId: string; hostKey: string } | null {
+    if (this.mode !== "host" || !this.roomId || !this.hostKey) return null;
+    return { roomId: this.roomId, hostKey: this.hostKey };
+  }
+
+  setAudioStreamState(streaming: boolean, webListeners: number) {
+    if (this.audioStreaming === streaming && this.webListenerCount === webListeners) return;
+    this.audioStreaming = streaming;
+    this.webListenerCount = webListeners;
+    this.publish();
   }
 
   host(displayName: string) {
@@ -361,5 +378,7 @@ export class RoomSession {
     this.syncDetail = null;
     this.lastSentAnchor = null;
     this.attempts = 0;
+    this.audioStreaming = false;
+    this.webListenerCount = 0;
   }
 }

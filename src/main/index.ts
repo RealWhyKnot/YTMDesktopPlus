@@ -36,7 +36,10 @@ import LastFM from "./integrations/last-fm";
 import NowPlayingNotifications from "./integrations/notifications";
 import VolumeRatio from "./integrations/volume-ratio";
 import LoudnessNormalization from "./integrations/loudness-normalization";
+import AudioStreamCapture from "./integrations/audio-stream";
 import ListenAlong from "./integrations/listen-along";
+import { AudioPublisher, AudioRelayClient, type AudioCaptureStatus } from "./integrations/listen-along/audio-publisher";
+import type { BatchPacket } from "~shared/audio-protocol";
 import { initializeTestSeams, isTestRun } from "./test-seams";
 import { migrateLegacyProfile } from "./profile-migration";
 import { cancelCue, cueTrack, providePlaybackView, sendPlaybackCommand } from "./playback";
@@ -164,6 +167,7 @@ const listenAlong = new ListenAlong();
 const nowPlayingNotifications = new NowPlayingNotifications();
 const ratioVolume = new VolumeRatio();
 const loudnessNormalization = new LoudnessNormalization();
+const audioStreamCapture = new AudioStreamCapture();
 
 const ytmViewIntegrationScripts: { [name: string]: { [name: string]: string } } = {};
 
@@ -315,12 +319,34 @@ const roomSession = new RoomSession({
     memoryStore.set("listenAlongRoom", snapshot);
     // The Join Room presence button follows the hosting state.
     discordPresence.refreshActivity();
+    syncAudioPublisher();
   },
   getPlayerState: () => playerStateStore.getState(),
   now: () => Date.now()
 });
 memoryStore.set("listenAlongRoom", roomSession.snapshot);
-playerStateStore.addEventListener(state => roomSession.updateLocalState(state));
+
+// Streams the host's audio to browser listeners while a room is hosted. The
+// capture runs in the YTM page; this owns the socket and the send gates.
+const audioPublisher = new AudioPublisher({
+  createTransport: (url, handlers) => new AudioRelayClient(url, handlers),
+  startCapture: () => audioStreamCapture.enable(),
+  stopCapture: () => audioStreamCapture.disable(),
+  onUpdate: ({ streaming, webListeners }) => roomSession.setAudioStreamState(streaming, webListeners),
+  now: () => Date.now(),
+  log: (message, ...args) => log.info(message, ...args)
+});
+
+// Idempotent: called on every room snapshot and on the toggle changing.
+function syncAudioPublisher() {
+  const enabled = store.get("integrations").listenAlongAudioStreamEnabled;
+  audioPublisher.setCredentials(enabled ? roomSession.hostCredentials : null);
+}
+
+playerStateStore.addEventListener(state => {
+  roomSession.updateLocalState(state);
+  audioPublisher.updateLocalState(state);
+});
 
 function shouldDisableUpdates() {
   // macOS can't have auto updates without a code signature
@@ -455,7 +481,8 @@ const store = new Conf<StoreSchema>({
       listenAlongHostPort: 9863,
       listenAlongToken: null,
       listenAlongRoomsEnabled: true,
-      listenAlongDisplayName: null
+      listenAlongDisplayName: null,
+      listenAlongAudioStreamEnabled: true
     },
     shortcuts: {
       ...DEFAULT_SHORTCUTS
@@ -536,6 +563,9 @@ if (store.get("integrations").listenAlongRoomsEnabled === undefined) {
   store.set("integrations.listenAlongRoomsEnabled", true);
   store.set("integrations.listenAlongDisplayName", null);
 }
+if (store.get("integrations").listenAlongAudioStreamEnabled === undefined) {
+  store.set("integrations.listenAlongAudioStreamEnabled", true);
+}
 
 const applyUpdateFeed = () =>
   autoUpdater.setFeedURL({
@@ -591,6 +621,11 @@ store.onDidAnyChange(async (newState, oldState) => {
     discordPresence.refreshActivity();
   } else if (!oldState.integrations.listenAlongRoomsEnabled && newState.integrations.listenAlongRoomsEnabled) {
     discordPresence.refreshActivity();
+  }
+
+  if (newState.integrations.listenAlongAudioStreamEnabled !== oldState.integrations.listenAlongAudioStreamEnabled) {
+    syncAudioPublisher();
+    log.info(`Integration ${newState.integrations.listenAlongAudioStreamEnabled ? "enabled" : "disabled"}: Listen Along audio stream`);
   }
 
   // A saved channel change re-points the feed and applies the update right away
@@ -1277,6 +1312,7 @@ const createYTMView = (): void => {
   customCss.provide(store, ytmView);
   ratioVolume.provide(ytmView);
   loudnessNormalization.provide(ytmView);
+  audioStreamCapture.provide(ytmView);
   providePlaybackView(() => ytmView);
 
   // Attach events to ytm view
@@ -1836,6 +1872,7 @@ app.on("ready", async () => {
       // TODO: this is just a hack fix for ratio volume to run the enable script
       ratioVolume.ytmViewLoaded();
       loudnessNormalization.ytmViewLoaded();
+      audioStreamCapture.ytmViewLoaded();
       // TODO: this is just a hack fix for custom css to update CSS when the view loads
       customCss.updateCSS();
 
@@ -1896,6 +1933,25 @@ app.on("ready", async () => {
     if (event.sender !== ytmView.webContents) return;
 
     playerStateStore.updateFromStore(queue, likeStatus, volume, muted, adPlaying);
+  });
+
+  ipcMain.on("ytmView:audioChunks", (event, packets: { t: number; d: ArrayBuffer }[]) => {
+    if (event.sender !== ytmView.webContents) return;
+    if (!Array.isArray(packets)) return;
+
+    const cleaned: BatchPacket[] = [];
+    for (const packet of packets) {
+      if (typeof packet?.t !== "number" || !(packet.d instanceof ArrayBuffer)) continue;
+      cleaned.push({ timestampUs: packet.t, payload: new Uint8Array(packet.d) });
+    }
+    if (cleaned.length > 0) audioPublisher.handleChunks(cleaned);
+  });
+
+  ipcMain.on("ytmView:audioCaptureStatus", (event, status: AudioCaptureStatus) => {
+    if (event.sender !== ytmView.webContents) return;
+    if (typeof status !== "object" || status === null) return;
+
+    audioPublisher.handleCaptureStatus(status);
   });
 
   ipcMain.on("ytmView:launchPauseArmed", (event, videoId: string, wasMuted: boolean) => {
@@ -2296,6 +2352,10 @@ app.on("ready", async () => {
     return map;
   }, {});
   ytmViewIntegrationScripts["loudnessNormalization"] = loudnessNormalization.getYTMScripts().reduce<{ [name: string]: string }>((map, obj) => {
+    map[obj.name] = obj.script;
+    return map;
+  }, {});
+  ytmViewIntegrationScripts["audioStream"] = audioStreamCapture.getYTMScripts().reduce<{ [name: string]: string }>((map, obj) => {
     map[obj.name] = obj.script;
     return map;
   }, {});

@@ -141,6 +141,11 @@ function memberLabel(name: string | null, id: string) {
         </p>
       </div>
 
+      <div v-if="snapshot?.isHost && snapshot?.audioStreaming" class="notice streaming">
+        <span class="live-dot"></span>
+        <span>Streaming audio to the web{{ snapshot?.webListenerCount ? ` for ${snapshot.webListenerCount} listening in a browser` : "" }}</span>
+      </div>
+
       <div v-if="snapshot?.error" class="notice">{{ snapshot.error }}</div>
 
       <div v-if="!snapshot?.isHost && snapshot?.syncStatus === 'suspended'" class="notice suspended">
@@ -386,6 +391,21 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.notice.streaming {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-left-color: #4caf50;
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #4caf50;
+  flex-shrink: 0;
 }
 
 .members .member {

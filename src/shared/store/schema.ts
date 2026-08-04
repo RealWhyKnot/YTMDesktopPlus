@@ -50,6 +50,7 @@ export type StoreSchema = {
     listenAlongToken: string | null; // Encrypted for security
     listenAlongRoomsEnabled: boolean;
     listenAlongDisplayName: string | null; // user-typed, never derived from an account
+    listenAlongAudioStreamEnabled: boolean; // stream host audio to browser listeners while hosting
   };
   shortcuts: {
     playPause: string;

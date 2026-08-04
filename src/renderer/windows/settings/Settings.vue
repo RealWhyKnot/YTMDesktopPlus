@@ -73,6 +73,7 @@ const stagedRefs: Record<StagedSettingKey, Ref<unknown>> = {
   "integrations.lastFMEnabled": ref<unknown>(integrations.lastFMEnabled),
   "integrations.listenAlongRoomsEnabled": ref<unknown>(integrations.listenAlongRoomsEnabled),
   "integrations.listenAlongDisplayName": ref<unknown>(integrations.listenAlongDisplayName),
+  "integrations.listenAlongAudioStreamEnabled": ref<unknown>(integrations.listenAlongAudioStreamEnabled),
   "lastfm.scrobblePercent": ref<unknown>(lastFM.scrobblePercent),
   "shortcuts.playPause": ref<unknown>(shortcuts.playPause),
   "shortcuts.next": ref<unknown>(shortcuts.next),
@@ -107,6 +108,7 @@ const discordPresenceEnabled = stagedRefs["integrations.discordPresenceEnabled"]
 const lastFMEnabled = stagedRefs["integrations.lastFMEnabled"];
 const listenAlongRoomsEnabled = stagedRefs["integrations.listenAlongRoomsEnabled"];
 const listenAlongDisplayName = stagedRefs["integrations.listenAlongDisplayName"];
+const listenAlongAudioStreamEnabled = stagedRefs["integrations.listenAlongAudioStreamEnabled"];
 const scrobblePercent = stagedRefs["lastfm.scrobblePercent"];
 const shortcutPlayPause = stagedRefs["shortcuts.playPause"];
 const shortcutNext = stagedRefs["shortcuts.next"];
@@ -517,6 +519,15 @@ window.ytmd.handleUpdateDownloaded(() => {
             placeholder="Not set"
             name="Room display name"
             description="Shown to people in your rooms. You choose it; it is never taken from your account"
+            @change="stageChanged"
+          />
+          <YTMDSetting
+            v-if="listenAlongRoomsEnabled"
+            v-model="listenAlongAudioStreamEnabled"
+            type="checkbox"
+            indented
+            name="Stream audio to web listeners"
+            description="While you host a room, people who open your room link in a browser hear your playback live. Uses some upload bandwidth"
             @change="stageChanged"
           />
           <div v-if="listenAlongRoomsEnabled" class="setting indented">

@@ -201,4 +201,7 @@ export type RoomSnapshot = {
   error: string | null;
   syncStatus: "loading" | "synced" | "suspended" | null;
   syncDetail: string | null;
+  // Live audio for browser listeners, host side only.
+  audioStreaming: boolean;
+  webListenerCount: number;
 };

@@ -25,6 +25,7 @@ export const STAGED_SETTING_KEYS = [
   "integrations.lastFMEnabled",
   "integrations.listenAlongRoomsEnabled",
   "integrations.listenAlongDisplayName",
+  "integrations.listenAlongAudioStreamEnabled",
   "lastfm.scrobblePercent",
   "shortcuts.playPause",
   "shortcuts.next",
