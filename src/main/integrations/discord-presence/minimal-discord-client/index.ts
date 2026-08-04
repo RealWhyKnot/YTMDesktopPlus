@@ -79,7 +79,6 @@ export default class DiscordClient extends EventEmitter {
             },
             OPCode.HANDSHAKE
           );
-          this.emit("connect");
 
           this.ipcClient.on("close", () => {
             this.connected = false;
@@ -89,6 +88,22 @@ export default class DiscordClient extends EventEmitter {
             switch (op) {
               case OPCode.PING: {
                 this.ipcClient.send(json, OPCode.PONG);
+                break;
+              }
+
+              // "connect" waits for the READY dispatch rather than firing
+              // after the handshake write, so nothing sends an activity into
+              // a handshake discord has not accepted yet.
+              case OPCode.FRAME: {
+                const frame = json as { evt?: string | null; nonce?: string | null; data?: { code?: number; message?: string } | null };
+                if (frame?.evt === "READY") {
+                  log.debug("dipc: discord handshake ready");
+                  this.emit("connect");
+                } else if (frame?.evt === "ERROR") {
+                  // A rejected SET_ACTIVITY lands here; without this line it
+                  // fails without a trace.
+                  log.warn("dipc: discord rejected a frame", frame.data?.code, frame.data?.message, frame.nonce);
+                }
                 break;
               }
 

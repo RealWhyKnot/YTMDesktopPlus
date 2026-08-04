@@ -86,6 +86,17 @@ export default class DiscordPresence implements IIntegration {
       // One clock read, so the elapsed bar and the listen along link agree.
       const nowMs = Date.now();
       const startEpochMs = nowMs - this.progress * 1000;
+      const buttons = this.buildButtons(
+        buildListenAlongUrl({
+          videoId: id,
+          positionSeconds: this.progress,
+          playing,
+          durationSeconds,
+          isLive,
+          adPlaying: this.adPlaying,
+          nowMs
+        })
+      );
       this.discordClient.setActivity({
         type: DiscordActivityType.Listening,
         status_display_type: 1,
@@ -105,18 +116,9 @@ export default class DiscordPresence implements IIntegration {
           small_text: getSmallImageText(this.videoState)
         },
         instance: false,
-        buttons: this.buildButtons(
-          buildListenAlongUrl({
-            videoId: id,
-            positionSeconds: this.progress,
-            playing,
-            durationSeconds,
-            isLive,
-            adPlaying: this.adPlaying,
-            nowMs
-          })
-        )
+        buttons
       });
+      log.debug(`dpresence: activity set for ${id}, ${playing ? "playing" : "paused"}, ${buttons?.length ?? 0} buttons`);
       this.activityDebounceTimeout = null;
     }, 1000);
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildListenAlongUrl, parseProtocolUrl, resolveStartSeconds } from "../src/shared/protocol-url";
+import { buildListenAlongUrl, parseProtocolUrl, PLAY_SHARE_URL_BASE, resolveStartSeconds } from "../src/shared/protocol-url";
 
 describe("parseProtocolUrl", () => {
   it("parses the plain form", () => {
@@ -119,27 +119,38 @@ describe("buildListenAlongUrl", () => {
   const now = 1754236800000;
   const base = { videoId: "abc123", durationSeconds: 200, isLive: false, adPlaying: false, nowMs: now };
 
+  // What the /p/ share page redirects to: same path and query, scheme form.
+  const asDeepLink = (url: string) => url.replace(PLAY_SHARE_URL_BASE, "ytmdplus://play/");
+
   it("anchors to wall clock while playing", () => {
-    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true })).toBe(`ytmdplus://play/abc123?at=${now - 60_000}`);
+    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true })).toBe(`https://ytmdesktopplus.com/p/abc123?at=${now - 60_000}`);
   });
 
   it("freezes the position while paused", () => {
-    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: false })).toBe("ytmdplus://play/abc123?t=60");
+    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: false })).toBe("https://ytmdesktopplus.com/p/abc123?t=60");
   });
 
   it("includes a playlist when there is one", () => {
-    expect(buildListenAlongUrl({ ...base, playlistId: "PLxyz", positionSeconds: 60, playing: true })).toBe(`ytmdplus://play/abc123/PLxyz?at=${now - 60_000}`);
+    expect(buildListenAlongUrl({ ...base, playlistId: "PLxyz", positionSeconds: 60, playing: true })).toBe(
+      `https://ytmdesktopplus.com/p/abc123/PLxyz?at=${now - 60_000}`
+    );
   });
 
-  // Early in a track the link stays in the format older builds understand.
   it("omits the position near the start", () => {
-    expect(buildListenAlongUrl({ ...base, positionSeconds: 2, playing: true })).toBe("ytmdplus://play/abc123");
+    expect(buildListenAlongUrl({ ...base, positionSeconds: 2, playing: true })).toBe("https://ytmdesktopplus.com/p/abc123");
   });
 
   it("omits the position when it does not describe the music", () => {
-    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true, adPlaying: true })).toBe("ytmdplus://play/abc123");
-    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true, isLive: true })).toBe("ytmdplus://play/abc123");
-    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true, durationSeconds: 0 })).toBe("ytmdplus://play/abc123");
+    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true, adPlaying: true })).toBe("https://ytmdesktopplus.com/p/abc123");
+    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true, isLive: true })).toBe("https://ytmdesktopplus.com/p/abc123");
+    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true, durationSeconds: 0 })).toBe("https://ytmdesktopplus.com/p/abc123");
+  });
+
+  // Discord drops SET_ACTIVITY frames whose button urls are not http(s), so
+  // the built link must never be the raw scheme form.
+  it("is always https", () => {
+    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true }).startsWith("https://")).toBe(true);
+    expect(buildListenAlongUrl({ ...base, positionSeconds: 2, playing: false }).startsWith("https://")).toBe(true);
   });
 
   it("stays well inside Discord's button url limit", () => {
@@ -147,9 +158,9 @@ describe("buildListenAlongUrl", () => {
     expect(url.length).toBeLessThan(512);
   });
 
-  it("round-trips through the parser", () => {
+  it("round-trips through the share page redirect and the parser", () => {
     const url = buildListenAlongUrl({ ...base, playlistId: "PLxyz", positionSeconds: 60, playing: true });
-    expect(parseProtocolUrl(url)).toEqual({
+    expect(parseProtocolUrl(asDeepLink(url))).toEqual({
       command: "play",
       videoId: "abc123",
       playlistId: "PLxyz",
@@ -159,7 +170,7 @@ describe("buildListenAlongUrl", () => {
 
   it("resolves a freshly built link back to the position it encoded", () => {
     const url = buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true });
-    const parsed = parseProtocolUrl(url);
+    const parsed = parseProtocolUrl(asDeepLink(url));
     expect(resolveStartSeconds(parsed.anchor, now, 200)).toBe(60);
   });
 });

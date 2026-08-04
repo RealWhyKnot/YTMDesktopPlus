@@ -11,6 +11,11 @@
 // ytmdplus: is a non-special scheme, so URL parsing has two quirks worth
 // pinning: the host keeps its original case, and a link written without "//"
 // has no host at all and puts the command in the first path segment.
+//
+// The shared form of the link is https, not the scheme itself: Discord only
+// accepts http(s) urls on activity buttons, so the button carries the /p/
+// share page and that page forwards into ytmdplus://play with the same path
+// and query.
 
 export type PositionAnchor = { kind: "absolute"; seconds: number } | { kind: "anchor"; epochMs: number };
 
@@ -47,9 +52,12 @@ const MIN_SEEK_SECONDS = 3;
 // A link opened this close to the end has gone stale; start the track instead
 // of dropping the listener on the outro.
 const END_GUARD_SECONDS = 5;
-// Below this we emit no query param, so the link stays byte-identical to the
-// format older builds understand.
+// Below this we emit no query param; the receiver just starts the track.
 export const ANCHOR_OMIT_SECONDS = 5;
+
+// Base of the share page that forwards into ytmdplus://play, same host the
+// room share links live on.
+export const PLAY_SHARE_URL_BASE = "https://ytmdesktopplus.com/p/";
 
 function decodeSegments(pathname: string): string[] | null {
   const segments: string[] = [];
@@ -134,7 +142,7 @@ export function resolveStartSeconds(anchor: PositionAnchor | null, nowMs: number
 }
 
 export function buildListenAlongUrl(args: ListenAlongUrlArgs): string {
-  const base = `ytmdplus://play/${args.videoId}${args.playlistId ? `/${args.playlistId}` : ""}`;
+  const base = `${PLAY_SHARE_URL_BASE}${args.videoId}${args.playlistId ? `/${args.playlistId}` : ""}`;
 
   const positionUnusable = args.adPlaying || args.isLive || !Number.isFinite(args.durationSeconds) || args.durationSeconds <= 0;
   if (positionUnusable) return base;
