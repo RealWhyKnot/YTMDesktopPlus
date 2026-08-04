@@ -76,6 +76,9 @@ export default class DiscordPresence implements IIntegration {
   private UpdateActivity() {
     if (this.activityDebounceTimeout) return;
     this.activityDebounceTimeout = setTimeout(() => {
+      // Released before any early return: the handle is the debounce gate, so
+      // leaving it set would silence every later update for the session.
+      this.activityDebounceTimeout = null;
       if (!this.videoDetails) {
         this.discordClient.clearActivity();
         return;
@@ -119,7 +122,6 @@ export default class DiscordPresence implements IIntegration {
         buttons
       });
       log.debug(`dpresence: activity set for ${id}, ${playing ? "playing" : "paused"}, ${buttons?.length ?? 0} buttons`);
-      this.activityDebounceTimeout = null;
     }, 1000);
   }
 
