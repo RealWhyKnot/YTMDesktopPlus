@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.804.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.804.0-beta) - 2026-08-04
 - ci(release): pre-create the release so platform publishes cannot race, keep builds independent, current action majors
 - test(harness): audio capture capability probe and live stream scenario
 - feat(listen-along): stream room audio and artwork to browser listeners
