@@ -63,13 +63,43 @@ jobs:
           Write-Output "version=$version" >> $env:GITHUB_OUTPUT
           Write-Output "prerelease=$prerelease" >> $env:GITHUB_OUTPUT
 
+  prepare:
+    name: create release shell
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: validate
+    steps:
+      # Five platform builds publish into one release. Forge creates the
+      # release when it finds none for the tag, so two builds arriving
+      # together both create and one dies on already_exists; making the
+      # release here first means every build finds it and only uploads.
+      - name: Create the release for the tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh release view $env:TAG --repo $env:REPO *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Output "Release $env:TAG already exists"
+            exit 0
+          }
+          $flags = @("--title", $env:TAG, "--notes", "Build in progress; installers and notes land shortly.", "--verify-tag")
+          if ($env:PRERELEASE -eq 'true') { $flags += @("--prerelease", "--latest=false") }
+          gh release create $env:TAG --repo $env:REPO @flags
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
   build:
     name: publish (${{ matrix.os }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.image }}
     timeout-minutes: 60
-    needs: validate
+    needs: [validate, prepare]
     strategy:
-      fail-fast: true
+      # One platform's flake should not throw away the other four builds; a
+      # failed leg can be re-run on its own.
+      fail-fast: false
       matrix:
         include:
           - os: linux
@@ -92,16 +122,16 @@ jobs:
       YTMD_UPDATE_FEED_OWNER: ${{ vars.YTMD_UPDATE_FEED_OWNER }}
       YTMD_UPDATE_FEED_REPOSITORY: ${{ vars.YTMD_UPDATE_FEED_REPOSITORY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.validate.outputs.tag }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Enable corepack
         run: corepack enable
       - name: Cache electron binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.electron-cache
           key: electron-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
@@ -129,7 +159,7 @@ jobs:
     timeout-minutes: 10
     needs: [validate, build]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0

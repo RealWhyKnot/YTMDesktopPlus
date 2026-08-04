@@ -35,8 +35,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Enable corepack
@@ -84,14 +84,14 @@ jobs:
     env:
       ELECTRON_CACHE: ${{ github.workspace }}/.electron-cache
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Enable corepack
         run: corepack enable
       - name: Cache electron binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.electron-cache
           key: electron-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
