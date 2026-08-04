@@ -17,4 +17,4 @@
   if (state.context.state === "suspended") {
     state.context.resume();
   }
-})();
+});

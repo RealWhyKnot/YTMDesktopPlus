@@ -12,4 +12,4 @@
   }
   // A short ramp avoids the click a hard gain step would produce.
   state.gain.gain.setTargetAtTime(gain, state.context.currentTime, 0.05);
-})();
+});
