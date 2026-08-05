@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- feat(listen-along): show live room listeners in the main window title bar
 - fix(loudness-normalization): inject the gain scripts as callable functions
 - fix(discord-presence): keep updating the activity after a refresh with no track loaded
 
