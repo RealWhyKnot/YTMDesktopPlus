@@ -3,6 +3,7 @@
 ## Unreleased
 
 ## [v2026.805.0](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.805.0) - 2026-08-05
+- Stable build of v2026.805.0-beta.
 
 ## [v2026.805.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.805.0-beta) - 2026-08-05
 - feat(listen-along): show live room listeners in the main window title bar
