@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("ytmd", {
     ipcRenderer.on("mainWindow:stateChanged", callback),
   requestWindowState: () => ipcRenderer.send("mainWindow:requestWindowState"),
   openSettingsWindow: () => ipcRenderer.send("settingsWindow:open"),
+  openRoomWindow: () => ipcRenderer.send("room:openWindow"),
   switchFocus: (context: string) => ipcRenderer.send("ytmView:switchFocus", context),
   ytmViewNavigateDefault: () => ipcRenderer.send("ytmView:navigateDefault"),
   ytmViewRecreate: () => ipcRenderer.send("ytmView:recreate"),

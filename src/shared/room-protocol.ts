@@ -205,3 +205,15 @@ export type RoomSnapshot = {
   audioStreaming: boolean;
   webListenerCount: number;
 };
+
+export function isRoomLive(snapshot: RoomSnapshot | null): boolean {
+  return snapshot?.phase === "hosting" || snapshot?.phase === "listening";
+}
+
+// Everyone in the room except you, which is what an at-a-glance indicator is
+// asking about. The relay's count already leaves you out, so only a listener
+// has to add the host back in. Browser listeners are counted host side only.
+export function otherListenerCount(snapshot: RoomSnapshot | null): number {
+  if (!isRoomLive(snapshot)) return 0;
+  return snapshot.listenerCount + snapshot.webListenerCount + (snapshot.isHost ? 0 : 1);
+}

@@ -6,9 +6,12 @@ import {
   isFatalRelayError,
   isMeaningfulChange,
   isRoomId,
+  isRoomLive,
+  otherListenerCount,
   parseServerFrame,
   positionMsFrom,
-  sanitizeDisplayName
+  sanitizeDisplayName,
+  type RoomSnapshot
 } from "../src/shared/room-protocol";
 
 describe("parseServerFrame", () => {
@@ -100,5 +103,36 @@ describe("helpers", () => {
   it("builds share urls and encodes frames", () => {
     expect(buildRoomShareUrl("abcdefgh")).toBe("https://ytmdesktopplus.com/r/abcdefgh");
     expect(encodeClientFrame({ t: "j", r: "abcdefgh", d: "Alice" })).toBe('{"t":"j","r":"abcdefgh","d":"Alice"}');
+  });
+});
+
+function snapshot(fields: Partial<RoomSnapshot>): RoomSnapshot {
+  return { phase: "hosting", isHost: true, listenerCount: 0, webListenerCount: 0, ...fields } as RoomSnapshot;
+}
+
+describe("room indicator counts", () => {
+  it("is live only once the room is up", () => {
+    expect(isRoomLive(null)).toBe(false);
+    expect(isRoomLive(snapshot({ phase: "idle" }))).toBe(false);
+    expect(isRoomLive(snapshot({ phase: "connecting" }))).toBe(false);
+    expect(isRoomLive(snapshot({ phase: "failed" }))).toBe(false);
+    expect(isRoomLive(snapshot({ phase: "hosting" }))).toBe(true);
+    expect(isRoomLive(snapshot({ phase: "listening" }))).toBe(true);
+  });
+
+  it("counts nobody while the room is not live", () => {
+    expect(otherListenerCount(null)).toBe(0);
+    expect(otherListenerCount(snapshot({ phase: "connecting", listenerCount: 3 }))).toBe(0);
+  });
+
+  it("counts app and browser listeners for a host", () => {
+    expect(otherListenerCount(snapshot({}))).toBe(0);
+    expect(otherListenerCount(snapshot({ listenerCount: 2 }))).toBe(2);
+    expect(otherListenerCount(snapshot({ listenerCount: 2, webListenerCount: 3 }))).toBe(5);
+  });
+
+  it("counts the host for a listener", () => {
+    expect(otherListenerCount(snapshot({ phase: "listening", isHost: false }))).toBe(1);
+    expect(otherListenerCount(snapshot({ phase: "listening", isHost: false, listenerCount: 2 }))).toBe(3);
   });
 });

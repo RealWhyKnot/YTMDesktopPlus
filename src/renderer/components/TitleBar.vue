@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onBeforeMount, ref } from "vue";
+import { computed, onBeforeMount, ref } from "vue";
+import { isRoomLive, otherListenerCount, type RoomSnapshot } from "~shared/room-protocol";
 
 const props = defineProps({
   title: {
@@ -31,6 +32,7 @@ const restoreWindow = window.ytmd.restoreWindow;
 const closeWindow = window.ytmd.closeWindow;
 
 const openSettingsWindow = window.ytmd.openSettingsWindow;
+const openRoomWindow = window.ytmd.openRoomWindow;
 const navigateToDefault = window.ytmd.ytmViewNavigateDefault;
 
 const wcoVisible = ref(window.navigator.windowControlsOverlay.visible);
@@ -52,6 +54,15 @@ function restartApplicationForUpdate() {
 
 const ytmViewUnresponsive = ref<boolean>(false);
 const appUpdateDownloaded = ref<boolean>(false);
+const room = ref<RoomSnapshot | null>(null);
+
+const roomLive = computed(() => isRoomLive(room.value));
+const listenerCount = computed(() => otherListenerCount(room.value));
+
+const roomButtonTitle = computed(() => {
+  if (listenerCount.value === 0) return "Room is open, nobody listening yet";
+  return listenerCount.value === 1 ? "1 person listening along" : `${listenerCount.value} people listening along`;
+});
 
 if (props.isMainWindow) {
   const memoryStore = window.ytmd.memoryStore;
@@ -59,11 +70,13 @@ if (props.isMainWindow) {
   onBeforeMount(async () => {
     ytmViewUnresponsive.value = (await memoryStore.get("ytmViewUnresponsive")) ?? false;
     appUpdateDownloaded.value = (await memoryStore.get("appUpdateDownloaded")) ?? false;
+    room.value = (await memoryStore.get("listenAlongRoom")) ?? null;
   });
 
   memoryStore.onStateChanged(newState => {
     ytmViewUnresponsive.value = newState.ytmViewUnresponsive;
     appUpdateDownloaded.value = newState.appUpdateDownloaded;
+    room.value = newState.listenAlongRoom ?? null;
   });
 }
 </script>
@@ -94,6 +107,17 @@ if (props.isMainWindow) {
       </div>
       <div class="app-buttons">
         <slot name="app-buttons"></slot>
+        <button
+          v-if="isMainWindow && roomLive"
+          class="app-button room-button"
+          :class="{ active: listenerCount > 0 }"
+          tabindex="1"
+          :title="roomButtonTitle"
+          @click="openRoomWindow"
+        >
+          <span class="material-symbols-outlined">headphones</span>
+          <span v-if="listenerCount > 0" class="room-count">{{ listenerCount }}</span>
+        </button>
         <button v-if="hasHomeButton" class="app-button" tabindex="2" @click="navigateToDefault">
           <span class="material-symbols-outlined">home</span>
         </button>
@@ -272,5 +296,24 @@ if (props.isMainWindow) {
 .update-button {
   color: #f44336;
   margin-right: 24px;
+}
+
+.room-button {
+  width: auto;
+  min-width: 28px;
+  padding: 0 6px;
+  gap: 3px;
+}
+
+.room-count {
+  font-family: "Open Sans", sans-serif;
+  font-size: 12px;
+  line-height: 1;
+  color: #b4b4b4;
+}
+
+.room-button.active > .material-symbols-outlined,
+.room-button.active > .room-count {
+  color: #4caf50;
 }
 </style>
