@@ -8,6 +8,7 @@ import { BrowserView, safeStorage } from "electron";
 import { TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import { AuthToken } from "~shared/integrations/companion-server/types";
 import { RemoteSocket, DefaultEventsMap } from "socket.io";
+import { WebSocketServer } from "ws";
 import cors from "@fastify/cors";
 import MemoryStore from "../../memory-store";
 import log from "electron-log";
@@ -30,6 +31,11 @@ export default class CompanionServer implements IIntegration {
     this.fastifyServer.register(FastifyIO, {
       transports: ["websocket"],
       allowUpgrades: false,
+      // engine.io defaults this to ws's `Server` export, which only exists on
+      // the CommonJS entry point. Bundling resolves ws through its ESM wrapper,
+      // where the same class is exported as WebSocketServer and `Server` comes
+      // out undefined.
+      wsEngine: WebSocketServer,
       // While this is websocket only we still apply cors just in case
       cors: {
         origin: this.store.get("integrations.companionServerCORSWildcardEnabled", false) ? "*" : false
