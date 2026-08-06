@@ -67,6 +67,8 @@ const stagedRefs: Record<StagedSettingKey, Ref<unknown>> = {
   "playback.enableSpeakerFill": ref<unknown>(playback.enableSpeakerFill),
   "playback.ratioVolume": ref<unknown>(playback.ratioVolume),
   "playback.loudnessNormalization": ref<unknown>(playback.loudnessNormalization),
+  "playback.adBlockerEnabled": ref<unknown>(playback.adBlockerEnabled),
+  "playback.preventIdlePause": ref<unknown>(playback.preventIdlePause),
   "integrations.companionServerEnabled": ref<unknown>(integrations.companionServerEnabled),
   "integrations.companionServerCORSWildcardEnabled": ref<unknown>(integrations.companionServerCORSWildcardEnabled),
   "integrations.discordPresenceEnabled": ref<unknown>(integrations.discordPresenceEnabled),
@@ -103,6 +105,8 @@ const progressInTaskbar = stagedRefs["playback.progressInTaskbar"];
 const enableSpeakerFill = stagedRefs["playback.enableSpeakerFill"];
 const ratioVolume = stagedRefs["playback.ratioVolume"];
 const loudnessNormalization = stagedRefs["playback.loudnessNormalization"];
+const adBlockerEnabled = stagedRefs["playback.adBlockerEnabled"];
+const preventIdlePause = stagedRefs["playback.preventIdlePause"];
 const companionServerEnabled = stagedRefs["integrations.companionServerEnabled"];
 const companionServerCORSWildcardEnabled = stagedRefs["integrations.companionServerCORSWildcardEnabled"];
 const discordPresenceEnabled = stagedRefs["integrations.discordPresenceEnabled"];
@@ -439,6 +443,20 @@ window.ytmd.handleUpdateDownloaded(() => {
             type="checkbox"
             name="Loudness normalization"
             description="Levels tracks against each other using YouTube's measured loudness. Loud tracks come down; quiet tracks are never boosted"
+            @change="stageChanged"
+          />
+          <YTMDSetting
+            v-model="preventIdlePause"
+            type="checkbox"
+            name="Keep playing when idle"
+            description="Holds back the pause YouTube Music applies after a long stretch without interaction and dismisses the prompt that follows it"
+            @change="stageChanged"
+          />
+          <YTMDSetting
+            v-model="adBlockerEnabled"
+            type="checkbox"
+            name="Block ads"
+            description="Filters every request the YouTube Music session makes, sign-in included, against the EasyList and EasyPrivacy blocklists. The lists are downloaded on first use"
             @change="stageChanged"
           />
         </div>

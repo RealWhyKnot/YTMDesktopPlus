@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { cpSync, existsSync, mkdirSync, readFileSync } from "fs";
 import path from "path";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 
@@ -20,7 +20,27 @@ for (let i = 0; i < process.argv.length; i++) {
   }
 }
 
+// Vite bundles the main process, so a packaged build ships no node_modules. The
+// ad blocker is the exception: it reaches its content-script preload through
+// require.resolve, which runs while the main bundle is still loading, so a miss
+// stops the app from starting rather than merely disabling ad blocking.
+const ADBLOCKER_PRELOAD_PACKAGE = path.join("node_modules", "@ghostery", "adblocker-electron-preload");
+
 const config: ForgeConfig = {
+  hooks: {
+    // After the prune step, which walks the copied node_modules and would take
+    // this straight back out again.
+    packageAfterPrune: async (_forgeConfig, buildPath) => {
+      const destination = path.join(buildPath, ADBLOCKER_PRELOAD_PACKAGE);
+      mkdirSync(path.dirname(destination), { recursive: true });
+      cpSync(path.resolve(__dirname, ADBLOCKER_PRELOAD_PACKAGE), destination, { recursive: true });
+
+      const entryPoint = path.join(destination, "dist", "index.cjs");
+      if (!existsSync(entryPoint)) {
+        throw new Error(`Ad blocker preload missing from the package at ${entryPoint}`);
+      }
+    }
+  },
   packagerConfig: {
     // Must match the package name: the deb and rpm makers look the binary up
     // by that name.

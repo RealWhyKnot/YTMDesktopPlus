@@ -38,6 +38,8 @@ import NowPlayingNotifications from "./integrations/notifications";
 import VolumeRatio from "./integrations/volume-ratio";
 import LoudnessNormalization from "./integrations/loudness-normalization";
 import AudioStreamCapture from "./integrations/audio-stream";
+import NonStop from "./integrations/nonstop";
+import AdBlocker from "./integrations/ad-blocker";
 import ListenAlong from "./integrations/listen-along";
 import { AudioPublisher, AudioRelayClient, type AudioCaptureStatus } from "./integrations/listen-along/audio-publisher";
 import { AutoRoom } from "./integrations/listen-along/auto-room";
@@ -170,6 +172,8 @@ const nowPlayingNotifications = new NowPlayingNotifications();
 const ratioVolume = new VolumeRatio();
 const loudnessNormalization = new LoudnessNormalization();
 const audioStreamCapture = new AudioStreamCapture();
+const nonStop = new NonStop();
+const adBlocker = new AdBlocker();
 
 const ytmViewIntegrationScripts: { [name: string]: { [name: string]: string } } = {};
 
@@ -499,7 +503,9 @@ const store = new Conf<StoreSchema>({
       enableSpeakerFill: false,
       progressInTaskbar: false,
       ratioVolume: false,
-      loudnessNormalization: false
+      loudnessNormalization: false,
+      adBlockerEnabled: false,
+      preventIdlePause: false
     },
     integrations: {
       companionServerEnabled: false,
@@ -600,6 +606,12 @@ if (store.get("integrations").listenAlongAudioStreamEnabled === undefined) {
 }
 if (store.get("integrations").listenAlongAutoRoomEnabled === undefined) {
   store.set("integrations.listenAlongAutoRoomEnabled", true);
+}
+if (store.get("playback").adBlockerEnabled === undefined) {
+  store.set("playback.adBlockerEnabled", false);
+}
+if (store.get("playback").preventIdlePause === undefined) {
+  store.set("playback.preventIdlePause", false);
 }
 
 const applyUpdateFeed = () =>
@@ -724,6 +736,23 @@ store.onDidAnyChange(async (newState, oldState) => {
   } else if (!newState.playback.loudnessNormalization && oldState.playback.loudnessNormalization) {
     loudnessNormalization.disable();
     log.info("Integration disabled: Loudness normalization");
+  }
+
+  if (newState.playback.preventIdlePause) {
+    nonStop.provide(ytmView);
+  }
+  if (newState.playback.preventIdlePause && !oldState.playback.preventIdlePause) {
+    nonStop.enable();
+    log.info("Integration enabled: Prevent idle pause");
+  } else if (!newState.playback.preventIdlePause && oldState.playback.preventIdlePause) {
+    nonStop.disable();
+    log.info("Integration disabled: Prevent idle pause");
+  }
+
+  if (newState.playback.adBlockerEnabled && !oldState.playback.adBlockerEnabled) {
+    adBlocker.enable();
+  } else if (!newState.playback.adBlockerEnabled && oldState.playback.adBlockerEnabled) {
+    adBlocker.disable();
   }
 
   // Integrations
@@ -1356,7 +1385,13 @@ const createYTMView = (): void => {
   ratioVolume.provide(ytmView);
   loudnessNormalization.provide(ytmView);
   audioStreamCapture.provide(ytmView);
+  nonStop.provide(ytmView);
   providePlaybackView(() => ytmView);
+
+  // Cosmetic filter injection queues a did-stop-loading waiter per scriptlet
+  // while the page is still loading, which runs well past Node's default ceiling
+  // of ten and logs a listener-leak warning at error level.
+  ytmView.webContents.setMaxListeners(64);
 
   // Attach events to ytm view
   ytmView.webContents.on("will-navigate", event => {
@@ -1916,6 +1951,7 @@ app.on("ready", async () => {
       ratioVolume.ytmViewLoaded();
       loudnessNormalization.ytmViewLoaded();
       audioStreamCapture.ytmViewLoaded();
+      nonStop.ytmViewLoaded();
       // TODO: this is just a hack fix for custom css to update CSS when the view loads
       customCss.updateCSS();
 
@@ -2275,6 +2311,17 @@ app.on("ready", async () => {
 
   log.info("Setup permission handlers");
 
+  // Blocking is bound to the partition rather than the view, so it outlives a
+  // view recreation. The engine is built off this path: the lists come over the
+  // network and the app has to start without them.
+  adBlocker.provide(
+    session.fromPartition(app.isPackaged ? "persist:ytmview" : "persist:ytmview-dev"),
+    path.join(app.getPath("userData"), "adblocker-engine.bin")
+  );
+  if (store.get("playback").adBlockerEnabled) {
+    adBlocker.enable();
+  }
+
   // Register global shortcuts
   registerShortcuts();
 
@@ -2407,6 +2454,10 @@ app.on("ready", async () => {
     map[obj.name] = obj.script;
     return map;
   }, {});
+  ytmViewIntegrationScripts["nonStop"] = nonStop.getYTMScripts().reduce<{ [name: string]: string }>((map, obj) => {
+    map[obj.name] = obj.script;
+    return map;
+  }, {});
 
   // Create the YouTube Music view
   createYTMView();
@@ -2449,6 +2500,13 @@ app.on("ready", async () => {
     loudnessNormalization.provide(ytmView);
     loudnessNormalization.enable();
     log.info("Integration enabled: Loudness normalization");
+  }
+
+  // NonStop
+  if (store.get("playback").preventIdlePause) {
+    nonStop.provide(ytmView);
+    nonStop.enable();
+    log.info("Integration enabled: Prevent idle pause");
   }
 
   // CompanionServer

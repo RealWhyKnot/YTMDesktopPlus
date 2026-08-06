@@ -352,7 +352,14 @@ const startHooking = async () => {
         (
           await webFrame.executeJavaScript(`
             (function() {
-              document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playing ? document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.pauseVideo() : document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.playVideo();
+              const playerBar = document.querySelector("ytmusic-app-layout>ytmusic-player-bar");
+              if (playerBar.playing) {
+                // NonStop holds YTM's inactivity pause back; this is not one of those.
+                window.__ytmdNonStopAllowPause = true;
+                playerBar.playerApi.pauseVideo();
+              } else {
+                playerBar.playerApi.playVideo();
+              }
             })
           `)
         )();
@@ -374,6 +381,8 @@ const startHooking = async () => {
         (
           await webFrame.executeJavaScript(`
             (function() {
+              // NonStop holds YTM's inactivity pause back; this is not one of those.
+              window.__ytmdNonStopAllowPause = true;
               document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.pauseVideo();
             })
           `)

@@ -11,7 +11,12 @@ export const fixture = {
     continueWhereYouLeftOffPaused: false,
     enableSpeakerFill: false,
     progressInTaskbar: false,
-    ratioVolume: false
+    ratioVolume: false,
+    adBlockerEnabled: false,
+    // On so the pause steps below cover the case the naive version of this
+    // feature gets wrong: nobody interacts with the view during a harness run,
+    // so an inactivity-pause heuristic would swallow every command we send.
+    preventIdlePause: true
   },
   integrations: {
     companionServerEnabled: true,
@@ -59,4 +64,22 @@ export default async function playback(ctx) {
     },
     95000
   );
+
+  async function commandReachesState(command, trackState, timeout) {
+    const res = await ctx.companion.request("/api/v1/command", { method: "POST", token, body: { command } });
+    if (res.status !== 204) throw new Error(`${command} returned ${res.status}`);
+
+    const deadline = Date.now() + timeout;
+    let last = null;
+    while (Date.now() < deadline) {
+      const state = await ctx.companion.request("/api/v1/state", { token });
+      last = { status: state.status, player: state.body?.player };
+      if (last.player?.trackState === trackState) return;
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    throw new Error(`${command} never reached trackState ${trackState}: ${JSON.stringify(last)}`);
+  }
+
+  await ctx.step("pause takes effect while the view is idle", () => commandReachesState("pause", 0, 20000), 25000);
+  await ctx.step("play resumes after the pause", () => commandReachesState("play", 1, 20000), 25000);
 }

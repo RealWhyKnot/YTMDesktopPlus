@@ -67,5 +67,12 @@ export default async function configMigration(ctx) {
     if (typeof config.developer?.debugLogging !== "boolean") {
       throw new Error("developer.debugLogging was not backfilled");
     }
+    // The playback section above predates both keys, and conf does not merge
+    // defaults into a section it already has.
+    for (const key of ["adBlockerEnabled", "preventIdlePause"]) {
+      if (config.playback?.[key] !== false) {
+        throw new Error(`playback.${key} was not backfilled, got ${config.playback?.[key]}`);
+      }
+    }
   });
 }

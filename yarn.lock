@@ -1078,6 +1078,70 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@ghostery/adblocker-content@npm:^2.18.2":
+  version: 2.18.2
+  resolution: "@ghostery/adblocker-content@npm:2.18.2"
+  dependencies:
+    "@ghostery/adblocker-extended-selectors": "npm:^2.18.2"
+  checksum: 10c0/df7186d78b08209158143362e965fb56180d10655b8b0e2639e6f5e1f4acad6ed5921bb2e221a6863ed50dedce741aaad1f74f5c1ba031fad8bf5a766118a976
+  languageName: node
+  linkType: hard
+
+"@ghostery/adblocker-electron-preload@npm:^2.18.2":
+  version: 2.18.2
+  resolution: "@ghostery/adblocker-electron-preload@npm:2.18.2"
+  dependencies:
+    "@ghostery/adblocker-content": "npm:^2.18.2"
+  peerDependencies:
+    electron: ">11"
+  checksum: 10c0/1ff09f4186a19ac9992c92bfafb7123e51de7e689812620fe7d5560d9dfd51b77f15655ae8ecca476f91e1ea8610c7b652fd0e1fa38b549dc755606c4c6b296e
+  languageName: node
+  linkType: hard
+
+"@ghostery/adblocker-electron@npm:^2.18.2":
+  version: 2.18.2
+  resolution: "@ghostery/adblocker-electron@npm:2.18.2"
+  dependencies:
+    "@ghostery/adblocker": "npm:^2.18.2"
+    "@ghostery/adblocker-electron-preload": "npm:^2.18.2"
+    tldts-experimental: "npm:^7.4.9"
+  peerDependencies:
+    electron: ">11"
+  checksum: 10c0/0ad3f28be2ca0bf5287f59fc8a1e394f2e16faae4c8f3c4564a29e1f1d04020b577f3ff7ef0a836993a800f859ffe4f821ab825ebe21546c7cef88fae8cd30ab
+  languageName: node
+  linkType: hard
+
+"@ghostery/adblocker-extended-selectors@npm:^2.18.2":
+  version: 2.18.2
+  resolution: "@ghostery/adblocker-extended-selectors@npm:2.18.2"
+  checksum: 10c0/2e1d4b4f89b07ac8e5d73af31d353ea9545ea20c3b6f96c486d4e14855789f38a473a9309a6fec025effbe92b8f8241e3ea1e14c7a0025d7e50fec1314da3ca4
+  languageName: node
+  linkType: hard
+
+"@ghostery/adblocker@npm:^2.18.2":
+  version: 2.18.2
+  resolution: "@ghostery/adblocker@npm:2.18.2"
+  dependencies:
+    "@ghostery/adblocker-content": "npm:^2.18.2"
+    "@ghostery/adblocker-extended-selectors": "npm:^2.18.2"
+    "@ghostery/url-parser": "npm:^1.3.1"
+    "@remusao/guess-url-type": "npm:^2.1.0"
+    "@remusao/small": "npm:^2.1.0"
+    "@remusao/smaz": "npm:^2.2.0"
+    tldts-experimental: "npm:^7.4.9"
+  checksum: 10c0/1d69458bf290374d12357c1ff7e62b52e5d91e8b278df96463307c0e5e3fc5558231d7e999416e0de5bcef29ee6ebea887345b73dffd34d25684183392c3aad0
+  languageName: node
+  linkType: hard
+
+"@ghostery/url-parser@npm:^1.3.1":
+  version: 1.3.1
+  resolution: "@ghostery/url-parser@npm:1.3.1"
+  dependencies:
+    tldts-experimental: "npm:^7.0.8"
+  checksum: 10c0/d619560085a95f43f7d72c01ce785b4ac991f27b7b0c4a5dc118a42313d9fdbe06ddb8be408f1087a4ab9c855dac3de116ddc2dbd34c78aacc439dd233a590e2
+  languageName: node
+  linkType: hard
+
 "@humanfs/core@npm:^0.19.2":
   version: 0.19.2
   resolution: "@humanfs/core@npm:0.19.2"
@@ -1633,6 +1697,53 @@ __metadata:
   version: 0.11.0
   resolution: "@pkgjs/parseargs@npm:0.11.0"
   checksum: 10c0/5bd7576bb1b38a47a7fc7b51ac9f38748e772beebc56200450c4a817d712232b8f1d3ef70532c80840243c657d491cf6a6be1e3a214cff907645819fdc34aadd
+  languageName: node
+  linkType: hard
+
+"@remusao/guess-url-type@npm:^2.1.0":
+  version: 2.1.0
+  resolution: "@remusao/guess-url-type@npm:2.1.0"
+  checksum: 10c0/b33d27cb14a1354a3af5d6ac59ada8069a0e093d9617a3d3aa905619783073325245d50f2f0678803779b7501c499fe3a1118cbb23a77f7e9fe1e139c3ab6218
+  languageName: node
+  linkType: hard
+
+"@remusao/small@npm:^2.1.0":
+  version: 2.1.0
+  resolution: "@remusao/small@npm:2.1.0"
+  checksum: 10c0/79e915c59f052dce7735e38d0fcd49657f40947813b0eb1984a9ca632c88fce84c2fd62e61632354a61d1898f895f5a476b7d41d39e8f773a5c11e96ec7e6098
+  languageName: node
+  linkType: hard
+
+"@remusao/smaz-compress@npm:^2.2.0":
+  version: 2.2.0
+  resolution: "@remusao/smaz-compress@npm:2.2.0"
+  dependencies:
+    "@remusao/trie": "npm:^2.1.0"
+  checksum: 10c0/116dbc7d345cc5c3be3a238301d4352c5103050e6b49dab33cfe1125af1f095cfe16f2d4363fe37c94f7cec3e36be1ce3c64e303074dc5439ab98cf585faaa11
+  languageName: node
+  linkType: hard
+
+"@remusao/smaz-decompress@npm:^2.2.0":
+  version: 2.2.0
+  resolution: "@remusao/smaz-decompress@npm:2.2.0"
+  checksum: 10c0/b835f1f8f272fdb9ec6229adf98d50725df35fe9d7d4b155146b0139c93cf35d772cf01f4a5b27dad291971fae93831cb10fd72e2f95f0a1d6e78eae677d1569
+  languageName: node
+  linkType: hard
+
+"@remusao/smaz@npm:^2.2.0":
+  version: 2.2.0
+  resolution: "@remusao/smaz@npm:2.2.0"
+  dependencies:
+    "@remusao/smaz-compress": "npm:^2.2.0"
+    "@remusao/smaz-decompress": "npm:^2.2.0"
+  checksum: 10c0/d2e6424662de6128786020055789e1ee0c2eb352f2967f9bb0902f168b60c1eef40f5c76443c14ded1eff0987f14c849a6188d6d2a8e858a7e3b2004bb39fd87
+  languageName: node
+  linkType: hard
+
+"@remusao/trie@npm:^2.1.0":
+  version: 2.1.0
+  resolution: "@remusao/trie@npm:2.1.0"
+  checksum: 10c0/d5dbbe5eba140713c960037e20f7f76a0409aad76537513129c8a23ae34f20382f259f261f30419ce2993eb78207518cb4f136e80f20c1d62861c318c06f8296
   languageName: node
   linkType: hard
 
@@ -7988,6 +8099,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"tldts-core@npm:^7.4.10":
+  version: 7.4.10
+  resolution: "tldts-core@npm:7.4.10"
+  checksum: 10c0/a5f42aad8aa8adfc57d33e9bd5c43094e9de226dce4851867ea7014d8679040b4c01c500b9947595ab22cdfe9783ea5d88a7c0be2092d19a14f75c7cd4671181
+  languageName: node
+  linkType: hard
+
+"tldts-experimental@npm:^7.0.8, tldts-experimental@npm:^7.4.9":
+  version: 7.4.10
+  resolution: "tldts-experimental@npm:7.4.10"
+  dependencies:
+    tldts-core: "npm:^7.4.10"
+  checksum: 10c0/a23a6e7654ad8fcab540dc8f9cb2088e1420f7b7befcfa0c0ca94b6fde8a1f5b13592796cec203e7318909a51003a3356f6f41c3a54a40f136f8d45bf7469046
+  languageName: node
+  linkType: hard
+
 "tmp-promise@npm:^3.0.2":
   version: 3.0.3
   resolution: "tmp-promise@npm:3.0.3"
@@ -8909,6 +9036,8 @@ __metadata:
     "@fastify/error": "npm:^4.2.0"
     "@fastify/rate-limit": "npm:^10.3.0"
     "@fastify/type-provider-typebox": "npm:^5.2.0"
+    "@ghostery/adblocker-electron": "npm:^2.18.2"
+    "@ghostery/adblocker-electron-preload": "npm:^2.18.2"
     "@sinclair/typebox": "npm:^0.34.48"
     "@types/electron-squirrel-startup": "npm:^1.0.2"
     "@types/node": "npm:^22.19.11"

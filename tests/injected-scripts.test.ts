@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -7,7 +7,14 @@ import { describe, expect, it } from "vitest";
 // expression. A self-invoking one still runs, but the caller then invokes
 // undefined and the page logs a TypeError on every injection.
 
-const scriptDirectories = ["src/renderer/ytmview/scripts", "src/main/integrations/loudness-normalization/script"];
+// Every integration that ships page scripts keeps them in a script/ directory,
+// so discover them rather than listing them and losing coverage on the next one.
+const integrationScriptDirectories = readdirSync("src/main/integrations", { withFileTypes: true })
+  .filter(entry => entry.isDirectory())
+  .map(entry => join("src/main/integrations", entry.name, "script"))
+  .filter(directory => existsSync(directory));
+
+const scriptDirectories = ["src/renderer/ytmview/scripts", ...integrationScriptDirectories];
 
 const scripts = scriptDirectories.flatMap(directory =>
   readdirSync(directory)

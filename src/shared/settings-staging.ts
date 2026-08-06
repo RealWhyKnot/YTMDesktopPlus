@@ -19,6 +19,8 @@ export const STAGED_SETTING_KEYS = [
   "playback.enableSpeakerFill",
   "playback.ratioVolume",
   "playback.loudnessNormalization",
+  "playback.adBlockerEnabled",
+  "playback.preventIdlePause",
   "integrations.companionServerEnabled",
   "integrations.companionServerCORSWildcardEnabled",
   "integrations.discordPresenceEnabled",
