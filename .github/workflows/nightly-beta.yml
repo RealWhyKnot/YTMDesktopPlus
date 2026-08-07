@@ -1,5 +1,6 @@
-# Cuts a beta prerelease every night when main has moved since the last
-# release tag. The tag is vYYYY.MDD.N-beta for the current UTC date; N starts
+# Cuts a beta prerelease every night when a shippable commit has landed since
+# the last release tag, ignoring the changelog commits releases push back to
+# main. The tag is vYYYY.MDD.N-beta for the current UTC date; N starts
 # at 0 and increments if the date already has tags. Tags created with the
 # workflow token do not trigger tag-push workflows, so this dispatches
 # release.yml explicitly.
@@ -34,15 +35,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $head = git rev-parse HEAD
-          # Skip when the newest tag already points at HEAD (no changes since).
           $latestTag = git tag --list 'v20*' --sort=-creatordate | Select-Object -First 1
           if ($latestTag) {
-            $tagged = git rev-list -n 1 $latestTag
-            if ($tagged -eq $head) {
-              Write-Output "No changes since $latestTag, skipping"
+            # Comparing the tag against HEAD is not enough: every release pushes
+            # a changelog commit back to main, so main is always ahead of the
+            # newest tag by the next run and a beta would be cut every night
+            # with nothing in it. Only commits that carry release notes count.
+            $subjects = git log --format=%s "$latestTag..HEAD"
+            $shippable = @($subjects | Where-Object { $_ -notmatch '\[skip changelog\]' })
+            if ($shippable.Count -eq 0) {
+              Write-Output "Nothing but changelog bookkeeping since $latestTag, skipping"
               Write-Output "skip=true" >> $env:GITHUB_OUTPUT
               exit 0
             }
+            Write-Output "$($shippable.Count) shippable commit(s) since $latestTag"
           }
           $now = [DateTime]::UtcNow
           $minor = $now.Month * 100 + $now.Day
