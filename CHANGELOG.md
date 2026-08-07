@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- ci(nightly-beta): skip nights with only changelog bookkeeping
 - feat(playback): optional ad blocking and idle-pause prevention
 - fix(companion-server): pass ws's server class to socket.io
 
