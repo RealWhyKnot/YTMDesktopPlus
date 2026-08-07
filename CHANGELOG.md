@@ -5,10 +5,6 @@
 - feat(playback): optional ad blocking and idle-pause prevention
 - fix(companion-server): pass ws's server class to socket.io
 
-## [v2026.807.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.807.0-beta) - 2026-08-07
-
-## [v2026.806.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.806.0-beta) - 2026-08-06
-
 ## [v2026.805.0](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.805.0) - 2026-08-05
 - Stable build of v2026.805.0-beta.
 
