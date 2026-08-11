@@ -40,8 +40,8 @@ onBeforeMount(async () => {
 <style scoped>
 .container-wrapper {
   width: 100%;
-  height: calc(100% - 36px);
-  background-color: #000000;
+  height: calc(100% - var(--titlebar-height));
+  background-color: var(--bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -82,7 +82,7 @@ onBeforeMount(async () => {
 .code {
   margin-top: 16px;
   font-size: 36px;
-  color: #f44336;
+  color: var(--accent);
 }
 
 .buttons {
@@ -92,7 +92,7 @@ onBeforeMount(async () => {
 .allow,
 .deny {
   background: unset;
-  border: 1px solid #212121;
+  border: 1px solid var(--border);
   padding: 16px 32px;
   margin-right: 32px;
   border-radius: 4px;
@@ -100,7 +100,7 @@ onBeforeMount(async () => {
 }
 
 .allow:hover {
-  background-color: #212121;
+  background-color: var(--bg-control);
 }
 
 .deny {

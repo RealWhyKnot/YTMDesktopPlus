@@ -211,7 +211,7 @@ function memberLabel(name: string | null, id: string) {
 .field .label,
 .section-title {
   margin: 0 0 6px 0;
-  color: #bbbbbb;
+  color: var(--text-muted);
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -219,28 +219,28 @@ function memberLabel(name: string | null, id: string) {
 
 .hint {
   margin: 6px 0 0 0;
-  color: #969696;
+  color: var(--text-faint);
   font-size: 12px;
 }
 
 .text-input {
   width: 100%;
   box-sizing: border-box;
-  background-color: #111111;
-  color: #eeeeee;
-  border: 1px solid #323232;
+  background-color: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--bg-control-hover);
   border-radius: 4px;
   padding: 8px 10px;
   outline: none;
 }
 
 .text-input:focus {
-  border-color: #888888;
+  border-color: var(--border-strong);
 }
 
 .card {
-  background-color: #111111;
-  border: 1px solid #212121;
+  background-color: var(--bg-raised);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 14px;
   display: flex;
@@ -258,7 +258,7 @@ function memberLabel(name: string | null, id: string) {
 
 .card-body {
   margin: 0;
-  color: #bbbbbb;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -271,8 +271,8 @@ button {
   justify-content: center;
   gap: 6px;
   padding: 8px 14px;
-  background-color: #212121;
-  color: #eeeeee;
+  background-color: var(--bg-control);
+  color: var(--text);
 }
 
 button:disabled {
@@ -281,16 +281,16 @@ button:disabled {
 }
 
 .primary {
-  background-color: #f44336;
+  background-color: var(--accent);
 }
 
 .primary:disabled {
-  background-color: #212121;
+  background-color: var(--bg-control);
 }
 
 .subtle {
   background-color: transparent;
-  border: 1px solid #888888;
+  border: 1px solid var(--border-strong);
 }
 
 .subtle.small {
@@ -311,7 +311,7 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  color: #bbbbbb;
+  color: var(--text-muted);
 }
 
 .spinning {
@@ -329,7 +329,7 @@ button:disabled {
 }
 
 .error-icon {
-  color: #f44336;
+  color: var(--accent);
   font-size: 32px;
 }
 
@@ -350,8 +350,8 @@ button:disabled {
   font-family: Consolas, monospace;
   font-size: 22px;
   letter-spacing: 0.18em;
-  background-color: #111111;
-  border: 1px solid #323232;
+  background-color: var(--bg-raised);
+  border: 1px solid var(--bg-control-hover);
   border-radius: 6px;
   padding: 4px 10px;
   user-select: all;
@@ -359,7 +359,7 @@ button:disabled {
 
 .room-subtitle {
   margin: 8px 0 0 0;
-  color: #bbbbbb;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -369,7 +369,7 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #969696;
+  color: var(--text-faint);
 }
 
 .listener-count .material-symbols-outlined {
@@ -377,12 +377,12 @@ button:disabled {
 }
 
 .notice {
-  background-color: #111111;
-  border: 1px solid #323232;
-  border-left: 3px solid #f44336;
+  background-color: var(--bg-raised);
+  border: 1px solid var(--bg-control-hover);
+  border-left: 3px solid var(--accent);
   border-radius: 4px;
   padding: 8px 10px;
-  color: #bbbbbb;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -397,14 +397,14 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
-  border-left-color: #4caf50;
+  border-left-color: var(--success);
 }
 
 .live-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background-color: #4caf50;
+  background-color: var(--success);
   flex-shrink: 0;
 }
 
@@ -424,7 +424,7 @@ button:disabled {
 }
 
 .you-tag {
-  color: #969696;
+  color: var(--text-faint);
   font-size: 12px;
   margin-left: 4px;
 }
@@ -438,22 +438,22 @@ button:disabled {
 }
 
 .host-badge {
-  background-color: #f44336;
+  background-color: var(--accent);
 }
 
 .controller-badge {
-  background-color: #323232;
+  background-color: var(--bg-control-hover);
 }
 
 .empty {
-  color: #969696;
+  color: var(--text-faint);
   font-size: 13px;
   margin: 8px 0 0 0;
 }
 
 .icon-button {
   padding: 6px;
-  background-color: #212121;
+  background-color: var(--bg-control);
 }
 
 .transport {
@@ -476,7 +476,7 @@ button:disabled {
 
 .leave {
   background-color: transparent;
-  border: 1px solid #f44336;
-  color: #f44336;
+  border: 1px solid var(--accent);
+  color: var(--accent);
 }
 </style>

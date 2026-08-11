@@ -19,7 +19,7 @@ On Windows the app can install updates on launch, like Discord does. It asks onc
 - Last.fm scrobbling
 - Loudness normalization: levels tracks against each other using YouTube's own measured loudness, without ever boosting quiet tracks
 - Native notifications on song change
-- Custom CSS injection with live reload
+- Addons: drop-in folders of CSS, page scripts or code that extend the app, managed from the settings window (see [docs/addons.md](docs/addons.md)). Custom CSS lives here now, still with live reload; the rooms feature itself ships as one
 - Companion server: a local REST and WebSocket API on port 9863 that remote control apps can use after a one-time authorization
 - `ytmdplus://play/<videoId>` protocol links, including a Listen Along button on your Discord presence that opens the track where you are in it
 
@@ -29,7 +29,7 @@ Settings from a previous YouTube Music Desktop App installation, including your 
 
 ## Listen Along rooms
 
-Start a room from the tray menu or the settings window and share the link; it also appears as a Join Room button on your Discord presence while you host. Friends join by link or by typing the 8 letter room code, so it works without Discord too. Everyone joins as a listener and follows your playback in sync; you can promote anyone to controller, which lets them skip, seek, pause, and change the track for the room.
+Start a room from the tray menu and share the link; it also appears as a Join Room button on your Discord presence while you host. Friends join by link or by typing the 8 letter room code, so it works without Discord too. Everyone joins as a listener and follows your playback in sync; you can promote anyone to controller, which lets them skip, seek, pause, and change the track for the room.
 
 Friends without the app are not left out: the room link opens a web player that streams your audio live, with the track title and artwork, in any current browser. Web listeners are anonymous and never appear in the roster. Streaming is on while you host and can be turned off in settings; your local volume never affects what the room hears, but muting the app mutes the stream too.
 

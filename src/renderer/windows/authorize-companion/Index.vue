@@ -12,14 +12,14 @@ import Auth from "./Auth.vue";
 
 <style scoped>
 .auth {
-  border-top: 1px solid #212121;
-  background-color: #000000;
-  height: calc(100% - 36px);
+  border-top: 1px solid var(--border);
+  background-color: var(--bg);
+  height: calc(100% - var(--titlebar-height));
 }
 
 .container {
   width: 100%;
   height: 100%;
-  background-color: #000000;
+  background-color: var(--bg);
 }
 </style>
