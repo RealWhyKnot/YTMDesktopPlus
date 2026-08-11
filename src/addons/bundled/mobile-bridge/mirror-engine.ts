@@ -19,6 +19,8 @@ export type RemoteTrack = {
   title: string;
   author: string;
   thumbnailUrl: string | null;
+  /** From the history row when it carries one; null means unknown */
+  durationSeconds?: number | null;
 };
 
 export type Mirror = {
@@ -28,6 +30,10 @@ export type Mirror = {
 
 export type MirrorEngineDeps = {
   fetchHead(): Promise<RemoteTrack[]>;
+  /** One-shot duration lookup for tracks whose history row carries none.
+   *  Called at most once per videoId; answers are cached. Optional: without
+   *  it, unknown durations fall back to the flat expiry. */
+  fetchDuration?(videoId: string): Promise<number | null>;
   onChange(mirror: Mirror | null): void;
   now(): number;
   setTimer(fn: () => void, ms: number): unknown;
@@ -39,6 +45,8 @@ export const POLL_INTERVAL_MS = 25_000;
 export const SLOW_POLL_INTERVAL_MS = 90_000;
 export const SLOW_AFTER_QUIET_MS = 15 * 60_000;
 export const MIRROR_EXPIRY_MS = 6 * 60_000;
+export const EXPIRY_SLACK_MS = 60_000;
+export const DURATION_CACHE_SIZE = 8;
 export const LOCAL_RING_SIZE = 10;
 
 export class MirrorEngine {
@@ -50,6 +58,8 @@ export class MirrorEngine {
   private polling = false;
   private lastHeadChangeMs = 0;
   private expiredVideoId: string | null = null;
+  private currentExpiryMs = MIRROR_EXPIRY_MS;
+  private durations = new Map<string, number>();
   private stopped = false;
 
   constructor(deps: MirrorEngineDeps) {
@@ -94,6 +104,40 @@ export class MirrorEngine {
     this.deps.onChange(mirror);
   }
 
+  private rememberDuration(videoId: string, seconds: number): void {
+    this.durations.set(videoId, seconds);
+    if (this.durations.size > DURATION_CACHE_SIZE) {
+      this.durations.delete(this.durations.keys().next().value);
+    }
+  }
+
+  /** Sets the expiry window for a newly mirrored track: its duration plus
+   *  slack when known (history row, then cache, then one lookup), the flat
+   *  fallback otherwise. The lookup happens at most once per videoId. */
+  private applyExpiry(track: RemoteTrack): void {
+    const known = track.durationSeconds || this.durations.get(track.videoId);
+    if (known) {
+      this.rememberDuration(track.videoId, known);
+      this.currentExpiryMs = known * 1000 + EXPIRY_SLACK_MS;
+      return;
+    }
+    this.currentExpiryMs = MIRROR_EXPIRY_MS;
+    // A cache entry, even the 0 recorded on a miss, means this id was already
+    // looked up once; never ask again.
+    if (!this.deps.fetchDuration || this.durations.has(track.videoId)) return;
+    this.rememberDuration(track.videoId, 0);
+    void this.deps
+      .fetchDuration(track.videoId)
+      .then(seconds => {
+        if (!seconds) return;
+        this.rememberDuration(track.videoId, seconds);
+        if (this.mirror?.track.videoId === track.videoId) {
+          this.currentExpiryMs = seconds * 1000 + EXPIRY_SLACK_MS;
+        }
+      })
+      .catch(error => this.deps.onPollError?.(error));
+  }
+
   private schedule(ms: number): void {
     if (this.stopped) return;
     if (this.timer !== null) this.deps.clearTimer(this.timer);
@@ -124,10 +168,12 @@ export class MirrorEngine {
           } else if (this.mirror?.track.videoId !== head.videoId) {
             this.expiredVideoId = null;
             this.lastHeadChangeMs = now;
+            this.applyExpiry(head);
             this.setMirror({ track: head, firstSeenMs: now });
-          } else if (now - this.lastHeadChangeMs > MIRROR_EXPIRY_MS) {
-            // The same head for this long means the listening session most
-            // likely ended; history cannot say so directly.
+          } else if (now - this.lastHeadChangeMs > this.currentExpiryMs) {
+            // No newer track for the length of this one plus slack means the
+            // listening session most likely ended; history cannot say so
+            // directly (pause and stop are invisible to it).
             this.expiredVideoId = head.videoId;
             this.setMirror(null);
           }

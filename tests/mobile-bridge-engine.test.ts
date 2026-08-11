@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  EXPIRY_SLACK_MS,
   LOCAL_RING_SIZE,
   MIRROR_EXPIRY_MS,
   Mirror,
@@ -14,13 +15,20 @@ import {
 // now-playing signal, local plays are never mirrored, and silence expires the
 // mirror. Timers and the clock are injected, so time is simulated directly.
 
-const track = (videoId: string): RemoteTrack => ({ videoId, title: `title-${videoId}`, author: "author", thumbnailUrl: null });
+const track = (videoId: string, durationSeconds: number | null = null): RemoteTrack => ({
+  videoId,
+  title: `title-${videoId}`,
+  author: "author",
+  thumbnailUrl: null,
+  durationSeconds
+});
 
-function makeHarness() {
+function makeHarness(durations: Record<string, number | null> = {}) {
   let now = 0;
   let nextTimerId = 1;
   const timers: { id: number; at: number; fn: () => void }[] = [];
   const changes: (Mirror | null)[] = [];
+  const durationLookups: string[] = [];
   let head: RemoteTrack[] = [];
   let fetches = 0;
   let failNextFetch = false;
@@ -33,6 +41,10 @@ function makeHarness() {
         throw new Error("network down");
       }
       return head;
+    },
+    fetchDuration: async videoId => {
+      durationLookups.push(videoId);
+      return durations[videoId] ?? null;
     },
     onChange: mirror => changes.push(mirror),
     now: () => now,
@@ -67,6 +79,7 @@ function makeHarness() {
     engine,
     changes,
     advance,
+    durationLookups,
     setHead: (items: RemoteTrack[]) => (head = items),
     failNext: () => (failNextFetch = true),
     fetchCount: () => fetches
@@ -133,6 +146,53 @@ describe("mirror engine", () => {
     h.setHead([track("a")]);
     await h.advance(POLL_INTERVAL_MS);
     expect(h.changes.map(change => change?.track.videoId)).toEqual(["a", "b", "a"]);
+  });
+
+  it("uses the track duration plus slack as the expiry when the history row carries one", async () => {
+    // 10 minutes: longer than the flat fallback, so a mix does not drop early
+    const h = makeHarness();
+    h.setHead([track("longmix", 600)]);
+    h.engine.start();
+    await h.advance(0);
+    expect(h.durationLookups).toEqual([]);
+
+    await h.advance(MIRROR_EXPIRY_MS + POLL_INTERVAL_MS * 2);
+    expect(h.changes.at(-1)).not.toBeNull();
+
+    await h.advance(600_000 + EXPIRY_SLACK_MS);
+    expect(h.changes.at(-1)).toBeNull();
+  });
+
+  it("looks a missing duration up once, remembers it, and never asks twice", async () => {
+    const h = makeHarness({ shortsong: 120 });
+    h.setHead([track("shortsong")]);
+    h.engine.start();
+    await h.advance(0);
+    expect(h.durationLookups).toEqual(["shortsong"]);
+
+    // 2 minutes plus slack, well before the flat fallback
+    await h.advance(120_000 + EXPIRY_SLACK_MS + POLL_INTERVAL_MS * 2);
+    expect(h.changes.at(-1)).toBeNull();
+
+    // The same track coming back (a skip-revert) reuses the cached answer
+    h.setHead([track("other", 300)]);
+    await h.advance(POLL_INTERVAL_MS);
+    h.setHead([track("shortsong")]);
+    await h.advance(POLL_INTERVAL_MS);
+    expect(h.changes.at(-1)?.track.videoId).toBe("shortsong");
+    expect(h.durationLookups).toEqual(["shortsong"]);
+  });
+
+  it("keeps the flat expiry when the duration lookup answers nothing, without retrying", async () => {
+    const h = makeHarness({ mystery: null });
+    h.setHead([track("mystery")]);
+    h.engine.start();
+    await h.advance(0);
+    await h.advance(MIRROR_EXPIRY_MS - POLL_INTERVAL_MS);
+    expect(h.changes.at(-1)).not.toBeNull();
+    await h.advance(POLL_INTERVAL_MS * 3);
+    expect(h.changes.at(-1)).toBeNull();
+    expect(h.durationLookups).toEqual(["mystery"]);
   });
 
   it("expires the mirror after a quiet period and stays quiet until the head changes", async () => {

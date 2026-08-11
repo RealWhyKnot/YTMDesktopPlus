@@ -45,11 +45,22 @@
       );
       const thumbnails =
         (item.thumbnail && item.thumbnail.musicThumbnailRenderer && item.thumbnail.musicThumbnailRenderer.thumbnail && item.thumbnail.musicThumbnailRenderer.thumbnail.thumbnails) || [];
+      // Duration rides along in the fixed columns as "m:ss" or "h:mm:ss" when
+      // the row has one; parsing it here saves a lookup call entirely.
+      let durationSeconds = null;
+      for (const fixed of item.fixedColumns || []) {
+        const text = runsText(fixed.musicResponsiveListItemFixedColumnRenderer && fixed.musicResponsiveListItemFixedColumnRenderer.text && fixed.musicResponsiveListItemFixedColumnRenderer.text.runs);
+        if (/^\d+(:\d{2})+$/.test(text)) {
+          durationSeconds = text.split(":").reduce((total, part) => total * 60 + Number(part), 0);
+          break;
+        }
+      }
       items.push({
         videoId: (item.playlistItemData && item.playlistItemData.videoId) || null,
         title: columns[0] || "",
         author: columns[1] || "",
-        thumbnailUrl: thumbnails.length ? thumbnails[thumbnails.length - 1].url : null
+        thumbnailUrl: thumbnails.length ? thumbnails[thumbnails.length - 1].url : null,
+        durationSeconds
       });
       return;
     }

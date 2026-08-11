@@ -2,6 +2,7 @@ import type { BundledAddonDefinition } from "../../../main/addons/manager";
 import { VideoState } from "../../../main/player-state-store";
 import { MirrorEngine, type Mirror, type RemoteTrack } from "./mirror-engine";
 import getHistoryScript from "./scripts/gethistory.script?raw";
+import getDurationScript from "./scripts/getduration.script?raw";
 import bannerScript from "./scripts/banner.script?raw";
 
 const BANNER_CSS = `
@@ -79,6 +80,7 @@ const mobileBridgeAddon: BundledAddonDefinition = {
     ]);
 
     ctx.ytmview.registerScript("gethistory", getHistoryScript);
+    ctx.ytmview.registerScript("getduration", getDurationScript);
     ctx.ytmview.registerScript("banner", bannerScript);
     ctx.ytmview.insertCSS(BANNER_CSS);
 
@@ -116,6 +118,10 @@ const mobileBridgeAddon: BundledAddonDefinition = {
       fetchHead: async () => {
         const head = await ctx.ytmview.invokeScript("gethistory");
         return Array.isArray(head) ? (head as RemoteTrack[]) : [];
+      },
+      fetchDuration: async videoId => {
+        const seconds = await ctx.ytmview.invokeScript("getduration", videoId);
+        return typeof seconds === "number" && seconds > 0 ? seconds : null;
       },
       onChange: next => {
         mirror = next;
