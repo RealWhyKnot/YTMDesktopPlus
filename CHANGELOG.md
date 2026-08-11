@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- feat(discord): hide presence while paused by default
 
 ## [v2026.811.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.811.0-beta) - 2026-08-11
 - style(renderer): adopt the shared palette in the room and companion windows
