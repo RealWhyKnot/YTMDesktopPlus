@@ -23,9 +23,11 @@ export const fixture = {
     listenAlongEnabled: false,
     listenAlongHost: null,
     listenAlongHostPort: 9863,
-    listenAlongToken: null,
-    listenAlongRoomsEnabled: true,
-    listenAlongDisplayName: "Harness Listener"
+    listenAlongToken: null
+  },
+  addons: {
+    states: { rooms: { enabled: true } },
+    settings: { rooms: { displayName: "Harness Listener" } }
   }
 };
 

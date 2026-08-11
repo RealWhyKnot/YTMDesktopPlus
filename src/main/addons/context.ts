@@ -136,6 +136,18 @@ export interface AddonContext {
     setBadge(badge: Omit<AddonTitlebarBadge, "addonId"> | null): void;
     onBadgeClick(callback: () => void): Unsubscribe;
   };
+  /** Core store and memory-store access for the bundled rooms addon: it owns
+   *  memory keys the room renderer reads and reacts to integration toggles
+   *  that live outside the addon namespace. External addons should use
+   *  ctx.settings and ctx.memory instead. */
+  coreSettings: {
+    get<T = unknown>(dottedKey: string): T;
+    onDidChange(section: "integrations", callback: (next: StoreSchema["integrations"], prev: StoreSchema["integrations"]) => void): Unsubscribe;
+  };
+  coreMemory: {
+    get<T = unknown>(key: keyof MemoryStoreSchema & string): T;
+    set(key: keyof MemoryStoreSchema & string, value: unknown): void;
+  };
 }
 
 export function createAddonContext(manifest: AddonManifest, services: AddonHostServices, bridge: AddonHostBridge): AddonContext {
@@ -334,6 +346,33 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       },
       onBadgeClick(callback) {
         return bridge.addBadgeClickCallback(callback);
+      }
+    },
+
+    coreSettings: {
+      get<T>(dottedKey: string) {
+        let current: unknown = services.store.store;
+        for (const part of dottedKey.split(".")) {
+          if (current === null || typeof current !== "object") return undefined as T;
+          current = (current as Record<string, unknown>)[part];
+        }
+        return current as T;
+      },
+      onDidChange(section, callback) {
+        const unsubscribe = services.store.onDidChange(section, (newValue, oldValue) => {
+          if (newValue && oldValue) callback(newValue, oldValue);
+        });
+        bridge.addCleanup(unsubscribe);
+        return unsubscribe;
+      }
+    },
+
+    coreMemory: {
+      get<T>(key: string) {
+        return services.memoryStore.get(key) as T;
+      },
+      set(key, value) {
+        services.memoryStore.set(key, value);
       }
     }
   };

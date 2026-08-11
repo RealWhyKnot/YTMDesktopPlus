@@ -50,10 +50,6 @@ export type StoreSchema = {
     listenAlongHost: string | null; // hostname or address, no scheme
     listenAlongHostPort: number;
     listenAlongToken: string | null; // Encrypted for security
-    listenAlongRoomsEnabled: boolean;
-    listenAlongDisplayName: string | null; // user-typed, never derived from an account
-    listenAlongAudioStreamEnabled: boolean; // stream host audio to browser listeners while hosting
-    listenAlongAutoRoomEnabled: boolean; // keep a room open automatically while Discord presence is on
   };
   shortcuts: {
     playPause: string;

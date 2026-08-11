@@ -36,9 +36,7 @@ function stateFixture(overrides: Record<string, unknown> = {}) {
       companionServerCORSWildcardEnabled: false,
       discordPresenceEnabled: true,
       discordPresenceHideOnPause: false,
-      lastFMEnabled: false,
-      listenAlongRoomsEnabled: true,
-      listenAlongDisplayName: null
+      lastFMEnabled: false
     },
     lastfm: { scrobblePercent: 50 },
     shortcuts: { playPause: "", next: "", previous: "", thumbsUp: "", thumbsDown: "", volumeUp: "", volumeDown: "" },

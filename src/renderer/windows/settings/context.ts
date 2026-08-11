@@ -36,7 +36,6 @@ export type SettingsShell = {
   restartDiscordPresence(): void;
   deleteCompanionAuthToken(appId: string): Promise<void>;
   logoutLastFM(): void;
-  openRoomWindow(): void;
 };
 
 export const settingsShellKey: InjectionKey<SettingsShell> = Symbol("settings-shell");

@@ -156,10 +156,6 @@ function restartApplication() {
   window.ytmd.restartApplication();
 }
 
-function openRoomWindow() {
-  window.ytmd.openRoomWindow();
-}
-
 function restartApplicationForUpdate() {
   window.ytmd.restartApplicationForUpdate();
 }
@@ -217,8 +213,7 @@ provide(settingsShellKey, {
   memorySettingsChanged,
   restartDiscordPresence,
   deleteCompanionAuthToken,
-  logoutLastFM,
-  openRoomWindow
+  logoutLastFM
 });
 
 type TabDefinition = { id: string; icon: string; label: string; component: Component; bottom?: boolean };

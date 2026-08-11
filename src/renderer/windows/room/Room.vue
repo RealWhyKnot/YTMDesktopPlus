@@ -8,7 +8,7 @@ const store = window.ytmd.store;
 const snapshot = ref<RoomSnapshot | null>(await memoryStore.get("listenAlongRoom"));
 const joinPrompt = ref<string | null>(await memoryStore.get("listenAlongRoomJoinPrompt"));
 
-const savedName = (await store.get("integrations")).listenAlongDisplayName;
+const savedName = ((await store.get("addons"))?.settings?.rooms?.displayName as string | null | undefined) ?? null;
 const displayName = ref<string>(savedName ?? "");
 const joinInput = ref<string>(joinPrompt.value ?? "");
 const trackInput = ref<string>("");

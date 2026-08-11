@@ -1,6 +1,3 @@
-import { BrowserView } from "electron";
-import IIntegration from "../integration";
-
 import enableScript from "./script/enable.script?raw";
 import disableScript from "./script/disable.script?raw";
 
@@ -8,38 +5,29 @@ import disableScript from "./script/disable.script?raw";
 // splits the shared audio graph into an ear path and a broadcast tap, moves
 // the local volume onto the ear path so the stream is immune to it, and
 // encodes the tap with WebCodecs. Encoded packets arrive in the main process
-// over ytmView:audioChunks; this class only manages injection.
-export default class AudioStreamCapture implements IIntegration {
-  private ytmView: BrowserView | null = null;
+// over ytmView:audioChunks; this class only manages injection. The scripts are
+// registered and run by the rooms addon, so runScript sends under its
+// namespace rather than talking to the view directly.
+export default class AudioStreamCapture {
   private hasInjected = false;
   private isEnabled = false;
   private waitForYTMView = true;
 
-  public provide(ytmView: BrowserView): void {
-    if (ytmView !== this.ytmView) {
-      this.hasInjected = false;
-      this.waitForYTMView = true;
-    }
-    this.ytmView = ytmView;
-
-    if (this.isEnabled && !this.hasInjected) {
-      this.enable();
-    }
-  }
+  constructor(private readonly runScript: (name: "enable" | "disable") => void) {}
 
   public enable(): void {
     this.isEnabled = true;
-    if (this.hasInjected || this.waitForYTMView || this.ytmView === null) return;
+    if (this.hasInjected || this.waitForYTMView) return;
 
-    this.ytmView.webContents.send("ytmView:executeScript", "audioStream", "enable");
+    this.runScript("enable");
     this.hasInjected = true;
   }
 
   public disable(): void {
     this.isEnabled = false;
-    if (!this.hasInjected || this.ytmView === null) return;
+    if (!this.hasInjected) return;
 
-    this.ytmView.webContents.send("ytmView:executeScript", "audioStream", "disable");
+    this.runScript("disable");
     this.hasInjected = false;
   }
 

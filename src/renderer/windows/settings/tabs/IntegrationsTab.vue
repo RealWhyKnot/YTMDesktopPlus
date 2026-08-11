@@ -16,16 +16,11 @@ const {
   memorySettingsChanged,
   restartDiscordPresence,
   deleteCompanionAuthToken,
-  logoutLastFM,
-  openRoomWindow
+  logoutLastFM
 } = shell;
 
 const companionServerEnabled = staged.refs["integrations.companionServerEnabled"];
 const companionServerCORSWildcardEnabled = staged.refs["integrations.companionServerCORSWildcardEnabled"];
-const listenAlongRoomsEnabled = staged.refs["integrations.listenAlongRoomsEnabled"];
-const listenAlongDisplayName = staged.refs["integrations.listenAlongDisplayName"];
-const listenAlongAudioStreamEnabled = staged.refs["integrations.listenAlongAudioStreamEnabled"];
-const listenAlongAutoRoomEnabled = staged.refs["integrations.listenAlongAutoRoomEnabled"];
 const discordPresenceEnabled = staged.refs["integrations.discordPresenceEnabled"];
 const discordPresenceHideOnPause = staged.refs["integrations.discordPresenceHideOnPause"];
 const lastFMEnabled = staged.refs["integrations.lastFMEnabled"];
@@ -95,46 +90,6 @@ const scrobblePercent = staged.refs["lastfm.scrobblePercent"];
         <td>No authorized companions</td>
       </div>
     </YTMDSetting>
-    <YTMDSetting
-      v-model="listenAlongRoomsEnabled"
-      type="checkbox"
-      name="Listen Along rooms"
-      description="When off, the app never connects to ytmdesktopplus.com and the Listen Along button leaves your Discord presence"
-      @change="stageChanged"
-    />
-    <YTMDSetting
-      v-if="listenAlongRoomsEnabled"
-      v-model="listenAlongDisplayName"
-      type="text"
-      indented
-      maxlength="24"
-      placeholder="Not set"
-      name="Room display name"
-      description="Shown to people in your rooms. You choose it; it is never taken from your account"
-      @change="stageChanged"
-    />
-    <YTMDSetting
-      v-if="listenAlongRoomsEnabled"
-      v-model="listenAlongAudioStreamEnabled"
-      type="checkbox"
-      indented
-      name="Stream audio to web listeners"
-      description="While you host a room, people who open your room link in a browser hear your playback live. Uses some upload bandwidth"
-      @change="stageChanged"
-    />
-    <YTMDSetting
-      v-if="listenAlongRoomsEnabled"
-      v-model="listenAlongAutoRoomEnabled"
-      type="checkbox"
-      indented
-      name="Open a room automatically with Discord presence"
-      description="While your presence is on, a room stays open so anyone who sees your profile can listen along, with your audio if web streaming is on. Turn off to only share rooms you start yourself"
-      @change="stageChanged"
-    />
-    <div v-if="listenAlongRoomsEnabled" class="setting indented">
-      <p>Open the Listen Along window</p>
-      <button @click="openRoomWindow">Open</button>
-    </div>
     <YTMDSetting v-model="discordPresenceEnabled" type="checkbox" name="Discord rich presence" @change="stageChanged" />
     <YTMDSetting
       v-if="discordPresenceEnabled"
