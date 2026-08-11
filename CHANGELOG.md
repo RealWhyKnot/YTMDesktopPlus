@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.811.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.811.0-beta) - 2026-08-11
 - style(renderer): adopt the shared palette in the room and companion windows
 - feat(addons): confirm before enabling an external addon and document the format
 - feat(addons): ship listen along rooms as a bundled addon
