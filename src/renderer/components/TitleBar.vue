@@ -147,10 +147,10 @@ if (props.isMainWindow) {
 .titlebar {
   left: env(titlebar-area-x, 0);
   width: env(titlebar-area-width, 100%);
-  height: 36px;
+  height: var(--titlebar-height);
   user-select: none;
   -webkit-app-region: drag;
-  background-color: #000000;
+  background-color: var(--bg);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -213,13 +213,13 @@ if (props.isMainWindow) {
   height: 28px;
   width: 28px;
   background: none;
-  color: #bbbbbb;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
   -webkit-app-region: no-drag;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius);
   font-variation-settings:
     "FILL" 0,
     "wght" 200,
@@ -229,7 +229,7 @@ if (props.isMainWindow) {
 }
 
 .app-button:hover {
-  background-color: #222222;
+  background-color: var(--bg-control);
 }
 
 .app-button > .material-symbols-outlined {
@@ -259,7 +259,7 @@ if (props.isMainWindow) {
   width: 40px;
   height: 36px;
   background: none;
-  color: #bbbbbb;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -273,7 +273,7 @@ if (props.isMainWindow) {
 }
 
 .action-button:hover {
-  background-color: #222222;
+  background-color: var(--bg-control);
 }
 
 .action-button > .material-symbols-outlined {
@@ -294,7 +294,7 @@ if (props.isMainWindow) {
 }
 
 .update-button {
-  color: #f44336;
+  color: var(--accent);
   margin-right: 24px;
 }
 
@@ -314,6 +314,6 @@ if (props.isMainWindow) {
 
 .room-button.active > .material-symbols-outlined,
 .room-button.active > .room-count {
-  color: #4caf50;
+  color: var(--success);
 }
 </style>

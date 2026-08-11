@@ -591,7 +591,7 @@ window.ytmd.handleUpdateDownloaded(() => {
             <div class="name-with-description">
               <p class="description">
                 User is Authenticated:
-                <span v-if="lastFMSessionKey" style="color: #4caf50">Yes</span>
+                <span v-if="lastFMSessionKey" style="color: var(--success)">Yes</span>
                 <span v-else style="color: #ff1100">No</span>
               </p>
             </div>
@@ -765,7 +765,7 @@ window.ytmd.handleUpdateDownloaded(() => {
 }
 
 .content::-webkit-scrollbar-track {
-  background: #212121;
+  background: var(--bg-control);
 }
 
 .content::-webkit-scrollbar-thumb {
@@ -779,7 +779,7 @@ window.ytmd.handleUpdateDownloaded(() => {
   margin: unset;
   padding: unset;
   height: 100%;
-  border-right: 1px solid #212121;
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
 }
@@ -789,7 +789,7 @@ window.ytmd.handleUpdateDownloaded(() => {
   align-items: center;
   padding: 16px;
   cursor: pointer;
-  color: #bbbbbb;
+  color: var(--text-muted);
 }
 
 .sidebar li .material-symbols-outlined {
@@ -802,12 +802,12 @@ window.ytmd.handleUpdateDownloaded(() => {
 }
 
 .sidebar li:hover {
-  background-color: #111111;
+  background-color: var(--bg-raised);
 }
 
 .sidebar li.active {
-  background-color: #212121;
-  color: #eeeeee;
+  background-color: var(--bg-control);
+  color: var(--text);
 }
 
 .sidebar li .material-symbols-outlined {
@@ -827,7 +827,7 @@ window.ytmd.handleUpdateDownloaded(() => {
 .setting.indented {
   margin-left: 12px;
   padding-left: 12px;
-  border-left: 1px solid #212121;
+  border-left: 1px solid var(--border);
 }
 
 .name-with-description .name {
@@ -836,7 +836,7 @@ window.ytmd.handleUpdateDownloaded(() => {
 
 .name-with-description .description {
   margin-top: 4px;
-  color: #969696;
+  color: var(--text-faint);
 }
 
 .about-tab {
@@ -861,7 +861,7 @@ window.ytmd.handleUpdateDownloaded(() => {
 .version-info .branch,
 .version-info .commit {
   margin: 4px 0;
-  color: #bbbbbb;
+  color: var(--text-muted);
 }
 
 .made-by {
@@ -876,18 +876,18 @@ window.ytmd.handleUpdateDownloaded(() => {
 }
 
 .links a {
-  color: #bbbbbb;
+  color: var(--text-muted);
 }
 
 .restart-banner {
-  background-color: #f44336;
+  background-color: var(--accent);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
 .save-bar {
-  background-color: #212121;
+  background-color: var(--bg-control);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -910,7 +910,7 @@ window.ytmd.handleUpdateDownloaded(() => {
 .save-bar .reset-button {
   margin: 0 4px;
   background-color: transparent;
-  border: 1px solid #888888;
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   padding: 8px 16px;
   cursor: pointer;
@@ -919,7 +919,7 @@ window.ytmd.handleUpdateDownloaded(() => {
 .save-bar .save-button,
 .close-confirm .save-button {
   margin: 0 8px 0 4px;
-  background-color: #f44336;
+  background-color: var(--accent);
   border: none;
   border-radius: 4px;
   padding: 8px 16px;
@@ -937,8 +937,8 @@ window.ytmd.handleUpdateDownloaded(() => {
 }
 
 .close-confirm {
-  background-color: #111111;
-  border: 1px solid #212121;
+  background-color: var(--bg-raised);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 16px;
   max-width: 420px;
@@ -951,7 +951,7 @@ window.ytmd.handleUpdateDownloaded(() => {
 
 .close-confirm .body {
   margin: 0 0 16px 0;
-  color: #bbbbbb;
+  color: var(--text-muted);
 }
 
 .close-confirm .actions {
@@ -962,7 +962,7 @@ window.ytmd.handleUpdateDownloaded(() => {
 .close-confirm .keep-button,
 .close-confirm .discard-button {
   background-color: transparent;
-  border: 1px solid #888888;
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   padding: 8px 16px;
   cursor: pointer;
@@ -998,7 +998,7 @@ window.ytmd.handleUpdateDownloaded(() => {
 }
 
 .update-check-button:disabled {
-  border: 1px solid #888888;
+  border: 1px solid var(--border-strong);
   cursor: not-allowed;
 }
 
@@ -1033,7 +1033,7 @@ window.ytmd.handleUpdateDownloaded(() => {
 .update-button {
   display: flex;
   align-items: center;
-  background-color: #f44336;
+  background-color: var(--accent);
   border: none;
   border-radius: 4px;
   padding: 4px 8px;
@@ -1066,7 +1066,7 @@ window.ytmd.handleUpdateDownloaded(() => {
 }
 
 .authorized-companions-table tr .companion .id {
-  color: #969696;
+  color: var(--text-faint);
   font-size: 14px;
 }
 
@@ -1084,7 +1084,7 @@ window.ytmd.handleUpdateDownloaded(() => {
 }
 
 .authorized-companions-table thead tr th {
-  border-bottom: 1px solid #212121;
+  border-bottom: 1px solid var(--border);
 }
 .authorized-companions-table thead tr .controls {
   width: 48px;
@@ -1095,19 +1095,19 @@ window.ytmd.handleUpdateDownloaded(() => {
   padding: 4px;
   display: flex;
   align-items: center;
-  background-color: #212121;
+  background-color: var(--bg-control);
   cursor: pointer;
   border: none;
 }
 
 .no-authorized-companions {
-  color: #bbbbbb;
+  color: var(--text-muted);
   padding: 4px;
 }
 
 .discord-failure {
   margin: 0;
-  color: #969696;
+  color: var(--text-faint);
 }
 
 button {
@@ -1116,7 +1116,7 @@ button {
   padding: 8px;
   display: flex;
   align-items: center;
-  background-color: #212121;
+  background-color: var(--bg-control);
   cursor: pointer;
   border: none;
 }
@@ -1129,6 +1129,6 @@ button {
 
 .shortcuts-tab .shortcut-title .register-error {
   margin-left: 4px;
-  color: #f44336;
+  color: var(--accent);
 }
 </style>

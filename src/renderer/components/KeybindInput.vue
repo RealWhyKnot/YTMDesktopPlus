@@ -130,14 +130,14 @@ function keybindInputKeyDown(event: KeyboardEvent) {
 }
 
 .keybind.is-editing {
-  border: 2px solid #f44336;
+  border: 2px solid var(--accent);
 }
 
 .keybind-text {
-  background-color: #212121;
+  background-color: var(--bg-control);
   border: none;
   padding: 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   width: 216px;
   height: 20px;
   margin: 0;
@@ -156,8 +156,8 @@ function keybindInputKeyDown(event: KeyboardEvent) {
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: #212121;
-  border-color: #323232;
+  background-color: var(--bg-control);
+  border-color: var(--bg-control-hover);
   border-style: solid;
   border-width: 0 0 0 1px;
   border-radius: 0 4px 4px 0;
@@ -165,7 +165,7 @@ function keybindInputKeyDown(event: KeyboardEvent) {
 }
 
 .remove:disabled {
-  border-color: #323232;
+  border-color: var(--bg-control-hover);
   border-style: solid;
   border-width: 0 0 0 1px;
   cursor: not-allowed;

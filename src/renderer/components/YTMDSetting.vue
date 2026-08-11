@@ -126,7 +126,7 @@ function select(optionKey: string) {
 .ytmd-setting.indented {
   margin-left: 12px;
   padding-left: 12px;
-  border-left: 1px solid #212121;
+  border-left: 1px solid var(--border);
 }
 
 .ytmd-setting.flex-column {
@@ -136,14 +136,14 @@ function select(optionKey: string) {
 }
 
 .ytmd-setting .beta-tag {
-  background-color: #f44336;
-  border-radius: 4px;
+  background-color: var(--accent);
+  border-radius: var(--radius);
   padding: 2px 4px;
 }
 
 .ytmd-setting .disabled-tag {
-  background-color: #212121;
-  border-radius: 4px;
+  background-color: var(--bg-control);
+  border-radius: var(--radius);
   padding: 2px 4px;
 }
 
@@ -155,7 +155,7 @@ function select(optionKey: string) {
 .name-description .description,
 .disabled-name-message .message {
   margin-top: 4px;
-  color: #969696;
+  color: var(--text-faint);
 }
 
 .reload-required {
@@ -163,17 +163,17 @@ function select(optionKey: string) {
 }
 
 input[type="text"] {
-  background-color: #111111;
-  color: #eeeeee;
-  border: 1px solid #323232;
-  border-radius: 4px;
+  background-color: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--bg-control-hover);
+  border-radius: var(--radius);
   padding: 8px 10px;
   outline: none;
   min-width: 220px;
 }
 
 input[type="text"]:focus {
-  border-color: #888888;
+  border-color: var(--border-strong);
 }
 
 input[type="checkbox"] {
@@ -191,7 +191,7 @@ input[type="checkbox"] {
   outline: none;
   border: none;
   cursor: pointer;
-  background-color: #212121;
+  background-color: var(--bg-control);
   transition: background-color ease 0.3s;
 }
 
@@ -211,7 +211,7 @@ input[type="checkbox"]:before {
 }
 
 input[type="checkbox"]:checked {
-  background-color: #f44336;
+  background-color: var(--accent);
 }
 
 input[type="checkbox"]:checked:before {
@@ -219,12 +219,12 @@ input[type="checkbox"]:checked:before {
 }
 
 input[type="checkbox"]:disabled {
-  background-color: #212121;
+  background-color: var(--bg-control);
   cursor: not-allowed;
 }
 
 input[type="checkbox"]:disabled::before {
-  background-color: #969696;
+  background-color: var(--text-faint);
 }
 
 input[type="file"] {
@@ -232,13 +232,13 @@ input[type="file"] {
 }
 
 .file-picker {
-  background-color: #212121;
-  border-radius: 4px;
+  background-color: var(--bg-control);
+  border-radius: var(--radius);
 }
 
 .file-input-button {
   width: 216px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   display: flex;
   align-items: center;
 }
@@ -252,13 +252,13 @@ input[type="file"] {
 }
 
 .file-input-button button.choose {
-  background-color: #f44336;
+  background-color: var(--accent);
   border-radius: 4px 0 0 4px;
 }
 
 .file-input-button button.remove {
   background-color: transparent;
-  border-left: 1px solid #323232;
+  border-left: 1px solid var(--bg-control-hover);
   border-radius: 0 4px 4px 0;
 }
 
@@ -295,8 +295,8 @@ input[type="file"] {
 input[type="range"] {
   appearance: none;
   height: 15px;
-  border-radius: 4px;
-  background: #212121;
+  border-radius: var(--radius);
+  background: var(--bg-control);
   outline: none;
 }
 
@@ -305,15 +305,15 @@ input[type="range"]::-webkit-slider-thumb {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #f44336;
+  background: var(--accent);
   cursor: pointer;
 }
 
 .select {
   position: relative;
   width: 216px;
-  background-color: #212121;
-  border-radius: 4px;
+  background-color: var(--bg-control);
+  border-radius: var(--radius);
 }
 
 .select.open {
@@ -346,12 +346,12 @@ input[type="range"]::-webkit-slider-thumb {
 .select .options .option {
   user-select: none;
   cursor: pointer;
-  background-color: #212121;
+  background-color: var(--bg-control);
   padding: 8px;
 }
 
 .select .options .option:hover {
-  background-color: #323232;
+  background-color: var(--bg-control-hover);
 }
 
 .select:not(.open) .options {

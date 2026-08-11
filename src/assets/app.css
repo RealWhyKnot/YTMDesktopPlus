@@ -8,10 +8,33 @@
   src: url("./fonts/WorkSans-VariableFont_wght.ttf") format('truetype');
 }
 
+/* Shared palette and metrics. The titleBarOverlay colors in src/main/index.ts
+   duplicate --bg/--text-muted because the main process cannot read CSS. */
+:root {
+  --bg: #000000;
+  --bg-raised: #111111;
+  --bg-control: #212121;
+  --bg-control-hover: #323232;
+  --border: #212121;
+  --border-strong: #888888;
+  --text: #eeeeee;
+  --text-muted: #bbbbbb;
+  --text-faint: #969696;
+  --accent: #f44336;
+  --success: #4caf50;
+  --radius: 4px;
+  --radius-lg: 8px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --titlebar-height: 36px;
+}
+
 html, body, #app {
   margin: 0;
   height: 100%;
-  color: #EEEEEE;
+  color: var(--text);
   font-family: 'Work Sans', sans-serif;
   overflow: hidden;
 }
