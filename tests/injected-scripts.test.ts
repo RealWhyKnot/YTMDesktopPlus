@@ -8,13 +8,19 @@ import { describe, expect, it } from "vitest";
 // undefined and the page logs a TypeError on every injection.
 
 // Every integration that ships page scripts keeps them in a script/ directory,
-// so discover them rather than listing them and losing coverage on the next one.
+// and bundled addons keep theirs in scripts/, so discover them rather than
+// listing them and losing coverage on the next one.
 const integrationScriptDirectories = readdirSync("src/main/integrations", { withFileTypes: true })
   .filter(entry => entry.isDirectory())
   .map(entry => join("src/main/integrations", entry.name, "script"))
   .filter(directory => existsSync(directory));
 
-const scriptDirectories = ["src/renderer/ytmview/scripts", ...integrationScriptDirectories];
+const bundledAddonScriptDirectories = readdirSync("src/addons/bundled", { withFileTypes: true })
+  .filter(entry => entry.isDirectory())
+  .map(entry => join("src/addons/bundled", entry.name, "scripts"))
+  .filter(directory => existsSync(directory));
+
+const scriptDirectories = ["src/renderer/ytmview/scripts", ...integrationScriptDirectories, ...bundledAddonScriptDirectories];
 
 const scripts = scriptDirectories.flatMap(directory =>
   readdirSync(directory)
