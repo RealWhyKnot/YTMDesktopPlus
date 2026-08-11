@@ -2,6 +2,7 @@ import { WindowsEventArguments } from "~shared/types";
 import Store from "../store-ipc/store";
 import { StoreSchema, MemoryStoreSchema } from "~shared/store/schema";
 import MemoryStore from "../store-ipc/memory-store";
+import { AddonDescriptor } from "~shared/addons/types";
 
 declare global {
   interface Window {
@@ -18,6 +19,11 @@ declare global {
       };
       openSettingsWindow(): void;
       openRoomWindow(): void;
+      addons?: {
+        getAll(): Promise<AddonDescriptor[]>;
+        setEnabled(id: string, enabled: boolean): Promise<void>;
+        openFolder(): void;
+      };
       restartApplication(): void;
       restartApplicationForUpdate(): void;
       getTrueFilePath(file: File): string;

@@ -2,6 +2,7 @@
 import { computed, provide, ref, type Component } from "vue";
 import { StoreSchema } from "~shared/store/schema";
 import { AuthToken } from "~shared/integrations/companion-server/types";
+import { AddonDescriptor } from "~shared/addons/types";
 import { createStagedSettings, stagedSettingsKey } from "./useStagedSettings";
 import { settingsShellKey } from "./context";
 import GeneralTab from "./tabs/GeneralTab.vue";
@@ -9,6 +10,7 @@ import AppearanceTab from "./tabs/AppearanceTab.vue";
 import PlaybackTab from "./tabs/PlaybackTab.vue";
 import IntegrationsTab from "./tabs/IntegrationsTab.vue";
 import ShortcutsTab from "./tabs/ShortcutsTab.vue";
+import AddonsTab from "./tabs/AddonsTab.vue";
 import AboutTab from "./tabs/AboutTab.vue";
 
 declare const YTMD_GIT_COMMIT_HASH: string;
@@ -77,6 +79,18 @@ const companionServerAuthWindowEnabled = ref<boolean>(await memoryStore.get("com
 
 const autoUpdaterDisabled = ref<boolean>(await memoryStore.get("autoUpdaterDisabled"));
 
+const addonsSupported = window.ytmd.addons !== undefined;
+const addons = ref<AddonDescriptor[]>(addonsSupported ? await window.ytmd.addons.getAll() : []);
+const addonRestartPending = computed(() => addons.value.some(addon => addon.restartRequired));
+
+function setAddonEnabled(id: string, enabled: boolean) {
+  window.ytmd.addons?.setEnabled(id, enabled);
+}
+
+function openAddonsFolder() {
+  window.ytmd.addons?.openFolder();
+}
+
 memoryStore.onStateChanged(newState => {
   discordPresenceConnectionFailed.value = newState.discordPresenceConnectionFailed;
 
@@ -93,6 +107,10 @@ memoryStore.onStateChanged(newState => {
   safeStorageAvailable.value = newState.safeStorageAvailable;
 
   autoUpdaterDisabled.value = newState.autoUpdaterDisabled;
+
+  if (newState.addonsRuntime) {
+    addons.value = newState.addonsRuntime;
+  }
 });
 
 async function memorySettingsChanged() {
@@ -180,6 +198,9 @@ provide(settingsShellKey, {
   companionServerAuthWindowEnabled,
   companionServerAuthTokens,
   lastFMSessionKey,
+  addons,
+  setAddonEnabled,
+  openAddonsFolder,
   memorySettingsChanged,
   restartDiscordPresence,
   deleteCompanionAuthToken,
@@ -194,6 +215,7 @@ const tabs: TabDefinition[] = [
   { id: "playback", icon: "music_note", label: "Playback", component: PlaybackTab },
   { id: "integrations", icon: "wifi_tethering", label: "Integrations", component: IntegrationsTab },
   { id: "shortcuts", icon: "keyboard", label: "Shortcuts", component: ShortcutsTab },
+  ...(addonsSupported ? [{ id: "addons", icon: "extension", label: "Addons", component: AddonsTab }] : []),
   { id: "about", icon: "info", label: "About", component: AboutTab, bottom: true }
 ];
 const currentTab = ref("general");
@@ -250,7 +272,7 @@ function saveAndClose() {
             <button class="save-button" @click="saveChanges">Save Changes</button>
           </div>
         </div>
-        <div v-else-if="restartNeeded" class="restart-banner">
+        <div v-else-if="restartNeeded || addonRestartPending" class="restart-banner">
           <p class="message"><span class="material-symbols-outlined">autorenew</span> Restart app to apply changes</p>
           <button class="restart-button" @click="restartApplication">Restart</button>
         </div>

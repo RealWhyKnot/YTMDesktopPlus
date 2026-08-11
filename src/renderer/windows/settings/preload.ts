@@ -30,6 +30,11 @@ contextBridge.exposeInMainWorld("ytmd", {
     decryptString: async (value: string) => await ipcRenderer.invoke("safeStorage:decryptString", value),
     encryptString: async (value: string) => await ipcRenderer.invoke("safeStorage:encryptString", value)
   },
+  addons: {
+    getAll: async () => await ipcRenderer.invoke("addons:getAll"),
+    setEnabled: async (id: string, enabled: boolean) => await ipcRenderer.invoke("addons:setEnabled", id, enabled),
+    openFolder: () => ipcRenderer.send("addons:openFolder")
+  },
   restartApplication: () => ipcRenderer.send("settingsWindow:restartapplication"),
   openRoomWindow: () => ipcRenderer.send("room:openWindow"),
   restartApplicationForUpdate: () => ipcRenderer.send("app:restartApplicationForUpdate"),

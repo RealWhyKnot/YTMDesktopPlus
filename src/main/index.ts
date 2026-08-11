@@ -26,6 +26,8 @@ import fs from "fs/promises";
 import electronSquirrelStartup from "electron-squirrel-startup";
 
 import MemoryStore from "./memory-store";
+import { AddonManager } from "./addons/manager";
+import { BUNDLED_ADDONS } from "../addons/bundled";
 import playerStateStore, { PlayerState, VideoState } from "./player-state-store";
 import { setLogOutputEnabled, setupLogging } from "./logging";
 import { MemoryStoreSchema, StoreSchema, TrayIconStyle, UpdateChannel } from "../shared/store/schema";
@@ -551,6 +553,10 @@ const store = new Conf<StoreSchema>({
       autoUpdateEnabled: false,
       channel: UpdateChannel.Auto,
       firstRunPromptShown: false
+    },
+    addons: {
+      states: {},
+      settings: {}
     }
   },
   beforeEachMigration: (store, context) => {
@@ -617,6 +623,12 @@ if (store.get("playback").preventIdlePause === undefined) {
 if (store.get("integrations").discordPresenceHideOnPause === undefined) {
   store.set("integrations.discordPresenceHideOnPause", false);
 }
+if (store.get("addons") === undefined) {
+  store.set("addons", { states: {}, settings: {} });
+}
+
+const addonManager = new AddonManager({ store, memoryStore, appVersion: app.getVersion() });
+addonManager.registerBundled(BUNDLED_ADDONS);
 
 const applyUpdateFeed = () =>
   autoUpdater.setFeedURL({
@@ -2242,6 +2254,28 @@ app.on("ready", async () => {
     store.reset(key);
   });
 
+  // Handle addons ipc
+  ipcMain.handle("addons:getAll", event => {
+    if (!isMemoryStoreSender(event.sender)) return;
+
+    return addonManager.descriptors();
+  });
+
+  ipcMain.handle("addons:setEnabled", (event, id: string, enabled: boolean) => {
+    if (settingsWindow && event.sender !== settingsWindow.webContents) return;
+    if (typeof id !== "string" || typeof enabled !== "boolean") return;
+
+    addonManager.setEnabled(id, enabled);
+  });
+
+  ipcMain.on("addons:openFolder", async event => {
+    if (settingsWindow && event.sender !== settingsWindow.webContents) return;
+
+    const addonsDir = path.join(app.getPath("userData"), "addons");
+    await fs.mkdir(addonsDir, { recursive: true });
+    shell.openPath(addonsDir);
+  });
+
   // Handle safeStorage ipc
   ipcMain.handle("safeStorage:decryptString", (event, value: string) => {
     if (!memoryStore.get("safeStorageAvailable")) throw new Error("safeStorage is unavailable");
@@ -2415,6 +2449,9 @@ app.on("ready", async () => {
 
   log.info("Created tray icon");
 
+  await addonManager.boot();
+  log.info("Addons booted");
+
   createMainWindow();
   log.info("Created main window");
 
@@ -2558,6 +2595,7 @@ app.on("before-quit", () => {
   log.info("Application quitting\n\n");
   applicationQuitting = true;
   cancelCue();
+  addonManager.shutdown();
   saveState();
 });
 

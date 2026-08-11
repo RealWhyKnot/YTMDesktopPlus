@@ -1,4 +1,5 @@
 import type { RoomSnapshot } from "../room-protocol";
+import type { AddonDescriptor } from "../addons/types";
 
 export enum TrayIconStyle {
   Auto = 0,
@@ -88,11 +89,16 @@ export type StoreSchema = {
     channel: UpdateChannel;
     firstRunPromptShown: boolean;
   };
+  addons: {
+    states: Record<string, { enabled: boolean; riskAcknowledged?: boolean }>;
+    settings: Record<string, Record<string, unknown>>;
+  };
 };
 
 export type ListenAlongStatus = "disabled" | "pairing" | "connecting" | "connected" | "loading" | "synced" | "suspended" | "failed";
 
 export type MemoryStoreSchema = {
+  addonsRuntime: AddonDescriptor[];
   discordPresenceConnectionFailed: boolean;
   listenAlongStatus: ListenAlongStatus;
   listenAlongStatusDetail: string | null;

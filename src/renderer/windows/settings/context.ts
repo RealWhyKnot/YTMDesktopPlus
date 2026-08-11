@@ -1,5 +1,6 @@
 import type { InjectionKey, Ref } from "vue";
 import type { AuthToken } from "~shared/integrations/companion-server/types";
+import type { AddonDescriptor } from "~shared/addons/types";
 
 // Everything the tab components need from the window shell beyond the staged
 // settings themselves. Provided once by Settings.vue.
@@ -26,6 +27,10 @@ export type SettingsShell = {
 
   companionServerAuthTokens: Ref<AuthToken[]>;
   lastFMSessionKey: Ref<string>;
+
+  addons: Ref<AddonDescriptor[]>;
+  setAddonEnabled(id: string, enabled: boolean): void;
+  openAddonsFolder(): void;
 
   memorySettingsChanged(): void;
   restartDiscordPresence(): void;
