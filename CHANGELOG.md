@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- test(harness): stop vitest writing to the installed app's log file
+- test(harness): profile seeding and action and network recorders for the probe
+- feat(dev): remote playback probe compiled into dev and local builds only
+- fix(ytmview): isolate optional setup modules so one failure cannot hang loading
+- feat(addons): invokable page scripts and a remote track presence fallback
+- test(harness): probe history and popups for remote device awareness
 - feat(discord): hide presence while paused by default
 
 ## [v2026.811.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.811.0-beta) - 2026-08-11
