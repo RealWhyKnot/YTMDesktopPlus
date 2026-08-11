@@ -353,15 +353,384 @@ window.ytmd.handleUpdateDownloaded(() => {
   <div class="settings-container">
     <div class="content-container">
       <ul class="sidebar">
-        <li :class="{ active: currentTab === 1 }" @click="changeTab(1)"><span class="material-symbols-outlined">settings_applications</span>General</li>
-        <li :class="{ active: currentTab === 2 }" @click="changeTab(2)"><span class="material-symbols-outlined">brush</span>Appearance</li>
-        <li :class="{ active: currentTab === 3 }" @click="changeTab(3)"><span class="material-symbols-outlined">music_note</span>Playback</li>
-        <li :class="{ active: currentTab === 4 }" @click="changeTab(4)"><span class="material-symbols-outlined">wifi_tethering</span>Integrations</li>
-        <li :class="{ active: currentTab === 5 }" @click="changeTab(5)"><span class="material-symbols-outlined">keyboard</span>Shortcuts</li>
+        <li :class="{ active: currentTab === 1 }" title="General" @click="changeTab(1)">
+          <span class="material-symbols-outlined">settings_applications</span><span class="label">General</span>
+        </li>
+        <li :class="{ active: currentTab === 2 }" title="Appearance" @click="changeTab(2)">
+          <span class="material-symbols-outlined">brush</span><span class="label">Appearance</span>
+        </li>
+        <li :class="{ active: currentTab === 3 }" title="Playback" @click="changeTab(3)">
+          <span class="material-symbols-outlined">music_note</span><span class="label">Playback</span>
+        </li>
+        <li :class="{ active: currentTab === 4 }" title="Integrations" @click="changeTab(4)">
+          <span class="material-symbols-outlined">wifi_tethering</span><span class="label">Integrations</span>
+        </li>
+        <li :class="{ active: currentTab === 5 }" title="Shortcuts" @click="changeTab(5)">
+          <span class="material-symbols-outlined">keyboard</span><span class="label">Shortcuts</span>
+        </li>
         <span class="push"></span>
-        <li :class="{ active: currentTab === 99 }" @click="changeTab(99)"><span class="material-symbols-outlined">info</span>About</li>
+        <li :class="{ active: currentTab === 99 }" title="About" @click="changeTab(99)">
+          <span class="material-symbols-outlined">info</span><span class="label">About</span>
+        </li>
       </ul>
       <div class="content">
+        <div class="tab-panels">
+          <div v-if="currentTab === 1" class="general-tab">
+            <YTMDSetting v-if="!isDarwin" v-model="hideToTrayOnClose" type="checkbox" name="Hide to tray on close" @change="stageChanged" />
+            <YTMDSetting v-model="showNotificationOnSongChange" type="checkbox" name="Show notification on song change" @change="stageChanged" />
+            <YTMDSetting v-model="startOnBoot" type="checkbox" name="Start on boot" @change="stageChanged" />
+            <!--<div class="setting">
+            <p>Start minimized</p>
+            <input v-model="startMinimized" @change="stageChanged" class="toggle" type="checkbox" />
+          </div>-->
+            <YTMDSetting v-model="disableHardwareAcceleration" type="checkbox" restart-required name="Disable hardware acceleration" @change="stageChanged" />
+            <YTMDSetting v-model="debugLogging" type="checkbox" name="Debug logging" @change="stageChanged" />
+            <YTMDSetting
+              v-model="autoUpdateEnabled"
+              type="checkbox"
+              name="Install updates on launch"
+              :disabled="autoUpdaterDisabled"
+              disabled-message="The auto updater is unavailable on this platform"
+              @change="stageChanged"
+            />
+            <YTMDSetting
+              v-if="!autoUpdaterDisabled"
+              v-model="updateChannel"
+              :options-map="{ [UpdateChannel.Auto]: 'Match installed build', [UpdateChannel.Stable]: 'Stable', [UpdateChannel.Beta]: 'Beta' }"
+              type="select"
+              indented
+              name="Update channel"
+              description="Changing the channel applies the matching update when you save"
+              @change="stageChanged"
+            />
+          </div>
+
+          <div v-if="currentTab === 2" class="appearance-tab">
+            <YTMDSetting v-model="alwaysShowVolumeSlider" type="checkbox" name="Always show volume slider" @change="stageChanged" />
+            <YTMDSetting v-model="customCSSEnabled" type="checkbox" name="Custom CSS" @change="stageChanged" />
+            <YTMDSetting
+              v-if="customCSSEnabled"
+              v-model="customCSSPath"
+              type="file"
+              indented
+              bind-setting="appearance.customCSSPath"
+              name="Custom CSS file path"
+              @file-change="settingChangedFile"
+              @clear="removeCustomCSSPath"
+            />
+            <YTMDSetting v-model="zoom" type="range" max="300" min="30" step="10" name="Zoom" @change="stageChanged" />
+            <YTMDSetting
+              v-if="isLinux"
+              v-model="trayIconStyle"
+              :options-map="{ [TrayIconStyle.Auto]: 'Auto', [TrayIconStyle.White]: 'White', [TrayIconStyle.Black]: 'Black' }"
+              type="select"
+              name="Tray icon style"
+              @change="stageChanged"
+            />
+          </div>
+
+          <div v-if="currentTab === 3" class="playback-tab">
+            <YTMDSetting v-model="continueWhereYouLeftOff" name="Continue where you left off" type="checkbox" @change="stageChanged" />
+            <YTMDSetting
+              v-if="continueWhereYouLeftOff"
+              v-model="continueWhereYouLeftOffPaused"
+              type="checkbox"
+              indented
+              name="Pause on application launch"
+              @change="stageChanged"
+            />
+            <YTMDSetting v-model="progressInTaskbar" type="checkbox" name="Show track progress on taskbar" @change="stageChanged" />
+            <YTMDSetting v-model="enableSpeakerFill" type="checkbox" restart-required name="Enable speaker fill" @change="stageChanged" />
+            <YTMDSetting v-model="ratioVolume" type="checkbox" name="Ratio volume" @change="stageChanged" />
+            <YTMDSetting
+              v-model="loudnessNormalization"
+              type="checkbox"
+              name="Loudness normalization"
+              description="Levels tracks against each other using YouTube's measured loudness. Loud tracks come down; quiet tracks are never boosted"
+              @change="stageChanged"
+            />
+            <YTMDSetting
+              v-model="preventIdlePause"
+              type="checkbox"
+              name="Keep playing when idle"
+              description="Holds back the pause YouTube Music applies after a long stretch without interaction and dismisses the prompt that follows it"
+              @change="stageChanged"
+            />
+            <YTMDSetting
+              v-model="adBlockerEnabled"
+              type="checkbox"
+              name="Block ads"
+              description="Filters every request the YouTube Music session makes, sign-in included, against the EasyList and EasyPrivacy blocklists. The lists are downloaded on first use"
+              @change="stageChanged"
+            />
+          </div>
+
+          <div v-if="currentTab === 4" class="integrations-tab">
+            <YTMDSetting
+              v-model="companionServerEnabled"
+              type="checkbox"
+              name="Companion server"
+              :disabled="!safeStorageAvailable"
+              disabled-message="This integration cannot be enabled due to safeStorage being unavailable"
+              @change="stageChanged"
+            />
+            <YTMDSetting
+              v-if="companionServerEnabled && safeStorageAvailable"
+              v-model="companionServerCORSWildcardEnabled"
+              type="checkbox"
+              indented
+              name="Allow browser communication"
+              description="This setting could be dangerous as it allows any website you visit to communicate with the companion server"
+              @change="stageChanged"
+            />
+            <YTMDSetting
+              v-if="companionServerEnabled && safeStorageAvailable"
+              v-model="companionServerAuthWindowEnabled"
+              type="checkbox"
+              indented
+              name="Enable companion authorization"
+              description="Automatically disables after the first successful authorization or 5 minutes has passed"
+              @change="memorySettingsChanged"
+            />
+            <YTMDSetting
+              v-if="companionServerEnabled && safeStorageAvailable"
+              type="custom"
+              flex-column
+              indented
+              name="Authorized companions"
+              description="This is a list of companions that currently have access to the companion server"
+              @change="stageChanged"
+            >
+              <table class="authorized-companions-table">
+                <thead>
+                  <tr>
+                    <th class="companion">Companion</th>
+                    <th class="version">Version</th>
+                    <th class="controls"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="authToken in companionServerAuthTokens" :key="authToken.appId">
+                    <td class="companion">
+                      <span class="name">{{ authToken.appName }}</span
+                      ><br />
+                      <span class="id">{{ authToken.appId }}</span>
+                    </td>
+                    <td class="version">{{ authToken.appVersion }}</td>
+                    <td class="controls">
+                      <button @click="deleteCompanionAuthToken(authToken.appId)"><span class="material-symbols-outlined">delete</span></button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-if="companionServerAuthTokens.length === 0" class="no-authorized-companions">
+                <td>No authorized companions</td>
+              </div>
+            </YTMDSetting>
+            <YTMDSetting
+              v-model="listenAlongRoomsEnabled"
+              type="checkbox"
+              name="Listen Along rooms"
+              description="When off, the app never connects to ytmdesktopplus.com and the Listen Along button leaves your Discord presence"
+              @change="stageChanged"
+            />
+            <YTMDSetting
+              v-if="listenAlongRoomsEnabled"
+              v-model="listenAlongDisplayName"
+              type="text"
+              indented
+              maxlength="24"
+              placeholder="Not set"
+              name="Room display name"
+              description="Shown to people in your rooms. You choose it; it is never taken from your account"
+              @change="stageChanged"
+            />
+            <YTMDSetting
+              v-if="listenAlongRoomsEnabled"
+              v-model="listenAlongAudioStreamEnabled"
+              type="checkbox"
+              indented
+              name="Stream audio to web listeners"
+              description="While you host a room, people who open your room link in a browser hear your playback live. Uses some upload bandwidth"
+              @change="stageChanged"
+            />
+            <YTMDSetting
+              v-if="listenAlongRoomsEnabled"
+              v-model="listenAlongAutoRoomEnabled"
+              type="checkbox"
+              indented
+              name="Open a room automatically with Discord presence"
+              description="While your presence is on, a room stays open so anyone who sees your profile can listen along, with your audio if web streaming is on. Turn off to only share rooms you start yourself"
+              @change="stageChanged"
+            />
+            <div v-if="listenAlongRoomsEnabled" class="setting indented">
+              <p>Open the Listen Along window</p>
+              <button @click="openRoomWindow">Open</button>
+            </div>
+            <YTMDSetting v-model="discordPresenceEnabled" type="checkbox" name="Discord rich presence" @change="stageChanged" />
+            <YTMDSetting
+              v-if="discordPresenceEnabled"
+              v-model="discordPresenceHideOnPause"
+              type="checkbox"
+              indented
+              name="Hide presence while paused"
+              description="Clears your Discord activity as soon as playback pauses instead of showing a paused badge"
+              @change="stageChanged"
+            />
+            <div v-if="discordPresenceEnabled && discordPresenceConnectionFailed" class="setting indented">
+              <p class="discord-failure">Discord connection could not be established after 30 attempts</p>
+              <button @click="restartDiscordPresence">Retry</button>
+            </div>
+            <YTMDSetting
+              v-model="lastFMEnabled"
+              type="checkbox"
+              name="Last.fm scrobbling"
+              :disabled="!safeStorageAvailable"
+              disabled-message="This integration cannot be enabled due to safeStorage being unavailable"
+              @change="stageChanged"
+            />
+            <div v-if="lastFMEnabled" class="setting indented">
+              <div class="name-with-description">
+                <p class="description">
+                  User is Authenticated:
+                  <span v-if="lastFMSessionKey" style="color: var(--success)">Yes</span>
+                  <span v-else style="color: #ff1100">No</span>
+                </p>
+              </div>
+              <button v-if="lastFMSessionKey" @click="logoutLastFM">Logout</button>
+            </div>
+            <YTMDSetting
+              v-if="lastFMEnabled"
+              v-model="scrobblePercent"
+              class="settings indented"
+              type="range"
+              name="Scrobble percent"
+              description="Determines when a song is scrobbled"
+              min="50"
+              max="95"
+              step="5"
+              @change="stageChanged"
+            />
+          </div>
+
+          <div v-if="currentTab === 5" class="shortcuts-tab">
+            <div class="setting">
+              <p class="shortcut-title">
+                Play/Pause<span
+                  v-if="shortcutsPlayPauseRegisterFailed"
+                  class="material-symbols-outlined register-error"
+                  title="Failed to register keybind. Does another application have this keybind?"
+                  >error</span
+                >
+              </p>
+              <KeybindInput v-model="shortcutPlayPause" @change="stageChanged" />
+            </div>
+            <div class="setting">
+              <p class="shortcut-title">
+                Next<span
+                  v-if="shortcutsNextRegisterFailed"
+                  class="material-symbols-outlined register-error"
+                  title="Failed to register keybind. Does another application have this keybind?"
+                  >error</span
+                >
+              </p>
+              <KeybindInput v-model="shortcutNext" @change="stageChanged" />
+            </div>
+            <div class="setting">
+              <p class="shortcut-title">
+                Previous<span
+                  v-if="shortcutsPreviousRegisterFailed"
+                  class="material-symbols-outlined register-error"
+                  title="Failed to register keybind. Does another application have this keybind?"
+                  >error</span
+                >
+              </p>
+              <KeybindInput v-model="shortcutPrevious" @change="stageChanged" />
+            </div>
+            <div class="setting">
+              <p class="shortcut-title">
+                Thumbs Up<span
+                  v-if="shortcutsThumbsUpRegisterFailed"
+                  class="material-symbols-outlined register-error"
+                  title="Failed to register keybind. Does another application have this keybind?"
+                  >error</span
+                >
+              </p>
+              <KeybindInput v-model="shortcutThumbsUp" @change="stageChanged" />
+            </div>
+            <div class="setting">
+              <p class="shortcut-title">
+                Thumbs Down<span
+                  v-if="shortcutsThumbsDownRegisterFailed"
+                  class="material-symbols-outlined register-error"
+                  title="Failed to register keybind. Does another application have this keybind?"
+                  >error</span
+                >
+              </p>
+              <KeybindInput v-model="shortcutThumbsDown" @change="stageChanged" />
+            </div>
+            <div class="setting">
+              <p class="shortcut-title">
+                Increase Volume<span
+                  v-if="shortcutsVolumeUpRegisterFailed"
+                  class="material-symbols-outlined register-error"
+                  title="Failed to register keybind. Does another application have this keybind?"
+                  >error</span
+                >
+              </p>
+              <KeybindInput v-model="shortcutVolumeUp" @change="stageChanged" />
+            </div>
+            <div class="setting">
+              <p class="shortcut-title">
+                Decrease Volume<span
+                  v-if="shortcutsVolumeDownRegisterFailed"
+                  class="material-symbols-outlined register-error"
+                  title="Failed to register keybind. Does another application have this keybind?"
+                  >error</span
+                >
+              </p>
+              <KeybindInput v-model="shortcutVolumeDown" @change="stageChanged" />
+            </div>
+          </div>
+
+          <div v-if="currentTab === 99" class="about-tab">
+            <img class="icon" :src="logo" />
+            <h2 class="app-name">YTMDesktop+</h2>
+            <p class="made-by">Made by YTMDesktop Team</p>
+            <template v-if="!autoUpdaterDisabled">
+              <button
+                v-if="!updateDownloaded"
+                :disabled="!(!checkingForUpdate && !updateAvailable && !updateDownloaded)"
+                class="update-check-button"
+                @click="checkForUpdates"
+              >
+                <span class="material-symbols-outlined">update</span>Check for updates
+              </button>
+              <button v-if="updateDownloaded" class="update-button" @click="restartApplicationForUpdate">
+                <span class="material-symbols-outlined">upgrade</span>Restart to update
+              </button>
+              <p v-if="checkingForUpdate && !updateAvailable && !updateDownloaded" class="updating">
+                <span class="material-symbols-outlined">progress_activity</span>Checking for updates...
+              </p>
+              <p v-if="updateAvailable && !updateDownloaded" class="updating">
+                <span class="material-symbols-outlined">progress_activity</span>Downloading update...
+              </p>
+              <p v-if="updateNotAvailable" class="no-update">Update not available</p>
+            </template>
+            <template v-if="autoUpdaterDisabled">
+              <button disabled class="update-check-button"><span class="material-symbols-outlined">update</span>Check for updates</button>
+              <p class="no-auto-updater">Auto updater disabled</p>
+            </template>
+            <span class="version-info">
+              <p class="version">Version: {{ ytmdVersion }}</p>
+              <p class="branch">Branch: {{ ytmdBranch }}</p>
+              <p class="commit">Commit: {{ ytmdCommitHash }}</p>
+            </span>
+            <div class="links">
+              <a href="https://github.com/RealWhyKnot/YTMDesktopPlus" target="_blank">GitHub</a>
+            </div>
+          </div>
+        </div>
         <div v-if="hasUnsavedChanges" class="save-bar">
           <p class="message"><span class="material-symbols-outlined">edit</span> You have unsaved changes</p>
           <div class="actions">
@@ -372,361 +741,6 @@ window.ytmd.handleUpdateDownloaded(() => {
         <div v-else-if="restartNeeded" class="restart-banner">
           <p class="message"><span class="material-symbols-outlined">autorenew</span> Restart app to apply changes</p>
           <button class="restart-button" @click="restartApplication">Restart</button>
-        </div>
-        <div v-if="currentTab === 1" class="general-tab">
-          <YTMDSetting v-if="!isDarwin" v-model="hideToTrayOnClose" type="checkbox" name="Hide to tray on close" @change="stageChanged" />
-          <YTMDSetting v-model="showNotificationOnSongChange" type="checkbox" name="Show notification on song change" @change="stageChanged" />
-          <YTMDSetting v-model="startOnBoot" type="checkbox" name="Start on boot" @change="stageChanged" />
-          <!--<div class="setting">
-            <p>Start minimized</p>
-            <input v-model="startMinimized" @change="stageChanged" class="toggle" type="checkbox" />
-          </div>-->
-          <YTMDSetting v-model="disableHardwareAcceleration" type="checkbox" restart-required name="Disable hardware acceleration" @change="stageChanged" />
-          <YTMDSetting v-model="debugLogging" type="checkbox" name="Debug logging" @change="stageChanged" />
-          <YTMDSetting
-            v-model="autoUpdateEnabled"
-            type="checkbox"
-            name="Install updates on launch"
-            :disabled="autoUpdaterDisabled"
-            disabled-message="The auto updater is unavailable on this platform"
-            @change="stageChanged"
-          />
-          <YTMDSetting
-            v-if="!autoUpdaterDisabled"
-            v-model="updateChannel"
-            :options-map="{ [UpdateChannel.Auto]: 'Match installed build', [UpdateChannel.Stable]: 'Stable', [UpdateChannel.Beta]: 'Beta' }"
-            type="select"
-            indented
-            name="Update channel"
-            description="Changing the channel applies the matching update when you save"
-            @change="stageChanged"
-          />
-        </div>
-
-        <div v-if="currentTab === 2" class="appearance-tab">
-          <YTMDSetting v-model="alwaysShowVolumeSlider" type="checkbox" name="Always show volume slider" @change="stageChanged" />
-          <YTMDSetting v-model="customCSSEnabled" type="checkbox" name="Custom CSS" @change="stageChanged" />
-          <YTMDSetting
-            v-if="customCSSEnabled"
-            v-model="customCSSPath"
-            type="file"
-            indented
-            bind-setting="appearance.customCSSPath"
-            name="Custom CSS file path"
-            @file-change="settingChangedFile"
-            @clear="removeCustomCSSPath"
-          />
-          <YTMDSetting v-model="zoom" type="range" max="300" min="30" step="10" name="Zoom" @change="stageChanged" />
-          <YTMDSetting
-            v-if="isLinux"
-            v-model="trayIconStyle"
-            :options-map="{ [TrayIconStyle.Auto]: 'Auto', [TrayIconStyle.White]: 'White', [TrayIconStyle.Black]: 'Black' }"
-            type="select"
-            name="Tray icon style"
-            @change="stageChanged"
-          />
-        </div>
-
-        <div v-if="currentTab === 3" class="playback-tab">
-          <YTMDSetting v-model="continueWhereYouLeftOff" name="Continue where you left off" type="checkbox" @change="stageChanged" />
-          <YTMDSetting
-            v-if="continueWhereYouLeftOff"
-            v-model="continueWhereYouLeftOffPaused"
-            type="checkbox"
-            indented
-            name="Pause on application launch"
-            @change="stageChanged"
-          />
-          <YTMDSetting v-model="progressInTaskbar" type="checkbox" name="Show track progress on taskbar" @change="stageChanged" />
-          <YTMDSetting v-model="enableSpeakerFill" type="checkbox" restart-required name="Enable speaker fill" @change="stageChanged" />
-          <YTMDSetting v-model="ratioVolume" type="checkbox" name="Ratio volume" @change="stageChanged" />
-          <YTMDSetting
-            v-model="loudnessNormalization"
-            type="checkbox"
-            name="Loudness normalization"
-            description="Levels tracks against each other using YouTube's measured loudness. Loud tracks come down; quiet tracks are never boosted"
-            @change="stageChanged"
-          />
-          <YTMDSetting
-            v-model="preventIdlePause"
-            type="checkbox"
-            name="Keep playing when idle"
-            description="Holds back the pause YouTube Music applies after a long stretch without interaction and dismisses the prompt that follows it"
-            @change="stageChanged"
-          />
-          <YTMDSetting
-            v-model="adBlockerEnabled"
-            type="checkbox"
-            name="Block ads"
-            description="Filters every request the YouTube Music session makes, sign-in included, against the EasyList and EasyPrivacy blocklists. The lists are downloaded on first use"
-            @change="stageChanged"
-          />
-        </div>
-
-        <div v-if="currentTab === 4" class="integrations-tab">
-          <YTMDSetting
-            v-model="companionServerEnabled"
-            type="checkbox"
-            name="Companion server"
-            :disabled="!safeStorageAvailable"
-            disabled-message="This integration cannot be enabled due to safeStorage being unavailable"
-            @change="stageChanged"
-          />
-          <YTMDSetting
-            v-if="companionServerEnabled && safeStorageAvailable"
-            v-model="companionServerCORSWildcardEnabled"
-            type="checkbox"
-            indented
-            name="Allow browser communication"
-            description="This setting could be dangerous as it allows any website you visit to communicate with the companion server"
-            @change="stageChanged"
-          />
-          <YTMDSetting
-            v-if="companionServerEnabled && safeStorageAvailable"
-            v-model="companionServerAuthWindowEnabled"
-            type="checkbox"
-            indented
-            name="Enable companion authorization"
-            description="Automatically disables after the first successful authorization or 5 minutes has passed"
-            @change="memorySettingsChanged"
-          />
-          <YTMDSetting
-            v-if="companionServerEnabled && safeStorageAvailable"
-            type="custom"
-            flex-column
-            indented
-            name="Authorized companions"
-            description="This is a list of companions that currently have access to the companion server"
-            @change="stageChanged"
-          >
-            <table class="authorized-companions-table">
-              <thead>
-                <tr>
-                  <th class="companion">Companion</th>
-                  <th class="version">Version</th>
-                  <th class="controls"></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="authToken in companionServerAuthTokens" :key="authToken.appId">
-                  <td class="companion">
-                    <span class="name">{{ authToken.appName }}</span
-                    ><br />
-                    <span class="id">{{ authToken.appId }}</span>
-                  </td>
-                  <td class="version">{{ authToken.appVersion }}</td>
-                  <td class="controls">
-                    <button @click="deleteCompanionAuthToken(authToken.appId)"><span class="material-symbols-outlined">delete</span></button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-if="companionServerAuthTokens.length === 0" class="no-authorized-companions">
-              <td>No authorized companions</td>
-            </div>
-          </YTMDSetting>
-          <YTMDSetting
-            v-model="listenAlongRoomsEnabled"
-            type="checkbox"
-            name="Listen Along rooms"
-            description="When off, the app never connects to ytmdesktopplus.com and the Listen Along button leaves your Discord presence"
-            @change="stageChanged"
-          />
-          <YTMDSetting
-            v-if="listenAlongRoomsEnabled"
-            v-model="listenAlongDisplayName"
-            type="text"
-            indented
-            maxlength="24"
-            placeholder="Not set"
-            name="Room display name"
-            description="Shown to people in your rooms. You choose it; it is never taken from your account"
-            @change="stageChanged"
-          />
-          <YTMDSetting
-            v-if="listenAlongRoomsEnabled"
-            v-model="listenAlongAudioStreamEnabled"
-            type="checkbox"
-            indented
-            name="Stream audio to web listeners"
-            description="While you host a room, people who open your room link in a browser hear your playback live. Uses some upload bandwidth"
-            @change="stageChanged"
-          />
-          <YTMDSetting
-            v-if="listenAlongRoomsEnabled"
-            v-model="listenAlongAutoRoomEnabled"
-            type="checkbox"
-            indented
-            name="Open a room automatically with Discord presence"
-            description="While your presence is on, a room stays open so anyone who sees your profile can listen along, with your audio if web streaming is on. Turn off to only share rooms you start yourself"
-            @change="stageChanged"
-          />
-          <div v-if="listenAlongRoomsEnabled" class="setting indented">
-            <p>Open the Listen Along window</p>
-            <button @click="openRoomWindow">Open</button>
-          </div>
-          <YTMDSetting v-model="discordPresenceEnabled" type="checkbox" name="Discord rich presence" @change="stageChanged" />
-          <YTMDSetting
-            v-if="discordPresenceEnabled"
-            v-model="discordPresenceHideOnPause"
-            type="checkbox"
-            indented
-            name="Hide presence while paused"
-            description="Clears your Discord activity as soon as playback pauses instead of showing a paused badge"
-            @change="stageChanged"
-          />
-          <div v-if="discordPresenceEnabled && discordPresenceConnectionFailed" class="setting indented">
-            <p class="discord-failure">Discord connection could not be established after 30 attempts</p>
-            <button @click="restartDiscordPresence">Retry</button>
-          </div>
-          <YTMDSetting
-            v-model="lastFMEnabled"
-            type="checkbox"
-            name="Last.fm scrobbling"
-            :disabled="!safeStorageAvailable"
-            disabled-message="This integration cannot be enabled due to safeStorage being unavailable"
-            @change="stageChanged"
-          />
-          <div v-if="lastFMEnabled" class="setting indented">
-            <div class="name-with-description">
-              <p class="description">
-                User is Authenticated:
-                <span v-if="lastFMSessionKey" style="color: var(--success)">Yes</span>
-                <span v-else style="color: #ff1100">No</span>
-              </p>
-            </div>
-            <button v-if="lastFMSessionKey" @click="logoutLastFM">Logout</button>
-          </div>
-          <YTMDSetting
-            v-if="lastFMEnabled"
-            v-model="scrobblePercent"
-            class="settings indented"
-            type="range"
-            name="Scrobble percent"
-            description="Determines when a song is scrobbled"
-            min="50"
-            max="95"
-            step="5"
-            @change="stageChanged"
-          />
-        </div>
-
-        <div v-if="currentTab === 5" class="shortcuts-tab">
-          <div class="setting">
-            <p class="shortcut-title">
-              Play/Pause<span
-                v-if="shortcutsPlayPauseRegisterFailed"
-                class="material-symbols-outlined register-error"
-                title="Failed to register keybind. Does another application have this keybind?"
-                >error</span
-              >
-            </p>
-            <KeybindInput v-model="shortcutPlayPause" @change="stageChanged" />
-          </div>
-          <div class="setting">
-            <p class="shortcut-title">
-              Next<span
-                v-if="shortcutsNextRegisterFailed"
-                class="material-symbols-outlined register-error"
-                title="Failed to register keybind. Does another application have this keybind?"
-                >error</span
-              >
-            </p>
-            <KeybindInput v-model="shortcutNext" @change="stageChanged" />
-          </div>
-          <div class="setting">
-            <p class="shortcut-title">
-              Previous<span
-                v-if="shortcutsPreviousRegisterFailed"
-                class="material-symbols-outlined register-error"
-                title="Failed to register keybind. Does another application have this keybind?"
-                >error</span
-              >
-            </p>
-            <KeybindInput v-model="shortcutPrevious" @change="stageChanged" />
-          </div>
-          <div class="setting">
-            <p class="shortcut-title">
-              Thumbs Up<span
-                v-if="shortcutsThumbsUpRegisterFailed"
-                class="material-symbols-outlined register-error"
-                title="Failed to register keybind. Does another application have this keybind?"
-                >error</span
-              >
-            </p>
-            <KeybindInput v-model="shortcutThumbsUp" @change="stageChanged" />
-          </div>
-          <div class="setting">
-            <p class="shortcut-title">
-              Thumbs Down<span
-                v-if="shortcutsThumbsDownRegisterFailed"
-                class="material-symbols-outlined register-error"
-                title="Failed to register keybind. Does another application have this keybind?"
-                >error</span
-              >
-            </p>
-            <KeybindInput v-model="shortcutThumbsDown" @change="stageChanged" />
-          </div>
-          <div class="setting">
-            <p class="shortcut-title">
-              Increase Volume<span
-                v-if="shortcutsVolumeUpRegisterFailed"
-                class="material-symbols-outlined register-error"
-                title="Failed to register keybind. Does another application have this keybind?"
-                >error</span
-              >
-            </p>
-            <KeybindInput v-model="shortcutVolumeUp" @change="stageChanged" />
-          </div>
-          <div class="setting">
-            <p class="shortcut-title">
-              Decrease Volume<span
-                v-if="shortcutsVolumeDownRegisterFailed"
-                class="material-symbols-outlined register-error"
-                title="Failed to register keybind. Does another application have this keybind?"
-                >error</span
-              >
-            </p>
-            <KeybindInput v-model="shortcutVolumeDown" @change="stageChanged" />
-          </div>
-        </div>
-
-        <div v-if="currentTab === 99" class="about-tab">
-          <img class="icon" :src="logo" />
-          <h2 class="app-name">YTMDesktop+</h2>
-          <p class="made-by">Made by YTMDesktop Team</p>
-          <template v-if="!autoUpdaterDisabled">
-            <button
-              v-if="!updateDownloaded"
-              :disabled="!(!checkingForUpdate && !updateAvailable && !updateDownloaded)"
-              class="update-check-button"
-              @click="checkForUpdates"
-            >
-              <span class="material-symbols-outlined">update</span>Check for updates
-            </button>
-            <button v-if="updateDownloaded" class="update-button" @click="restartApplicationForUpdate">
-              <span class="material-symbols-outlined">upgrade</span>Restart to update
-            </button>
-            <p v-if="checkingForUpdate && !updateAvailable && !updateDownloaded" class="updating">
-              <span class="material-symbols-outlined">progress_activity</span>Checking for updates...
-            </p>
-            <p v-if="updateAvailable && !updateDownloaded" class="updating">
-              <span class="material-symbols-outlined">progress_activity</span>Downloading update...
-            </p>
-            <p v-if="updateNotAvailable" class="no-update">Update not available</p>
-          </template>
-          <template v-if="autoUpdaterDisabled">
-            <button disabled class="update-check-button"><span class="material-symbols-outlined">update</span>Check for updates</button>
-            <p class="no-auto-updater">Auto updater disabled</p>
-          </template>
-          <span class="version-info">
-            <p class="version">Version: {{ ytmdVersion }}</p>
-            <p class="branch">Branch: {{ ytmdBranch }}</p>
-            <p class="commit">Commit: {{ ytmdCommitHash }}</p>
-          </span>
-          <div class="links">
-            <a href="https://github.com/RealWhyKnot/YTMDesktopPlus" target="_blank">GitHub</a>
-          </div>
         </div>
       </div>
     </div>
@@ -755,26 +769,35 @@ window.ytmd.handleUpdateDownloaded(() => {
 }
 
 .content {
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
   flex-grow: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* The panels scroll; the save bar and restart banner sit below as fixed
+   footers so they stay visible on long tabs */
+.tab-panels {
+  flex: 1 1 auto;
+  overflow: auto;
   padding: 4px 16px;
 }
 
-.content::-webkit-scrollbar {
+.tab-panels::-webkit-scrollbar {
   width: 12px;
 }
 
-.content::-webkit-scrollbar-track {
+.tab-panels::-webkit-scrollbar-track {
   background: var(--bg-control);
 }
 
-.content::-webkit-scrollbar-thumb {
+.tab-panels::-webkit-scrollbar-thumb {
   background-color: #414141;
 }
 
 .sidebar {
-  width: 25%;
-  min-width: 25%;
+  flex: 0 0 190px;
   list-style-type: none;
   margin: unset;
   padding: unset;
@@ -790,6 +813,32 @@ window.ytmd.handleUpdateDownloaded(() => {
   padding: 16px;
   cursor: pointer;
   color: var(--text-muted);
+}
+
+.sidebar li .label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 660px) {
+  .sidebar {
+    flex-basis: 56px;
+  }
+
+  .sidebar li {
+    justify-content: center;
+    padding: 16px 0;
+  }
+
+  .sidebar li .label {
+    display: none;
+  }
+
+  .sidebar li .material-symbols-outlined {
+    margin-right: 0;
+  }
 }
 
 .sidebar li .material-symbols-outlined {
@@ -841,10 +890,13 @@ window.ytmd.handleUpdateDownloaded(() => {
 
 .about-tab {
   display: flex;
-  justify-content: center;
+  /* safe keeps the top reachable when the window is shorter than the content */
+  justify-content: safe center;
   align-items: center;
   flex-direction: column;
-  height: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+  padding: 24px 0;
 }
 
 .icon {
@@ -884,6 +936,8 @@ window.ytmd.handleUpdateDownloaded(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
+  padding: 8px;
 }
 
 .save-bar {
@@ -891,6 +945,8 @@ window.ytmd.handleUpdateDownloaded(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
+  padding: 8px;
 }
 
 .save-bar .message {
