@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.811.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.811.1-beta) - 2026-08-11
 - feat(addons): duration-aware mirror expiry with a one-shot lookup
 - feat(discord): phone badge asset on the remote track activity
 - feat(addons): phone playback addon mirroring what the phone is playing
