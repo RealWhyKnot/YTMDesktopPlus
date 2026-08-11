@@ -1,0 +1,37 @@
+import type { InjectionKey, Ref } from "vue";
+import type { AuthToken } from "~shared/integrations/companion-server/types";
+
+// Everything the tab components need from the window shell beyond the staged
+// settings themselves. Provided once by Settings.vue.
+export type SettingsShell = {
+  isDarwin: boolean;
+  isLinux: boolean;
+
+  ytmdVersion: string;
+  ytmdBranch: string;
+  ytmdCommitHash: string;
+
+  checkingForUpdate: Ref<boolean>;
+  updateAvailable: Ref<boolean>;
+  updateNotAvailable: Ref<boolean>;
+  updateDownloaded: Ref<boolean>;
+  checkForUpdates(): void;
+  restartApplicationForUpdate(): void;
+
+  safeStorageAvailable: Ref<boolean>;
+  autoUpdaterDisabled: Ref<boolean>;
+  discordPresenceConnectionFailed: Ref<boolean>;
+  shortcutRegisterFailed: Record<string, Ref<boolean>>;
+  companionServerAuthWindowEnabled: Ref<boolean>;
+
+  companionServerAuthTokens: Ref<AuthToken[]>;
+  lastFMSessionKey: Ref<string>;
+
+  memorySettingsChanged(): void;
+  restartDiscordPresence(): void;
+  deleteCompanionAuthToken(appId: string): Promise<void>;
+  logoutLastFM(): void;
+  openRoomWindow(): void;
+};
+
+export const settingsShellKey: InjectionKey<SettingsShell> = Symbol("settings-shell");
