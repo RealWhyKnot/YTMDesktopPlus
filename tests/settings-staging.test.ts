@@ -20,7 +20,7 @@ function stateFixture(overrides: Record<string, unknown> = {}) {
       disableHardwareAcceleration: false
     },
     developer: { debugLogging: false },
-    appearance: { alwaysShowVolumeSlider: false, customCSSEnabled: false, customCSSPath: null, zoom: 100, trayIconStyle: 0 },
+    appearance: { alwaysShowVolumeSlider: false, zoom: 100, trayIconStyle: 0 },
     playback: {
       continueWhereYouLeftOff: true,
       continueWhereYouLeftOffPaused: true,
@@ -58,7 +58,7 @@ describe("snapshotFromState", () => {
       expect(snapshot).toHaveProperty([key]);
     }
     expect(snapshot["general.hideToTrayOnClose"]).toBe(true);
-    expect(snapshot["appearance.customCSSPath"]).toBe(null);
+    expect(snapshot["appearance.zoom"]).toBe(100);
   });
 
   it("tolerates missing sections", () => {

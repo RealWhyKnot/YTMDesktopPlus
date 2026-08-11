@@ -26,8 +26,6 @@ export type StoreSchema = {
   };
   appearance: {
     alwaysShowVolumeSlider: boolean;
-    customCSSEnabled: boolean;
-    customCSSPath: string | null;
     zoom: number;
     trayIconStyle: TrayIconStyle;
   };

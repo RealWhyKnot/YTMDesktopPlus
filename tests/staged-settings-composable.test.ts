@@ -11,7 +11,7 @@ function stateFixture(overrides: Record<string, unknown> = {}) {
       disableHardwareAcceleration: false
     },
     developer: { debugLogging: false },
-    appearance: { alwaysShowVolumeSlider: false, customCSSEnabled: false, customCSSPath: null, zoom: 100, trayIconStyle: 0 },
+    appearance: { alwaysShowVolumeSlider: false, zoom: 100, trayIconStyle: 0 },
     playback: {
       continueWhereYouLeftOff: true,
       continueWhereYouLeftOffPaused: true,

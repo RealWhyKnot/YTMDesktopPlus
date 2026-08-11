@@ -3,6 +3,7 @@ import type { AddonDescriptor, AddonManifest, AddonOrigin, AddonSettingsSection 
 import { manifestSatisfiesApp } from "./validate-manifest";
 import { AddonContext, AddonHostServices, AddonInstance, createAddonContext } from "./context";
 import type { AddonCssHandle } from "./css";
+import { buildExternalDefinition, type ExternalAddonScan } from "./external-loader";
 
 export type BundledAddonDefinition = {
   manifest: AddonManifest;
@@ -18,6 +19,7 @@ type ManagedAddon = {
   loadedCallbacks: (() => void)[];
   cssHandles: AddonCssHandle[];
   cleanups: (() => void)[];
+  scanError?: string;
 };
 
 export class AddonManager {
@@ -45,12 +47,45 @@ export class AddonManager {
     }
   }
 
+  /** Folders from the user's addons directory. Broken folders are listed with
+   *  their error so the settings window can show what went wrong. */
+  public registerExternal(scans: ExternalAddonScan[]) {
+    if (this.booted) throw new Error("Addons must be registered before boot");
+    for (const scan of scans) {
+      const id = scan.manifest?.id ?? scan.folderName;
+      const conflict = this.addons.some(addon => addon.definition.manifest.id === id);
+      const manifest: AddonManifest = scan.manifest ?? {
+        id: scan.folderName,
+        name: scan.folderName,
+        version: "0.0.0",
+        author: "unknown",
+        description: ""
+      };
+      this.addons.push({
+        definition: conflict || scan.error ? { manifest, activate: () => {} } : buildExternalDefinition(scan.dir, manifest),
+        origin: "external",
+        descriptor: this.baseDescriptor(manifest, "external"),
+        instance: null,
+        context: null,
+        loadedCallbacks: [],
+        cssHandles: [],
+        cleanups: [],
+        scanError: conflict ? "id conflicts with an installed addon" : scan.error
+      });
+    }
+  }
+
   /** Activates every enabled, compatible addon. A failing addon is recorded on
    *  its descriptor and never interrupts boot or its neighbours. */
   public async boot() {
     this.booted = true;
     for (const addon of this.addons) {
       const { manifest } = addon.definition;
+      if (addon.scanError) {
+        addon.descriptor.state = "error";
+        addon.descriptor.error = addon.scanError;
+        continue;
+      }
       if (!addon.descriptor.enabled) {
         addon.descriptor.state = "disabled";
         continue;

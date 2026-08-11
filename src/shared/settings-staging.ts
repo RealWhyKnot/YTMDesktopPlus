@@ -9,8 +9,6 @@ export const STAGED_SETTING_KEYS = [
   "general.disableHardwareAcceleration",
   "developer.debugLogging",
   "appearance.alwaysShowVolumeSlider",
-  "appearance.customCSSEnabled",
-  "appearance.customCSSPath",
   "appearance.zoom",
   "appearance.trayIconStyle",
   "playback.continueWhereYouLeftOff",

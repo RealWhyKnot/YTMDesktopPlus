@@ -27,13 +27,14 @@ import electronSquirrelStartup from "electron-squirrel-startup";
 
 import MemoryStore from "./memory-store";
 import { AddonManager } from "./addons/manager";
+import { scanExternalAddons } from "./addons/external-loader";
+import { migrateCustomCssSetting } from "./addons/migrate-custom-css";
 import { BUNDLED_ADDONS } from "../addons/bundled";
 import playerStateStore, { PlayerState, VideoState } from "./player-state-store";
 import { setLogOutputEnabled, setupLogging } from "./logging";
 import { MemoryStoreSchema, StoreSchema, TrayIconStyle, UpdateChannel } from "../shared/store/schema";
 
 import CompanionServer from "./integrations/companion-server";
-import CustomCSS from "./integrations/custom-css";
 import DiscordPresence from "./integrations/discord-presence";
 import LastFM from "./integrations/last-fm";
 import NowPlayingNotifications from "./integrations/notifications";
@@ -166,7 +167,6 @@ const builtMenu = isDarwin ? Menu.buildFromTemplate(template) : null; // null fo
 Menu.setApplicationMenu(builtMenu);
 
 const companionServer = new CompanionServer();
-const customCss = new CustomCSS();
 const discordPresence = new DiscordPresence();
 const lastFMScrobbler = new LastFM();
 const listenAlong = new ListenAlong();
@@ -494,8 +494,6 @@ const store = new Conf<StoreSchema>({
     },
     appearance: {
       alwaysShowVolumeSlider: false,
-      customCSSEnabled: false,
-      customCSSPath: null,
       zoom: 100,
       trayIconStyle: TrayIconStyle.Auto
     },
@@ -756,16 +754,6 @@ store.onDidAnyChange(async (newState, oldState) => {
   }
 
   // Appearance
-  if (newState.appearance.customCSSEnabled) {
-    customCss.provide(store, ytmView);
-  }
-  if (newState.appearance.customCSSEnabled && !oldState.appearance.customCSSEnabled) {
-    customCss.enable();
-    log.info("Integration enabled: Custom CSS");
-  } else if (!newState.appearance.customCSSEnabled && oldState.appearance.customCSSEnabled) {
-    customCss.disable();
-    log.info("Integration disabled: Custom CSS");
-  }
   if (oldState.appearance.trayIconStyle !== newState.appearance.trayIconStyle) setTrayIcon();
 
   // Playback
@@ -1440,7 +1428,6 @@ const createYTMView = (): void => {
     }
   });
   companionServer.provide(store, memoryStore, ytmView);
-  customCss.provide(store, ytmView);
   ratioVolume.provide(ytmView);
   loudnessNormalization.provide(ytmView);
   audioStreamCapture.provide(ytmView);
@@ -2011,8 +1998,6 @@ app.on("ready", async () => {
       loudnessNormalization.ytmViewLoaded();
       audioStreamCapture.ytmViewLoaded();
       nonStop.ytmViewLoaded();
-      // TODO: this is just a hack fix for custom css to update CSS when the view loads
-      customCss.updateCSS();
 
       addonManager.notifyYtmViewLoaded();
 
@@ -2488,6 +2473,34 @@ app.on("ready", async () => {
 
   log.info("Created tray icon");
 
+  const addonsDirPath = path.join(app.getPath("userData"), "addons");
+
+  // The old appearance.customCSSPath setting becomes a styles-only addon
+  const appearanceRaw = store.get("appearance") as unknown as Record<string, unknown>;
+  if (appearanceRaw.customCSSPath !== undefined || appearanceRaw.customCSSEnabled !== undefined) {
+    try {
+      const migration = migrateCustomCssSetting(appearanceRaw, addonsDirPath);
+      if (migration.migrated) {
+        const addonsSection = store.get("addons");
+        if (!addonsSection.states[migration.addonId]) {
+          addonsSection.states[migration.addonId] = { enabled: migration.enabled, riskAcknowledged: true };
+          store.set("addons", addonsSection);
+        }
+        log.info(`Custom CSS migrated to addon at ${migration.addonDir}`);
+        new Notification({
+          title: "Custom CSS is now an addon",
+          body: "Your stylesheet moved into the addons folder. Manage it from Settings under Addons."
+        }).show();
+      }
+    } catch (error) {
+      log.error("Custom CSS migration failed", error);
+    }
+    store.delete("appearance.customCSSPath" as keyof StoreSchema);
+    store.delete("appearance.customCSSEnabled" as keyof StoreSchema);
+  }
+
+  addonManager.registerExternal(scanExternalAddons(addonsDirPath));
+
   await addonManager.boot();
   log.info("Addons booted");
 
@@ -2565,13 +2578,6 @@ app.on("ready", async () => {
   if (store.get("general").showNotificationOnSongChange) {
     nowPlayingNotifications.enable();
     log.info("Integration enabled: Now playing notifications");
-  }
-
-  // CustomCSS
-  if (store.get("appearance").customCSSEnabled) {
-    customCss.provide(store, ytmView);
-    customCss.enable();
-    log.info("Integration enabled: Custom CSS");
   }
 
   // RatioVolume
