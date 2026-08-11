@@ -107,8 +107,10 @@ module.exports.activate = ctx => {
   through the normal save flow.
 - `ctx.memory` - per-addon in-memory state, broadcast to all app windows.
 - `ctx.ytmview` - the YouTube Music view: `registerScript`/`runScript` for
-  page scripts, `insertCSS`/`watchCSSFile` for styles, `onLoaded` for a hook
-  that fires each time the page finishes loading.
+  page scripts, `invokeScript(name, arg?)` to run a registered script with one
+  JSON argument and get its return value back as a promise (30s timeout),
+  `insertCSS`/`watchCSSFile` for styles, `onLoaded` for a hook that fires each
+  time the page finishes loading.
 - `ctx.player` - `getState` and `onStateChanged` for playback state.
 - `ctx.playback` - `cueTrack` and `sendPlaybackCommand`.
 - `ctx.windows` - `create({ entry, width, height })` for windows whose
@@ -118,7 +120,10 @@ module.exports.activate = ctx => {
 - `ctx.deepLinks` - `register(command, handler)` for `ytmdplus://<command>/...`
   links (`play` is reserved).
 - `ctx.discord` - `registerButtonsProvider` to contribute presence buttons
-  (Discord shows at most two) and `refreshActivity`.
+  (Discord shows at most two), `registerRemoteActivityProvider` to offer a
+  track playing outside this app as a presence stand-in while local playback
+  has nothing to show (call `refreshActivity` after the value changes), and
+  `refreshActivity`.
 - `ctx.titlebar` - `setBadge`/`onBadgeClick` for an indicator in the main
   window's title bar.
 - `ctx.notifications.show` - desktop notifications.

@@ -15,6 +15,19 @@ export type PresenceButton = { label: string; url: string };
 /** Receives the current track's share link; returns buttons to show, if any. */
 export type PresenceButtonsProvider = (trackShareUrl: string) => PresenceButton[] | undefined;
 
+/** A track playing somewhere other than this app, offered as a presence
+ *  fallback while local playback has nothing to show. No end timestamp: remote
+ *  sources have no position, only (at best) when the track was first seen. */
+export type RemoteTrackActivity = {
+  title: string;
+  author: string;
+  thumbnailUrl?: string;
+  videoId?: string;
+  startedAtEpochMs?: number;
+  smallText?: string;
+};
+export type RemoteActivityProvider = () => RemoteTrackActivity | undefined;
+
 function getHighestResThumbnail(thumbnails: Thumbnail[]): string {
   return thumbnails.reduce(
     (accumulator, current) => (current.height * current.width <= accumulator.height * accumulator.width ? accumulator : current),
@@ -76,6 +89,44 @@ export default class DiscordPresence implements IIntegration {
 
   private connectionRetries: number = 0;
   private buttonsProviders: PresenceButtonsProvider[] = [];
+  private remoteActivityProviders: RemoteActivityProvider[] = [];
+
+  // Everywhere the activity used to clear, a remote track may stand in
+  // instead; when no provider offers one the activity clears as before.
+  private clearOrRemote() {
+    const remote = this.getRemoteActivity();
+    if (!remote) {
+      this.discordClient.clearActivity();
+      return;
+    }
+    this.discordClient.setActivity({
+      type: DiscordActivityType.Listening,
+      status_display_type: 1,
+      details: stringLimit(remote.title, 128, 2),
+      details_url: remote.videoId ? `https://music.youtube.com/watch?v=${remote.videoId}` : undefined,
+      state: stringLimit(remote.author, 128, 2),
+      timestamps: remote.startedAtEpochMs ? { start: remote.startedAtEpochMs } : undefined,
+      assets: {
+        large_image: (remote.thumbnailUrl?.length ?? 300) <= 256 ? remote.thumbnailUrl : "icon",
+        small_image: "start",
+        small_text: remote.smallText ?? "Playing on another device"
+      },
+      instance: false
+    });
+    log.debug(`dpresence: remote activity set for ${remote.videoId ?? remote.title}`);
+  }
+
+  private getRemoteActivity(): RemoteTrackActivity | undefined {
+    for (const provider of this.remoteActivityProviders) {
+      try {
+        const remote = provider();
+        if (remote) return remote;
+      } catch (error) {
+        log.error("Remote activity provider failed", error);
+      }
+    }
+    return undefined;
+  }
 
   private UpdateActivity() {
     if (this.activityDebounceTimeout) return;
@@ -84,14 +135,14 @@ export default class DiscordPresence implements IIntegration {
       // leaving it set would silence every later update for the session.
       this.activityDebounceTimeout = null;
       if (!this.videoDetails) {
-        this.discordClient.clearActivity();
+        this.clearOrRemote();
         return;
       }
       const { title, author, album, id, thumbnails, durationSeconds, channelId, albumId, isLive } = this.videoDetails;
       const thumbnail = getHighestResThumbnail(thumbnails);
       const playing = this.videoState === VideoState.Playing;
       if (!playing && this.store?.get("integrations").discordPresenceHideOnPause) {
-        this.discordClient.clearActivity();
+        this.clearOrRemote();
         return;
       }
       // One clock read, so the elapsed bar and the listen along link agree.
@@ -138,7 +189,11 @@ export default class DiscordPresence implements IIntegration {
 
     const { videoDetails, videoProgress, trackState, hasFullMetadata } = state;
     if (!videoDetails) {
-      this.discordClient.clearActivity();
+      // Drop the cached track too, or a later debounced update would revive it.
+      this.videoDetails = null;
+      this.videoState = null;
+      this.progress = null;
+      this.clearOrRemote();
       return;
     }
     this.adPlaying = state.adPlaying;
@@ -160,7 +215,7 @@ export default class DiscordPresence implements IIntegration {
     if (state.trackState == VideoState.Playing) return;
     this.pauseTimeout = setTimeout(() => {
       if (!this.discordClient && !this.ready) return;
-      this.discordClient.clearActivity();
+      this.clearOrRemote();
       this.pauseTimeout = null;
     }, 30 * 1000);
   }
@@ -182,6 +237,16 @@ export default class DiscordPresence implements IIntegration {
     this.buttonsProviders.push(provider);
     return () => {
       this.buttonsProviders = this.buttonsProviders.filter(entry => entry !== provider);
+    };
+  }
+
+  /** Features that know about playback outside this app contribute a stand-in
+   *  activity here; the first provider with a track wins. Call refreshActivity
+   *  after the provided value changes. */
+  public registerRemoteActivityProvider(provider: RemoteActivityProvider): () => void {
+    this.remoteActivityProviders.push(provider);
+    return () => {
+      this.remoteActivityProviders = this.remoteActivityProviders.filter(entry => entry !== provider);
     };
   }
 

@@ -7,6 +7,7 @@ import type { AddonManifest, AddonSettingsSection, AddonTitlebarBadge } from "~s
 import type { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
 import type MemoryStore from "../memory-store";
 import type { PlayerState } from "../player-state-store";
+import type { RemoteTrackActivity } from "../integrations/discord-presence";
 import type { cueTrack } from "../playback";
 import { AddonCssHandle, cssHandleFromFile } from "./css";
 
@@ -25,6 +26,7 @@ export type AddonHostServices = {
   userDataPath: string;
   getYtmView(): { webContents: Electron.WebContents } | null;
   registerYtmScript(namespace: string, name: string, script: string): void;
+  invokeYtmScript(namespace: string, name: string, arg?: unknown): Promise<unknown>;
   player: {
     getState(): PlayerState;
     addEventListener(listener: (state: PlayerState) => void): void;
@@ -45,6 +47,7 @@ export type AddonHostServices = {
   createWindow(options: AddonWindowOptions): AddonHostWindow;
   discord: {
     registerButtonsProvider(provider: (trackShareUrl: string) => { label: string; url: string }[] | undefined): () => void;
+    registerRemoteActivityProvider(provider: () => RemoteTrackActivity | undefined): () => void;
     refreshActivity(): void;
   };
   deepLinks: {
@@ -106,6 +109,11 @@ export interface AddonContext {
   ytmview: {
     registerScript(name: string, script: string): void;
     runScript(name: string): void;
+    /** Runs a registered script and resolves its return value. The script still
+     *  evaluates to a function; it may take one structured-clone argument and
+     *  return (or resolve) structured-clone data. Rejects on script error,
+     *  missing view, or a 30s timeout. */
+    invokeScript(name: string, arg?: unknown): Promise<unknown>;
     onLoaded(callback: () => void): Unsubscribe;
     insertCSS(css: string): AddonCssHandle;
     watchCSSFile(filePath: string): AddonCssHandle;
@@ -130,6 +138,10 @@ export interface AddonContext {
   };
   discord: {
     registerButtonsProvider(provider: (trackShareUrl: string) => { label: string; url: string }[] | undefined): Unsubscribe;
+    /** Offers a track playing outside this app as a presence stand-in while
+     *  local playback has nothing to show. Call refreshActivity after the
+     *  provided value changes. */
+    registerRemoteActivityProvider(provider: () => RemoteTrackActivity | undefined): Unsubscribe;
     refreshActivity(): void;
   };
   titlebar: {
@@ -223,6 +235,9 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       },
       runScript(name) {
         services.getYtmView()?.webContents.send("ytmView:executeScript", scriptNamespace, name);
+      },
+      invokeScript(name, arg) {
+        return services.invokeYtmScript(scriptNamespace, name, arg);
       },
       onLoaded(callback) {
         return bridge.addLoadedCallback(callback);
@@ -329,6 +344,18 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
             return provider(trackShareUrl);
           } catch (error) {
             scopedLog.error("Presence buttons provider failed", error);
+            return undefined;
+          }
+        });
+        bridge.addCleanup(unsubscribe);
+        return unsubscribe;
+      },
+      registerRemoteActivityProvider(provider) {
+        const unsubscribe = services.discord.registerRemoteActivityProvider(() => {
+          try {
+            return provider();
+          } catch (error) {
+            scopedLog.error("Remote activity provider failed", error);
             return undefined;
           }
         });

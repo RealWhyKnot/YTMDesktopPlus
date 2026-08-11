@@ -653,6 +653,21 @@ const startHooking = async () => {
     }
   });
 
+  ipcRenderer.on("ytmView:invokeScript", async (_event, integrationName, scriptName, requestId, arg) => {
+    const respond = (payload: { ok: boolean; value?: unknown; error?: string }) => ipcRenderer.send(`ytmView:invokeScript:response:${requestId}`, payload);
+    try {
+      const script = integrationScripts[integrationName]?.[scriptName];
+      if (!script) {
+        respond({ ok: false, error: `unknown script ${integrationName}/${scriptName}` });
+        return;
+      }
+      const value = await (await webFrame.executeJavaScript(script))(arg);
+      respond({ ok: true, value });
+    } catch (error) {
+      respond({ ok: false, error: String(error) });
+    }
+  });
+
   ipcRenderer.send("ytmView:loaded");
 };
 

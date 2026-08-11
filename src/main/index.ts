@@ -22,6 +22,7 @@ import {
 import Conf from "conf";
 import log from "electron-log";
 import path from "path";
+import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import electronSquirrelStartup from "electron-squirrel-startup";
 
@@ -562,6 +563,28 @@ const addonManager = new AddonManager({
     if (!ytmViewIntegrationScripts[namespace]) ytmViewIntegrationScripts[namespace] = {};
     ytmViewIntegrationScripts[namespace][name] = script;
   },
+  invokeYtmScript: (namespace, name, arg) =>
+    new Promise((resolve, reject) => {
+      const view = ytmView;
+      if (!view) {
+        reject(new Error("YTM view unavailable"));
+        return;
+      }
+      const requestId = randomUUID();
+      const channel = `ytmView:invokeScript:response:${requestId}`;
+      const listener = (event: Electron.IpcMainEvent, result: { ok: boolean; value?: unknown; error?: string }) => {
+        if (event.sender !== view.webContents) return;
+        clearTimeout(timeout);
+        if (result?.ok) resolve(result.value);
+        else reject(new Error(result?.error ?? `script ${namespace}/${name} failed`));
+      };
+      const timeout = setTimeout(() => {
+        ipcMain.removeListener(channel, listener);
+        reject(new Error(`script ${namespace}/${name} timed out`));
+      }, 30 * 1000);
+      ipcMain.once(channel, listener);
+      view.webContents.send("ytmView:invokeScript", namespace, name, requestId, arg);
+    }),
   player: playerStateStore,
   playback: {
     cueTrack,
@@ -627,6 +650,7 @@ const addonManager = new AddonManager({
   },
   discord: {
     registerButtonsProvider: provider => discordPresence.registerButtonsProvider(provider),
+    registerRemoteActivityProvider: provider => discordPresence.registerRemoteActivityProvider(provider),
     refreshActivity: () => discordPresence.refreshActivity()
   },
   deepLinks: {

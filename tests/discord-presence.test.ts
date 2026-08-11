@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import DiscordPresence, { type PresenceButtonsProvider } from "../src/main/integrations/discord-presence";
+import DiscordPresence, { type PresenceButtonsProvider, type RemoteTrackActivity } from "../src/main/integrations/discord-presence";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
 
 // The buttons discord shows on the presence. Discord renders at most two
@@ -85,28 +85,36 @@ function pausedState(): PlayerState {
   return { ...playingState(), trackState: VideoState.Paused };
 }
 
+type ActivityPayload = { details?: string; timestamps?: { start?: number; end?: number }; assets?: { small_text?: string; large_image?: string } };
+
 type PresenceHarness = {
   presence: DiscordPresence;
   calls: { set: number; clear: number };
+  activities: ActivityPayload[];
   settings: { listenAlongRoomsEnabled: boolean; discordPresenceHideOnPause: boolean };
   stateChanged(state: PlayerState): void;
 };
 
 function makePresence(settings: Partial<PresenceHarness["settings"]> = {}): PresenceHarness {
   const calls = { set: 0, clear: 0 };
+  const activities: ActivityPayload[] = [];
   const resolved = { listenAlongRoomsEnabled: false, discordPresenceHideOnPause: false, ...settings };
   const presence = new DiscordPresence();
   presence.provide({ get: () => resolved } as never, { get: () => null } as never);
   Object.assign(presence, {
     ready: true,
     discordClient: {
-      setActivity: () => calls.set++,
+      setActivity: (activity: ActivityPayload) => {
+        calls.set++;
+        activities.push(activity);
+      },
       clearActivity: () => calls.clear++
     }
   });
   return {
     presence,
     calls,
+    activities,
     settings: resolved,
     stateChanged: state => (presence as unknown as { playerStateChanged(state: PlayerState): void }).playerStateChanged(state)
   };
@@ -197,5 +205,98 @@ describe("activity updates", () => {
     presence.refreshActivity();
     vi.advanceTimersByTime(1000);
     expect(calls).toEqual({ set: 2, clear: 1 });
+  });
+});
+
+// A remote track (playback outside this app) stands in wherever the activity
+// used to clear, and never displaces a local track.
+describe("remote activity provider", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const remoteTrack: RemoteTrackActivity = {
+    title: "Remote Title",
+    author: "Remote Author",
+    videoId: "remoteid123",
+    thumbnailUrl: "https://example.invalid/remote.jpg",
+    startedAtEpochMs: 1_000_000
+  };
+
+  it("stands in when no track is loaded, with a start-only timestamp", () => {
+    vi.useFakeTimers();
+    const { presence, calls, activities } = makePresence();
+    presence.registerRemoteActivityProvider(() => remoteTrack);
+
+    presence.refreshActivity();
+    vi.advanceTimersByTime(1000);
+    expect(calls).toEqual({ set: 1, clear: 0 });
+    expect(activities[0].details).toBe("Remote Title");
+    expect(activities[0].timestamps).toEqual({ start: 1_000_000 });
+    expect(activities[0].assets?.small_text).toBe("Playing on another device");
+    expect(activities[0].assets?.large_image).toBe("https://example.invalid/remote.jpg");
+  });
+
+  it("never displaces a local track", () => {
+    vi.useFakeTimers();
+    const { presence, activities, stateChanged } = makePresence();
+    presence.registerRemoteActivityProvider(() => remoteTrack);
+
+    stateChanged(playingState());
+    vi.advanceTimersByTime(1000);
+    expect(activities.at(-1)?.details).toBe("Title");
+  });
+
+  it("stands in on a hidden pause and on the 30s pause clear", () => {
+    vi.useFakeTimers();
+    const hidden = makePresence({ discordPresenceHideOnPause: true });
+    hidden.presence.registerRemoteActivityProvider(() => remoteTrack);
+    hidden.stateChanged(playingState());
+    vi.advanceTimersByTime(1000);
+    hidden.stateChanged(pausedState());
+    vi.advanceTimersByTime(1000);
+    expect(hidden.calls.clear).toBe(0);
+    expect(hidden.activities.at(-1)?.details).toBe("Remote Title");
+
+    const visible = makePresence();
+    visible.presence.registerRemoteActivityProvider(() => remoteTrack);
+    visible.stateChanged(playingState());
+    vi.advanceTimersByTime(1000);
+    visible.stateChanged(pausedState());
+    vi.advanceTimersByTime(31_000);
+    expect(visible.calls.clear).toBe(0);
+    expect(visible.activities.at(-1)?.details).toBe("Remote Title");
+  });
+
+  it("does not revive a stale local track after the view reports no video", () => {
+    vi.useFakeTimers();
+    const { presence, activities, stateChanged } = makePresence();
+    presence.registerRemoteActivityProvider(() => remoteTrack);
+
+    stateChanged(playingState());
+    vi.advanceTimersByTime(1000);
+    stateChanged({ ...playingState(), videoDetails: null } as PlayerState);
+    expect(activities.at(-1)?.details).toBe("Remote Title");
+
+    presence.refreshActivity();
+    vi.advanceTimersByTime(1000);
+    expect(activities.at(-1)?.details).toBe("Remote Title");
+  });
+
+  it("clears when providers throw or are unregistered", () => {
+    vi.useFakeTimers();
+    const { presence, calls } = makePresence();
+    presence.registerRemoteActivityProvider(() => {
+      throw new Error("provider blew up");
+    });
+    presence.refreshActivity();
+    vi.advanceTimersByTime(1000);
+    expect(calls).toEqual({ set: 0, clear: 1 });
+
+    const unsubscribe = presence.registerRemoteActivityProvider(() => remoteTrack);
+    unsubscribe();
+    presence.refreshActivity();
+    vi.advanceTimersByTime(1000);
+    expect(calls).toEqual({ set: 0, clear: 2 });
   });
 });
