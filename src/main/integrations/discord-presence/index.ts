@@ -108,7 +108,9 @@ export default class DiscordPresence implements IIntegration {
       timestamps: remote.startedAtEpochMs ? { start: remote.startedAtEpochMs } : undefined,
       assets: {
         large_image: (remote.thumbnailUrl?.length ?? 300) <= 256 ? remote.thumbnailUrl : "icon",
-        small_image: "start",
+        // An asset key on the Discord application, like "start"/"pause"; a
+        // "phone-inverted" dark variant follows the same convention.
+        small_image: "phone",
         small_text: remote.smallText ?? "Playing on another device"
       },
       instance: false
