@@ -133,32 +133,46 @@
     // store not hookable; the network tap still runs
   }
 
-  // Periodic account-history browse through the page's own request bus, the
-  // one authenticated endpoint the app already uses. Head entries reveal what
-  // most recently played on any device and let us measure how fast a phone
-  // track appears here.
-  const pollHistory = () => {
+  // Periodic account-history browse straight against InnerTube with the
+  // page's own session config and the same authorization header the page
+  // computes for its own calls. The yt-service-request bus does not serve
+  // browse endpoints, so this goes direct. Head entries reveal what most
+  // recently played on any device and let us measure how fast a phone track
+  // appears here.
+  const pollHistory = async () => {
     try {
-      const bar = document.querySelector("ytmusic-app-layout>ytmusic-player-bar");
-      if (!bar) return;
-      const returnValue = [];
-      bar.dispatchEvent(
-        new CustomEvent("yt-action", {
-          bubbles: true,
-          cancelable: false,
-          composed: true,
-          detail: {
-            actionName: "yt-service-request",
-            args: [bar, { browseEndpoint: { browseId: "FEmusic_history" } }],
-            optionalAction: false,
-            returnValue
-          }
-        })
-      );
-      if (!returnValue[0] || !returnValue[0].ajaxPromise) return;
-      returnValue[0].ajaxPromise.then(
-        response => {
-          const data = (response && response.data) || {};
+      const cfg = window.yt && window.yt.config_;
+      if (!cfg || !cfg.INNERTUBE_CONTEXT) {
+        push("history", { error: "no innertube config" });
+        return;
+      }
+      const sapisid = document.cookie.match(/(?:^|; )SAPISID=([^;]+)/);
+      if (!sapisid) {
+        push("history", { error: "no SAPISID cookie" });
+        return;
+      }
+      const ts = Math.floor(Date.now() / 1000);
+      const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(ts + " " + sapisid[1] + " https://music.youtube.com"));
+      const hash = Array.from(new Uint8Array(digest))
+        .map(b => b.toString(16).padStart(2, "0"))
+        .join("");
+      const response = await originalFetch.call(window, "/youtubei/v1/browse?prettyPrint=false", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "SAPISIDHASH " + ts + "_" + hash,
+          "X-Origin": "https://music.youtube.com",
+          "X-Goog-AuthUser": String(cfg.SESSION_INDEX != null ? cfg.SESSION_INDEX : 0)
+        },
+        body: JSON.stringify({ context: cfg.INNERTUBE_CONTEXT, browseId: "FEmusic_history" })
+      });
+      if (!response.ok) {
+        push("history", { error: "http " + response.status });
+        return;
+      }
+      await response.json().then(
+        data => {
           const items = [];
           const runsText = runs => (runs || []).map(r => r.text).join("");
           const visit = node => {
