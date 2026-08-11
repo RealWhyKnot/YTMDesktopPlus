@@ -24,6 +24,7 @@ declare global {
         setEnabled(id: string, enabled: boolean): Promise<void>;
         openFolder(): void;
       };
+      addonBadgeClick?(addonId: string): void;
       restartApplication(): void;
       restartApplicationForUpdate(): void;
       getTrueFilePath(file: File): string;

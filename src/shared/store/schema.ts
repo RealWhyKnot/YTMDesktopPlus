@@ -1,5 +1,5 @@
 import type { RoomSnapshot } from "../room-protocol";
-import type { AddonDescriptor } from "../addons/types";
+import type { AddonDescriptor, AddonTitlebarBadge } from "../addons/types";
 
 export enum TrayIconStyle {
   Auto = 0,
@@ -98,6 +98,7 @@ export type ListenAlongStatus = "disabled" | "pairing" | "connecting" | "connect
 export type MemoryStoreSchema = {
   addonsRuntime: AddonDescriptor[];
   addonMemory: Record<string, Record<string, unknown>>;
+  addonTitlebarBadges: AddonTitlebarBadge[];
   discordPresenceConnectionFailed: boolean;
   listenAlongStatus: ListenAlongStatus;
   listenAlongStatusDetail: string | null;

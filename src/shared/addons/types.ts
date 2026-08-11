@@ -34,6 +34,14 @@ export type AddonSettingsSection = {
   fields: AddonSettingsField[];
 };
 
+export type AddonTitlebarBadge = {
+  addonId: string;
+  icon: string;
+  text?: string;
+  tooltip?: string;
+  active?: boolean;
+};
+
 export type AddonDescriptor = {
   manifest: AddonManifest;
   origin: AddonOrigin;

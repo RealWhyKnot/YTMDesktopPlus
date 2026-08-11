@@ -53,7 +53,16 @@ import { cancelCue, cueTrack, providePlaybackView, sendPlaybackCommand } from ".
 import { createLaunchPause } from "./playback/launch-pause";
 import { parseProtocolUrl } from "../shared/protocol-url";
 import { buildUpdateFeedUrl, isNewerVersion } from "../shared/update-feed";
-import { CONTROL_ACTIONS, isRoomId, sanitizeDisplayName, type ControlAction, type RoomRole } from "../shared/room-protocol";
+import {
+  CONTROL_ACTIONS,
+  isRoomId,
+  isRoomLive,
+  otherListenerCount,
+  sanitizeDisplayName,
+  type ControlAction,
+  type RoomRole,
+  type RoomSnapshot
+} from "../shared/room-protocol";
 import { RelayClient } from "./integrations/listen-along/relay-client";
 import { RoomSession } from "./integrations/listen-along/room-session";
 
@@ -235,6 +244,20 @@ function findProtocolUrl(argv: string[]) {
 // It is replayed once YouTube Music reports itself loaded.
 let pendingProtocolUrl: string | null = null;
 
+// Deep link commands other than play are pluggable; a feature registers its
+// command name and owns everything after it in the url.
+const deepLinkHandlers = new Map<string, (segments: string[], params: URLSearchParams) => void>();
+function registerDeepLink(command: string, handler: (segments: string[], params: URLSearchParams) => void): () => void {
+  const name = command.toLowerCase();
+  if (name === "play" || deepLinkHandlers.has(name)) {
+    throw new Error(`Deep link command already taken: ${name}`);
+  }
+  deepLinkHandlers.set(name, handler);
+  return () => {
+    deepLinkHandlers.delete(name);
+  };
+}
+
 // Protocol handler
 function handleProtocol(url: string) {
   if (!url) return;
@@ -251,8 +274,10 @@ function handleProtocol(url: string) {
     return;
   }
 
-  if (request.command === "room") {
-    openRoomFromLink(request.roomId);
+  if (request.command === "other") {
+    const handler = deepLinkHandlers.get(request.name);
+    if (handler) handler(request.segments, request.params);
+    else log.info(`Ignoring protocol url with unknown command ${request.name}`);
     return;
   }
 
@@ -289,7 +314,10 @@ if (!isTestRun()) {
   }
 }
 
-// Create the in-memory store for state within the UI
+// Create the in-memory store for state within the UI.
+// The addon manager is constructed after the settings store further down; the
+// flag keeps this broadcast from touching it before it exists.
+let addonManagerCreated = false;
 const memoryStore = new MemoryStore<MemoryStoreSchema>();
 memoryStore.onStateChanged((newState, oldState) => {
   if (mainWindow !== null) {
@@ -306,6 +334,12 @@ memoryStore.onStateChanged((newState, oldState) => {
 
   if (ytmView !== null) {
     ytmView.webContents.send("memoryStore:stateChanged", newState, oldState);
+  }
+
+  if (addonManagerCreated) {
+    for (const contents of addonManager.windowWebContents()) {
+      contents.send("memoryStore:stateChanged", newState, oldState);
+    }
   }
 });
 log.info("Created memory store");
@@ -661,9 +695,83 @@ const addonManager = new AddonManager({
     const notification = new Notification({ title: options.title, body: options.body });
     if (options.onClick) notification.on("click", options.onClick);
     notification.show();
+  },
+  createWindow: options => {
+    const anchorBounds = mainWindow?.getBounds();
+    const addonWindow = new BrowserWindow({
+      width: options.width,
+      height: options.height,
+      x: anchorBounds ? Math.round(anchorBounds.x + (anchorBounds.width / 2 - options.width / 2)) : undefined,
+      y: anchorBounds ? Math.round(anchorBounds.y + (anchorBounds.height / 2 - options.height / 2)) : undefined,
+      minimizable: false,
+      maximizable: false,
+      resizable: options.resizable ?? false,
+      frame: false,
+      show: false,
+      icon: getIconPath("ytmd.png"),
+      titleBarStyle: "hidden",
+      titleBarOverlay: {
+        color: "#000000",
+        symbolColor: "#BBBBBB",
+        height: 36
+      },
+      webPreferences: {
+        sandbox: true,
+        contextIsolation: true,
+        preload: path.join(__dirname, `../renderer/windows/${options.entry}/preload.js`),
+        devTools: store.get("developer.enableDevTools")
+      }
+    });
+    addonWindow.on("ready-to-show", () => addonWindow.show());
+    if (ALL_WINDOWS_VITE_DEV_SERVER_URL) addonWindow.loadURL(`${ALL_WINDOWS_VITE_DEV_SERVER_URL}/windows/${options.entry}/index.html`);
+    else addonWindow.loadFile(path.join(__dirname, `../renderer/windows/${options.entry}/index.html`));
+    return addonWindow;
+  },
+  discord: {
+    registerButtonsProvider: provider => discordPresence.registerButtonsProvider(provider),
+    refreshActivity: () => discordPresence.refreshActivity()
+  },
+  deepLinks: {
+    register: registerDeepLink
   }
 });
 addonManager.registerBundled(BUNDLED_ADDONS);
+addonManagerCreated = true;
+
+// The rooms feature is not an addon yet, but it already goes through the same
+// extension points so the presence, titlebar and deep links stay decoupled.
+discordPresence.registerButtonsProvider(trackShareUrl => {
+  if (!store.get("integrations").listenAlongRoomsEnabled) return undefined;
+  const room = memoryStore.get("listenAlongRoom") as RoomSnapshot | null;
+  if (!room || room.phase !== "hosting" || !room.shareUrl) return undefined;
+  return [
+    { label: "Join Room", url: room.shareUrl },
+    { label: "Listen Along", url: trackShareUrl }
+  ];
+});
+
+registerDeepLink("room", segments => {
+  if (segments.length !== 1 || !isRoomId(segments[0])) return;
+  openRoomFromLink(segments[0]);
+});
+
+memoryStore.onStateChanged((newState, oldState) => {
+  const newRoom = (newState.listenAlongRoom as RoomSnapshot | null) ?? null;
+  const oldRoom = (oldState.listenAlongRoom as RoomSnapshot | null) ?? null;
+  if (JSON.stringify(newRoom) === JSON.stringify(oldRoom)) return;
+
+  if (!isRoomLive(newRoom)) {
+    addonManager.setTitlebarBadge("rooms", null);
+    return;
+  }
+  const count = otherListenerCount(newRoom);
+  addonManager.setTitlebarBadge("rooms", {
+    icon: "headphones",
+    text: count > 0 ? String(count) : undefined,
+    tooltip: count === 0 ? "Room is open, nobody listening yet" : count === 1 ? "1 person listening along" : `${count} people listening along`,
+    active: count > 0
+  });
+});
 
 const applyUpdateFeed = () =>
   autoUpdater.setFeedURL({
@@ -687,6 +795,10 @@ store.onDidAnyChange(async (newState, oldState) => {
 
   if (ytmView !== null) {
     ytmView.webContents.send("settings:stateChanged", newState, oldState);
+  }
+
+  for (const contents of addonManager.windowWebContents()) {
+    contents.send("settings:stateChanged", newState, oldState);
   }
 
   // Setting start on boot in development tends to cause a blank electron executable to start on boot so let's never set that
@@ -2225,7 +2337,8 @@ app.on("ready", async () => {
   const isMemoryStoreSender = (sender: Electron.WebContents) =>
     (mainWindow && sender === mainWindow.webContents) ||
     (settingsWindow && sender === settingsWindow.webContents) ||
-    (roomWindow && sender === roomWindow.webContents);
+    (roomWindow && sender === roomWindow.webContents) ||
+    addonManager.ownsWebContents(sender);
 
   ipcMain.on("memoryStore:set", (event, key: string, value?: unknown) => {
     if (!isMemoryStoreSender(event.sender)) return;
@@ -2265,7 +2378,8 @@ app.on("ready", async () => {
       roomWindow &&
       event.sender !== roomWindow.webContents &&
       ytmView &&
-      event.sender !== ytmView.webContents
+      event.sender !== ytmView.webContents &&
+      !addonManager.ownsWebContents(event.sender)
     )
       return;
 
@@ -2290,6 +2404,15 @@ app.on("ready", async () => {
     if (typeof id !== "string" || typeof enabled !== "boolean") return;
 
     addonManager.setEnabled(id, enabled);
+  });
+
+  ipcMain.on("addons:badgeClick", (event, addonId: string) => {
+    if (!isMemoryStoreSender(event.sender) && (!mainWindow || event.sender !== mainWindow.webContents)) return;
+    if (typeof addonId !== "string") return;
+
+    if (!addonManager.handleBadgeClick(addonId) && addonId === "rooms") {
+      createOrShowRoomWindow();
+    }
   });
 
   ipcMain.on("addons:openFolder", async event => {

@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import type Conf from "conf";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
-import type { AddonManifest, AddonSettingsSection } from "~shared/addons/types";
+import type { AddonManifest, AddonSettingsSection, AddonTitlebarBadge } from "~shared/addons/types";
 import type { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
 import type MemoryStore from "../memory-store";
 import type { PlayerState } from "../player-state-store";
@@ -42,6 +42,38 @@ export type AddonHostServices = {
   };
   isAppSender(sender: Electron.WebContents): boolean;
   notify(options: { title: string; body?: string; onClick?: () => void }): void;
+  createWindow(options: AddonWindowOptions): AddonHostWindow;
+  discord: {
+    registerButtonsProvider(provider: (trackShareUrl: string) => { label: string; url: string }[] | undefined): () => void;
+    refreshActivity(): void;
+  };
+  deepLinks: {
+    register(command: string, handler: (segments: string[], params: URLSearchParams) => void): () => void;
+  };
+};
+
+export type AddonWindowOptions = {
+  /** Name of a renderer window folder compiled into the app (like "room") */
+  entry: string;
+  width: number;
+  height: number;
+  resizable?: boolean;
+};
+
+export type AddonHostWindow = {
+  show(): void;
+  focus(): void;
+  close(): void;
+  isDestroyed(): boolean;
+  once(event: "closed", callback: () => void): void;
+  webContents: Electron.WebContents;
+};
+
+export type AddonWindowHandle = {
+  show(): void;
+  close(): void;
+  isOpen(): boolean;
+  webContents(): Electron.WebContents | null;
 };
 
 /** Per-addon plumbing the manager owns: registries the context writes into. */
@@ -50,6 +82,9 @@ export type AddonHostBridge = {
   addLoadedCallback(callback: () => void): Unsubscribe;
   addCssHandle(handle: AddonCssHandle): void;
   addCleanup(cleanup: () => void): void;
+  setTitlebarBadge(badge: Omit<AddonTitlebarBadge, "addonId"> | null): void;
+  addBadgeClickCallback(callback: () => void): Unsubscribe;
+  addWindow(window: AddonHostWindow): void;
 };
 
 export interface AddonContext {
@@ -86,6 +121,20 @@ export interface AddonContext {
   };
   notifications: {
     show(options: { title: string; body?: string; onClick?: () => void }): void;
+  };
+  windows: {
+    create(options: AddonWindowOptions): AddonWindowHandle;
+  };
+  deepLinks: {
+    register(command: string, handler: (segments: string[], params: URLSearchParams) => void): Unsubscribe;
+  };
+  discord: {
+    registerButtonsProvider(provider: (trackShareUrl: string) => { label: string; url: string }[] | undefined): Unsubscribe;
+    refreshActivity(): void;
+  };
+  titlebar: {
+    setBadge(badge: Omit<AddonTitlebarBadge, "addonId"> | null): void;
+    onBadgeClick(callback: () => void): Unsubscribe;
   };
 }
 
@@ -221,6 +270,70 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
     notifications: {
       show(options) {
         services.notify(options);
+      }
+    },
+
+    windows: {
+      create(options) {
+        const window = services.createWindow(options);
+        bridge.addWindow(window);
+        let open = true;
+        window.once("closed", () => {
+          open = false;
+        });
+        return {
+          show() {
+            if (!open) return;
+            window.show();
+            window.focus();
+          },
+          close() {
+            if (open) window.close();
+          },
+          isOpen: () => open && !window.isDestroyed(),
+          webContents: () => (open && !window.isDestroyed() ? window.webContents : null)
+        };
+      }
+    },
+
+    deepLinks: {
+      register(command, handler) {
+        const unsubscribe = services.deepLinks.register(command, (segments, params) => {
+          try {
+            handler(segments, params);
+          } catch (error) {
+            scopedLog.error(`Deep link handler failed for ${command}`, error);
+          }
+        });
+        bridge.addCleanup(unsubscribe);
+        return unsubscribe;
+      }
+    },
+
+    discord: {
+      registerButtonsProvider(provider) {
+        const unsubscribe = services.discord.registerButtonsProvider(trackShareUrl => {
+          try {
+            return provider(trackShareUrl);
+          } catch (error) {
+            scopedLog.error("Presence buttons provider failed", error);
+            return undefined;
+          }
+        });
+        bridge.addCleanup(unsubscribe);
+        return unsubscribe;
+      },
+      refreshActivity() {
+        services.discord.refreshActivity();
+      }
+    },
+
+    titlebar: {
+      setBadge(badge) {
+        bridge.setTitlebarBadge(badge);
+      },
+      onBadgeClick(callback) {
+        return bridge.addBadgeClickCallback(callback);
       }
     }
   };

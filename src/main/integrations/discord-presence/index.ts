@@ -8,9 +8,12 @@ import DiscordClient from "./minimal-discord-client";
 import log from "electron-log";
 import { DiscordActivityType } from "./minimal-discord-client/types";
 import { buildListenAlongUrl } from "~shared/protocol-url";
-import type { RoomSnapshot } from "~shared/room-protocol";
 
 const DISCORD_CLIENT_ID = "1533867163079671849";
+
+export type PresenceButton = { label: string; url: string };
+/** Receives the current track's share link; returns buttons to show, if any. */
+export type PresenceButtonsProvider = (trackShareUrl: string) => PresenceButton[] | undefined;
 
 function getHighestResThumbnail(thumbnails: Thumbnail[]): string {
   return thumbnails.reduce(
@@ -72,6 +75,7 @@ export default class DiscordPresence implements IIntegration {
   private adPlaying = false;
 
   private connectionRetries: number = 0;
+  private buttonsProviders: PresenceButtonsProvider[] = [];
 
   private UpdateActivity() {
     if (this.activityDebounceTimeout) return;
@@ -172,18 +176,28 @@ export default class DiscordPresence implements IIntegration {
     this.UpdateActivity();
   }
 
-  // Buttons exist only while a room is live: without one there is nothing to
-  // join, so the profile shows plain playback and nothing else. Discord has
-  // no disabled state for buttons; absence is the only off switch.
-  private buildButtons(listenAlongUrl: string): { label: string; url: string }[] | undefined {
-    if (!this.store?.get("integrations").listenAlongRoomsEnabled) return undefined;
+  /** Features that want buttons on the presence contribute them here rather
+   *  than being read directly; a provider returning nothing shows nothing. */
+  public registerButtonsProvider(provider: PresenceButtonsProvider): () => void {
+    this.buttonsProviders.push(provider);
+    return () => {
+      this.buttonsProviders = this.buttonsProviders.filter(entry => entry !== provider);
+    };
+  }
 
-    const room = this.memoryStore.get("listenAlongRoom") as RoomSnapshot | null;
-    if (!room || room.phase !== "hosting" || !room.shareUrl) return undefined;
-    return [
-      { label: "Join Room", url: room.shareUrl },
-      { label: "Listen Along", url: listenAlongUrl }
-    ];
+  // Discord renders at most two buttons and silently drops the whole activity
+  // frame on a non-http(s) url, so both limits are enforced here.
+  private buildButtons(listenAlongUrl: string): { label: string; url: string }[] | undefined {
+    const buttons: PresenceButton[] = [];
+    for (const provider of this.buttonsProviders) {
+      try {
+        buttons.push(...(provider(listenAlongUrl) ?? []));
+      } catch (error) {
+        log.error("Presence buttons provider failed", error);
+      }
+    }
+    const usable = buttons.filter(button => button.url.startsWith("https://") || button.url.startsWith("http://"));
+    return usable.length > 0 ? usable.slice(0, 2) : undefined;
   }
 
   private retryDiscordConnection() {

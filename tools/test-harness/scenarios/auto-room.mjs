@@ -41,10 +41,10 @@ export default async function autoRoom(ctx) {
   await ctx.step(
     "the title bar indicator appears and opens the room",
     async () => {
-      await ctx.waitMain("!!document.querySelector('.room-button')", present => present === true, 45000);
-      const label = await ctx.evalMain("document.querySelector('.room-button').title");
+      await ctx.waitMain("!!document.querySelector('.badge-button')", present => present === true, 45000);
+      const label = await ctx.evalMain("document.querySelector('.badge-button').title");
       if (!/Room is open|listening along/.test(label)) throw new Error(`unexpected indicator title: ${label}`);
-      await ctx.evalMain("document.querySelector('.room-button').click()");
+      await ctx.evalMain("document.querySelector('.badge-button').click()");
       await ctx.waitTarget(ROOM_WINDOW, 15000);
     },
     60000

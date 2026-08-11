@@ -1,45 +1,63 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import DiscordPresence from "../src/main/integrations/discord-presence";
+import DiscordPresence, { type PresenceButtonsProvider } from "../src/main/integrations/discord-presence";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
-import type { RoomSnapshot } from "../src/shared/room-protocol";
 
-// The buttons discord shows on the presence. Discord only renders http(s)
-// button urls and silently drops the whole activity frame otherwise, so the
-// url scheme is part of the contract here, not a formatting detail.
+// The buttons discord shows on the presence. Discord renders at most two
+// buttons and only http(s) urls; anything else silently drops the whole
+// activity frame, so both limits are part of the contract here.
 
 type Buttons = { label: string; url: string }[] | undefined;
 
-function buildButtons(roomsEnabled: boolean, room: Partial<RoomSnapshot> | null, listenAlongUrl = "https://ytmdesktopplus.com/p/abc123?t=60"): Buttons {
+function buildButtons(providers: PresenceButtonsProvider[], listenAlongUrl = "https://ytmdesktopplus.com/p/abc123?t=60"): Buttons {
   const presence = new DiscordPresence();
-  presence.provide({ get: () => ({ listenAlongRoomsEnabled: roomsEnabled }) } as never, { get: () => room } as never);
+  for (const provider of providers) {
+    presence.registerButtonsProvider(provider);
+  }
   return (presence as unknown as { buildButtons(url: string): Buttons }).buildButtons(listenAlongUrl);
 }
 
 describe("buildButtons", () => {
-  it("returns no buttons when the master toggle is off", () => {
-    expect(buildButtons(false, null)).toBeUndefined();
-    expect(buildButtons(false, { phase: "hosting", shareUrl: "https://ytmdesktopplus.com/r/abcdefgh" })).toBeUndefined();
+  it("shows nothing without providers or when providers decline", () => {
+    expect(buildButtons([])).toBeUndefined();
+    expect(buildButtons([() => undefined, () => []])).toBeUndefined();
   });
 
-  it("offers no buttons at all without a live room", () => {
-    expect(buildButtons(true, null)).toBeUndefined();
-    expect(buildButtons(true, { phase: "listening", shareUrl: "https://ytmdesktopplus.com/r/abcdefgh" })).toBeUndefined();
-    expect(buildButtons(true, { phase: "connecting" })).toBeUndefined();
+  it("passes the current track link through to providers", () => {
+    const buttons = buildButtons([url => [{ label: "Listen Along", url }]], "https://ytmdesktopplus.com/p/abc123?t=60");
+    expect(buttons).toEqual([{ label: "Listen Along", url: "https://ytmdesktopplus.com/p/abc123?t=60" }]);
   });
 
-  it("shows the room link first while hosting", () => {
-    expect(buildButtons(true, { phase: "hosting", shareUrl: "https://ytmdesktopplus.com/r/abcdefgh" })).toEqual([
-      { label: "Join Room", url: "https://ytmdesktopplus.com/r/abcdefgh" },
-      { label: "Listen Along", url: "https://ytmdesktopplus.com/p/abc123?t=60" }
+  it("drops non-http urls and caps the result at two buttons", () => {
+    const buttons = buildButtons([
+      () => [
+        { label: "Bad", url: "ytmdplus://room/abcdefgh" },
+        { label: "One", url: "https://ytmdesktopplus.com/r/abcdefgh" },
+        { label: "Two", url: "https://ytmdesktopplus.com/p/abc123" },
+        { label: "Three", url: "https://ytmdesktopplus.com/" }
+      ]
+    ]);
+    expect(buttons).toEqual([
+      { label: "One", url: "https://ytmdesktopplus.com/r/abcdefgh" },
+      { label: "Two", url: "https://ytmdesktopplus.com/p/abc123" }
     ]);
   });
 
-  it("only ever emits http(s) urls", () => {
-    const buttons = buildButtons(true, { phase: "hosting", shareUrl: "https://ytmdesktopplus.com/r/abcdefgh" }) ?? [];
-    expect(buttons.length).toBeGreaterThan(0);
-    for (const button of buttons) {
-      expect(button.url.startsWith("https://")).toBe(true);
-    }
+  it("contains a throwing provider and keeps the rest", () => {
+    const buttons = buildButtons([
+      () => {
+        throw new Error("provider blew up");
+      },
+      () => [{ label: "Join Room", url: "https://ytmdesktopplus.com/r/abcdefgh" }]
+    ]);
+    expect(buttons).toEqual([{ label: "Join Room", url: "https://ytmdesktopplus.com/r/abcdefgh" }]);
+  });
+
+  it("unregisters a provider through the returned handle", () => {
+    const presence = new DiscordPresence();
+    const unsubscribe = presence.registerButtonsProvider(() => [{ label: "One", url: "https://ytmdesktopplus.com/" }]);
+    unsubscribe();
+    const buttons = (presence as unknown as { buildButtons(url: string): Buttons }).buildButtons("https://ytmdesktopplus.com/p/abc123");
+    expect(buttons).toBeUndefined();
   });
 });
 

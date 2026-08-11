@@ -1,7 +1,7 @@
 import log from "electron-log";
-import type { AddonDescriptor, AddonManifest, AddonOrigin, AddonSettingsSection } from "~shared/addons/types";
+import type { AddonDescriptor, AddonManifest, AddonOrigin, AddonSettingsSection, AddonTitlebarBadge } from "~shared/addons/types";
 import { manifestSatisfiesApp } from "./validate-manifest";
-import { AddonContext, AddonHostServices, AddonInstance, createAddonContext } from "./context";
+import { AddonContext, AddonHostServices, AddonHostWindow, AddonInstance, createAddonContext } from "./context";
 import type { AddonCssHandle } from "./css";
 import { buildExternalDefinition, type ExternalAddonScan } from "./external-loader";
 
@@ -19,12 +19,15 @@ type ManagedAddon = {
   loadedCallbacks: (() => void)[];
   cssHandles: AddonCssHandle[];
   cleanups: (() => void)[];
+  badgeClickCallbacks: (() => void)[];
   scanError?: string;
 };
 
 export class AddonManager {
   private addons: ManagedAddon[] = [];
   private booted = false;
+  private titlebarBadges = new Map<string, AddonTitlebarBadge>();
+  private windows = new Set<AddonHostWindow>();
 
   constructor(private services: AddonHostServices) {}
 
@@ -42,7 +45,8 @@ export class AddonManager {
         context: null,
         loadedCallbacks: [],
         cssHandles: [],
-        cleanups: []
+        cleanups: [],
+        badgeClickCallbacks: []
       });
     }
   }
@@ -70,6 +74,7 @@ export class AddonManager {
         loadedCallbacks: [],
         cssHandles: [],
         cleanups: [],
+        badgeClickCallbacks: [],
         scanError: conflict ? "id conflicts with an installed addon" : scan.error
       });
     }
@@ -105,7 +110,18 @@ export class AddonManager {
             };
           },
           addCssHandle: handle => addon.cssHandles.push(handle),
-          addCleanup: cleanup => addon.cleanups.push(cleanup)
+          addCleanup: cleanup => addon.cleanups.push(cleanup),
+          setTitlebarBadge: badge => this.setTitlebarBadge(manifest.id, badge),
+          addBadgeClickCallback: callback => {
+            addon.badgeClickCallbacks.push(callback);
+            return () => {
+              addon.badgeClickCallbacks = addon.badgeClickCallbacks.filter(cb => cb !== callback);
+            };
+          },
+          addWindow: window => {
+            this.windows.add(window);
+            window.once("closed", () => this.windows.delete(window));
+          }
         });
         addon.instance = ((await addon.definition.activate(addon.context)) as AddonInstance | undefined) ?? {};
         addon.descriptor.state = "active";
@@ -172,6 +188,39 @@ export class AddonManager {
     addon.descriptor.enabled = enabled;
     addon.descriptor.restartRequired = this.stateDisagreesWithIntent(addon.descriptor);
     this.publishRuntime();
+  }
+
+  /** Titlebar badges from every source merged into one memory-store list.
+   *  Also used directly by core features that are not addons yet. */
+  public setTitlebarBadge(id: string, badge: Omit<AddonTitlebarBadge, "addonId"> | null) {
+    if (badge === null) this.titlebarBadges.delete(id);
+    else this.titlebarBadges.set(id, { ...badge, addonId: id });
+    this.services.memoryStore.set("addonTitlebarBadges", [...this.titlebarBadges.values()]);
+  }
+
+  /** Returns whether any addon owned the click. */
+  public handleBadgeClick(id: string): boolean {
+    const addon = this.addons.find(entry => entry.definition.manifest.id === id);
+    if (!addon || addon.badgeClickCallbacks.length === 0) return false;
+    for (const callback of addon.badgeClickCallbacks) {
+      try {
+        callback();
+      } catch (error) {
+        log.error(`Addon badge click failed: ${id}`, error);
+      }
+    }
+    return true;
+  }
+
+  public ownsWebContents(sender: Electron.WebContents): boolean {
+    for (const window of this.windows) {
+      if (!window.isDestroyed() && window.webContents === sender) return true;
+    }
+    return false;
+  }
+
+  public windowWebContents(): Electron.WebContents[] {
+    return [...this.windows].filter(window => !window.isDestroyed()).map(window => window.webContents);
   }
 
   public setSettingsSections(id: string, sections: AddonSettingsSection[]) {

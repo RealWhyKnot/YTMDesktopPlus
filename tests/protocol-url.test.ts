@@ -58,7 +58,6 @@ describe("parseProtocolUrl", () => {
 
   it("rejects anything it cannot act on", () => {
     expect(parseProtocolUrl("https://evil.com/play/abc123")).toBeNull();
-    expect(parseProtocolUrl("ytmdplus://open/abc123")).toBeNull();
     expect(parseProtocolUrl("ytmdplus://play")).toBeNull();
     expect(parseProtocolUrl("ytmdplus://play/abc def")).toBeNull();
     expect(parseProtocolUrl("ytmdplus://play/abc%")).toBeNull();
@@ -175,17 +174,24 @@ describe("buildListenAlongUrl", () => {
   });
 });
 
-describe("room links", () => {
-  it("parses a room link in both written forms", () => {
-    expect(parseProtocolUrl("ytmdplus://room/abcdefgh")).toEqual({ command: "room", roomId: "abcdefgh" });
-    expect(parseProtocolUrl("ytmdplus:room/abcdefgh")).toEqual({ command: "room", roomId: "abcdefgh" });
+describe("other commands", () => {
+  it("passes unknown commands through with their segments in both written forms", () => {
+    expect(parseProtocolUrl("ytmdplus://room/abcdefgh")).toMatchObject({ command: "other", name: "room", segments: ["abcdefgh"] });
+    expect(parseProtocolUrl("ytmdplus:room/abcdefgh")).toMatchObject({ command: "other", name: "room", segments: ["abcdefgh"] });
   });
 
-  it("rejects malformed room ids", () => {
-    expect(parseProtocolUrl("ytmdplus://room/ABCDEFGH")).toBeNull();
-    expect(parseProtocolUrl("ytmdplus://room/abcdefg1")).toBeNull();
-    expect(parseProtocolUrl("ytmdplus://room/short")).toBeNull();
-    expect(parseProtocolUrl("ytmdplus://room/abcdefgh/extra")).toBeNull();
-    expect(parseProtocolUrl("ytmdplus://room")).toBeNull();
+  it("keeps query params available to the handler", () => {
+    const parsed = parseProtocolUrl("ytmdplus://room/abcdefgh?invite=yes");
+    expect(parsed?.command).toBe("other");
+    if (parsed?.command !== "other") return;
+    expect(parsed.params.get("invite")).toBe("yes");
+  });
+
+  it("lowercases the command name but not the segments", () => {
+    expect(parseProtocolUrl("ytmdplus://ROOM/ABCDEFGH")).toMatchObject({ command: "other", name: "room", segments: ["ABCDEFGH"] });
+  });
+
+  it("still rejects urls with no command at all", () => {
+    expect(parseProtocolUrl("ytmdplus://")).toBeNull();
   });
 });

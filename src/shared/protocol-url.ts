@@ -27,8 +27,12 @@ export type ProtocolCommand =
       anchor: PositionAnchor | null;
     }
   | {
-      command: "room";
-      roomId: string;
+      // Any other command is routed to whichever feature registered it; the
+      // handler owns validation of its own segments.
+      command: "other";
+      name: string;
+      segments: string[];
+      params: URLSearchParams;
     };
 
 export type ListenAlongUrlArgs = {
@@ -44,8 +48,6 @@ export type ListenAlongUrlArgs = {
 
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
-// Same alphabet the relay mints room ids from, see ~shared/room-protocol.
-const ROOM_ID_PATTERN = /^[abcdefghjkmnpqrstuvwxyz23456789]{8}$/;
 
 // Seeking this close to the start costs an audible stutter and gains nothing.
 const MIN_SEEK_SECONDS = 3;
@@ -101,15 +103,12 @@ export function parseProtocolUrl(input: string): ProtocolCommand | null {
   if (segments === null) return null;
 
   const command = (url.hostname || segments.shift() || "").toLowerCase();
+  if (command.length === 0) return null;
 
-  if (command === "room") {
-    if (segments.length !== 1) return null;
-    const roomId = segments[0];
-    if (!ROOM_ID_PATTERN.test(roomId)) return null;
-    return { command: "room", roomId };
+  if (command !== "play") {
+    return { command: "other", name: command, segments, params: url.searchParams };
   }
 
-  if (command !== "play") return null;
   if (segments.length > 2) return null;
 
   const videoId = segments[0] ?? "";
