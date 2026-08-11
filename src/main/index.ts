@@ -627,7 +627,44 @@ if (store.get("addons") === undefined) {
   store.set("addons", { states: {}, settings: {} });
 }
 
-const addonManager = new AddonManager({ store, memoryStore, appVersion: app.getVersion() });
+const addonManager = new AddonManager({
+  store,
+  memoryStore,
+  appVersion: app.getVersion(),
+  userDataPath: app.getPath("userData"),
+  getYtmView: () => ytmView,
+  registerYtmScript: (namespace, name, script) => {
+    if (!ytmViewIntegrationScripts[namespace]) ytmViewIntegrationScripts[namespace] = {};
+    ytmViewIntegrationScripts[namespace][name] = script;
+  },
+  player: playerStateStore,
+  playback: {
+    cueTrack,
+    sendPlaybackCommand
+  },
+  ipc: {
+    handle: (channel, listener) => ipcMain.handle(channel, listener),
+    removeHandler: channel => ipcMain.removeHandler(channel),
+    on: (channel, listener) => {
+      ipcMain.on(channel, listener);
+    },
+    removeListener: (channel, listener) => {
+      ipcMain.removeListener(channel, listener);
+    }
+  },
+  isAppSender: sender =>
+    Boolean(
+      (mainWindow && sender === mainWindow.webContents) ||
+      (settingsWindow && sender === settingsWindow.webContents) ||
+      (roomWindow && sender === roomWindow.webContents) ||
+      (ytmView && sender === ytmView.webContents)
+    ),
+  notify: options => {
+    const notification = new Notification({ title: options.title, body: options.body });
+    if (options.onClick) notification.on("click", options.onClick);
+    notification.show();
+  }
+});
 addonManager.registerBundled(BUNDLED_ADDONS);
 
 const applyUpdateFeed = () =>
@@ -1976,6 +2013,8 @@ app.on("ready", async () => {
       nonStop.ytmViewLoaded();
       // TODO: this is just a hack fix for custom css to update CSS when the view loads
       customCss.updateCSS();
+
+      addonManager.notifyYtmViewLoaded();
 
       if (pendingProtocolUrl) {
         const url = pendingProtocolUrl;

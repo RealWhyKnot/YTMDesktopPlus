@@ -43,7 +43,8 @@ export const STAGED_SETTING_KEYS = [
 ] as const;
 
 export type StagedSettingKey = (typeof STAGED_SETTING_KEYS)[number];
-export type SettingsSnapshot = Record<StagedSettingKey, unknown>;
+// Also carries dynamic addon keys ("addons.settings.<id>.<key>"), so plain strings
+export type SettingsSnapshot = Record<string, unknown>;
 
 export const RESTART_REQUIRED_KEYS: ReadonlySet<StagedSettingKey> = new Set<StagedSettingKey>([
   "general.disableHardwareAcceleration",
@@ -58,8 +59,8 @@ const NUMERIC_KEYS: ReadonlySet<StagedSettingKey> = new Set<StagedSettingKey>([
   "updates.channel"
 ]);
 
-export function normalizeSettingValue(key: StagedSettingKey, value: unknown): unknown {
-  if (NUMERIC_KEYS.has(key) && value !== null && value !== undefined && typeof value !== "number") {
+export function normalizeSettingValue(key: string, value: unknown): unknown {
+  if (NUMERIC_KEYS.has(key as StagedSettingKey) && value !== null && value !== undefined && typeof value !== "number") {
     const numeric = Number(value);
     if (!Number.isNaN(numeric)) return numeric;
   }
@@ -75,16 +76,16 @@ function valueAtPath(state: unknown, path: string): unknown {
   return current;
 }
 
-export function snapshotFromState(state: unknown): SettingsSnapshot {
+export function snapshotFromState(state: unknown, extraKeys: readonly string[] = []): SettingsSnapshot {
   const snapshot = {} as SettingsSnapshot;
-  for (const key of STAGED_SETTING_KEYS) {
+  for (const key of [...STAGED_SETTING_KEYS, ...extraKeys]) {
     snapshot[key] = normalizeSettingValue(key, valueAtPath(state, key));
   }
   return snapshot;
 }
 
-export function diffSnapshots(pristine: SettingsSnapshot, draft: SettingsSnapshot): StagedSettingKey[] {
-  return STAGED_SETTING_KEYS.filter(key => !Object.is(pristine[key], draft[key]));
+export function diffSnapshots(pristine: SettingsSnapshot, draft: SettingsSnapshot, extraKeys: readonly string[] = []): string[] {
+  return [...STAGED_SETTING_KEYS, ...extraKeys].filter(key => !Object.is(pristine[key], draft[key]));
 }
 
 // An external store write (another window, the main process) must update the
@@ -93,13 +94,14 @@ export function diffSnapshots(pristine: SettingsSnapshot, draft: SettingsSnapsho
 export function mergeExternalState(
   pristine: SettingsSnapshot,
   draft: SettingsSnapshot,
-  incomingState: unknown
-): { pristine: SettingsSnapshot; followedKeys: StagedSettingKey[] } {
-  const incoming = snapshotFromState(incomingState);
-  const followedKeys = STAGED_SETTING_KEYS.filter(key => Object.is(pristine[key], draft[key]) && !Object.is(pristine[key], incoming[key]));
+  incomingState: unknown,
+  extraKeys: readonly string[] = []
+): { pristine: SettingsSnapshot; followedKeys: string[] } {
+  const incoming = snapshotFromState(incomingState, extraKeys);
+  const followedKeys = [...STAGED_SETTING_KEYS, ...extraKeys].filter(key => Object.is(pristine[key], draft[key]) && !Object.is(pristine[key], incoming[key]));
   return { pristine: incoming, followedKeys };
 }
 
-export function restartRequiredIn(keys: readonly StagedSettingKey[]): boolean {
-  return keys.some(key => RESTART_REQUIRED_KEYS.has(key));
+export function restartRequiredIn(keys: readonly string[]): boolean {
+  return keys.some(key => RESTART_REQUIRED_KEYS.has(key as StagedSettingKey));
 }

@@ -1,6 +1,10 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { describe, expect, it, vi } from "vitest";
 import { AddonManager, BundledAddonDefinition } from "../src/main/addons/manager";
 import { validateManifest, versionAtLeast } from "../src/main/addons/validate-manifest";
+import type { AddonContext } from "../src/main/addons/context";
 import type { AddonManifest } from "../src/shared/addons/types";
 
 function manifest(overrides: Partial<AddonManifest> = {}): AddonManifest {
@@ -15,23 +19,63 @@ function manifest(overrides: Partial<AddonManifest> = {}): AddonManifest {
 }
 
 function fakeServices(persistedStates: Record<string, { enabled: boolean }> = {}, appVersion = "2026.811.0") {
-  const stored = { addons: { states: persistedStates, settings: {} } as { states: Record<string, { enabled: boolean }>; settings: Record<string, unknown> } };
+  const stored: Record<string, unknown> = { addons: { states: persistedStates, settings: {} } };
+  const storeListeners: ((newValue: unknown, oldValue: unknown) => void)[] = [];
   const memory = new Map<string, unknown>();
+  const ipcHandlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
+  const registeredScripts: Record<string, Record<string, string>> = {};
+  let appSender = true;
+
+  const services = {
+    store: {
+      // Like conf, reads hand out copies: mutating a get() result never
+      // changes stored state until it is set() back.
+      get: (key: string) => structuredClone(stored[key]),
+      set: (key: string, value: unknown) => {
+        const old = structuredClone(stored[key]);
+        stored[key] = structuredClone(value);
+        if (key === "addons") for (const listener of storeListeners) listener(stored[key], old);
+      },
+      onDidChange: (_key: string, callback: (newValue: unknown, oldValue: unknown) => void) => {
+        storeListeners.push(callback);
+        return () => storeListeners.splice(storeListeners.indexOf(callback), 1);
+      },
+      get store() {
+        return structuredClone(stored);
+      }
+    },
+    memoryStore: {
+      get: (key: string) => memory.get(key),
+      set: (key: string, value: unknown) => memory.set(key, value)
+    },
+    appVersion,
+    userDataPath: fs.mkdtempSync(path.join(os.tmpdir(), "ytmd-addon-test-")),
+    getYtmView: () => null as never,
+    registerYtmScript: (namespace: string, name: string, script: string) => {
+      if (!registeredScripts[namespace]) registeredScripts[namespace] = {};
+      registeredScripts[namespace][name] = script;
+    },
+    player: { getState: () => ({}) as never, addEventListener: vi.fn(), removeEventListener: vi.fn() },
+    playback: { cueTrack: vi.fn() as never, sendPlaybackCommand: vi.fn() },
+    ipc: {
+      handle: (channel: string, listener: (event: unknown, ...args: unknown[]) => unknown) => ipcHandlers.set(channel, listener),
+      removeHandler: (channel: string) => ipcHandlers.delete(channel),
+      on: vi.fn(),
+      removeListener: vi.fn()
+    },
+    isAppSender: () => appSender,
+    notify: vi.fn()
+  };
+
   return {
-    services: {
-      store: {
-        get: (key: string) => stored[key as keyof typeof stored],
-        set: (key: string, value: unknown) => {
-          stored[key as keyof typeof stored] = value as never;
-        }
-      },
-      memoryStore: {
-        set: (key: string, value: unknown) => memory.set(key, value)
-      },
-      appVersion
-    } as never,
-    stored,
-    memory
+    services: services as never,
+    stored: stored as { addons: { states: Record<string, { enabled: boolean }>; settings: Record<string, Record<string, unknown>> } },
+    memory,
+    ipcHandlers,
+    registeredScripts,
+    setAppSender: (value: boolean) => {
+      appSender = value;
+    }
   };
 }
 
@@ -129,6 +173,97 @@ describe("AddonManager", () => {
     await manager.boot();
     await manager.shutdown();
     expect(destroy).toHaveBeenCalledOnce();
+  });
+});
+
+async function bootWithContext(fixture: ReturnType<typeof fakeServices>, id = "sample") {
+  let ctx: AddonContext;
+  const manager = new AddonManager(fixture.services);
+  manager.registerBundled([
+    {
+      manifest: manifest({ id, defaultEnabled: true }),
+      activate: context => {
+        ctx = context;
+      }
+    }
+  ]);
+  await manager.boot();
+  return { manager, ctx };
+}
+
+describe("AddonContext", () => {
+  it("namespaces settings per addon with defaults that never clobber", async () => {
+    const fixture = fakeServices();
+    fixture.stored.addons.settings["sample"] = { kept: "user-value" };
+    const { ctx } = await bootWithContext(fixture);
+
+    ctx.settings.registerDefaults({ kept: "default", fresh: 42 });
+    expect(ctx.settings.get("kept")).toBe("user-value");
+    expect(ctx.settings.get("fresh")).toBe(42);
+
+    ctx.settings.set("fresh", 43);
+    expect(fixture.stored.addons.settings["sample"].fresh).toBe(43);
+  });
+
+  it("delivers settings changes with previous and next values", async () => {
+    const fixture = fakeServices();
+    const { ctx } = await bootWithContext(fixture);
+    const seen: unknown[][] = [];
+    ctx.settings.onDidChange("volume", (next, prev) => seen.push([next, prev]));
+
+    ctx.settings.set("volume", 5);
+    ctx.settings.set("volume", 5);
+    ctx.settings.set("volume", 7);
+    expect(seen).toEqual([
+      [5, undefined],
+      [7, 5]
+    ]);
+  });
+
+  it("registers page scripts under the addon namespace", async () => {
+    const fixture = fakeServices();
+    const { ctx } = await bootWithContext(fixture);
+    ctx.ytmview.registerScript("enable", "() => {}");
+    expect(fixture.registeredScripts["addon:sample"]["enable"]).toBe("() => {}");
+  });
+
+  it("runs loaded callbacks and contains one that throws", async () => {
+    const fixture = fakeServices();
+    const survivor = vi.fn();
+    const { manager, ctx } = await bootWithContext(fixture);
+    ctx.ytmview.onLoaded(() => {
+      throw new Error("page hook blew up");
+    });
+    ctx.ytmview.onLoaded(survivor);
+
+    manager.notifyYtmViewLoaded();
+    expect(survivor).toHaveBeenCalledOnce();
+  });
+
+  it("guards addon ipc channels against senders outside the app", async () => {
+    const fixture = fakeServices();
+    const { ctx } = await bootWithContext(fixture);
+    const listener = vi.fn();
+    ctx.ipc.handle("ping", listener);
+
+    const handler = fixture.ipcHandlers.get("addon:sample:ping");
+    expect(handler).toBeDefined();
+
+    fixture.setAppSender(false);
+    handler({ sender: {} });
+    expect(listener).not.toHaveBeenCalled();
+
+    fixture.setAppSender(true);
+    handler({ sender: {} });
+    expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it("keeps per-addon memory namespaced", async () => {
+    const fixture = fakeServices();
+    const { ctx } = await bootWithContext(fixture);
+    ctx.memory.set("status", "hosting");
+    expect(ctx.memory.get("status")).toBe("hosting");
+    expect((fixture.memory.get("addonMemory") as Record<string, unknown>)["sample"]).toEqual({ status: "hosting" });
   });
 });
 

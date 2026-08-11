@@ -27,7 +27,7 @@ export type AddonSettingsField =
   | { key: string; type: "toggle"; label: string; description?: string }
   | { key: string; type: "text"; label: string; description?: string; placeholder?: string; maxlength?: number }
   | { key: string; type: "number"; label: string; description?: string; min?: number; max?: number; step?: number }
-  | { key: string; type: "select"; label: string; description?: string; options: { label: string; value: string | number }[] };
+  | { key: string; type: "select"; label: string; description?: string; options: { label: string; value: number }[] };
 
 export type AddonSettingsSection = {
   title?: string;

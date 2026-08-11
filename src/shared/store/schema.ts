@@ -99,6 +99,7 @@ export type ListenAlongStatus = "disabled" | "pairing" | "connecting" | "connect
 
 export type MemoryStoreSchema = {
   addonsRuntime: AddonDescriptor[];
+  addonMemory: Record<string, Record<string, unknown>>;
   discordPresenceConnectionFailed: boolean;
   listenAlongStatus: ListenAlongStatus;
   listenAlongStatusDetail: string | null;

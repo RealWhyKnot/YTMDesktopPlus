@@ -1,10 +1,8 @@
-import type Conf from "conf";
 import log from "electron-log";
-import type MemoryStore from "../memory-store";
-import type { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
 import type { AddonDescriptor, AddonManifest, AddonOrigin, AddonSettingsSection } from "~shared/addons/types";
 import { manifestSatisfiesApp } from "./validate-manifest";
-import { AddonContext, AddonInstance, createAddonContext } from "./context";
+import { AddonContext, AddonHostServices, AddonInstance, createAddonContext } from "./context";
+import type { AddonCssHandle } from "./css";
 
 export type BundledAddonDefinition = {
   manifest: AddonManifest;
@@ -17,19 +15,16 @@ type ManagedAddon = {
   descriptor: AddonDescriptor;
   instance: AddonInstance | null;
   context: AddonContext | null;
-};
-
-export type AddonManagerServices = {
-  store: Conf<StoreSchema>;
-  memoryStore: MemoryStore<MemoryStoreSchema>;
-  appVersion: string;
+  loadedCallbacks: (() => void)[];
+  cssHandles: AddonCssHandle[];
+  cleanups: (() => void)[];
 };
 
 export class AddonManager {
   private addons: ManagedAddon[] = [];
   private booted = false;
 
-  constructor(private services: AddonManagerServices) {}
+  constructor(private services: AddonHostServices) {}
 
   public registerBundled(definitions: BundledAddonDefinition[]) {
     if (this.booted) throw new Error("Addons must be registered before boot");
@@ -42,7 +37,10 @@ export class AddonManager {
         origin: "bundled",
         descriptor: this.baseDescriptor(definition.manifest, "bundled"),
         instance: null,
-        context: null
+        context: null,
+        loadedCallbacks: [],
+        cssHandles: [],
+        cleanups: []
       });
     }
   }
@@ -63,7 +61,17 @@ export class AddonManager {
         continue;
       }
       try {
-        addon.context = createAddonContext(manifest);
+        addon.context = createAddonContext(manifest, this.services, {
+          setSettingsSections: sections => this.setSettingsSections(manifest.id, sections),
+          addLoadedCallback: callback => {
+            addon.loadedCallbacks.push(callback);
+            return () => {
+              addon.loadedCallbacks = addon.loadedCallbacks.filter(cb => cb !== callback);
+            };
+          },
+          addCssHandle: handle => addon.cssHandles.push(handle),
+          addCleanup: cleanup => addon.cleanups.push(cleanup)
+        });
         addon.instance = ((await addon.definition.activate(addon.context)) as AddonInstance | undefined) ?? {};
         addon.descriptor.state = "active";
         log.info(`Addon active: ${manifest.id} ${manifest.version}`);
@@ -76,8 +84,33 @@ export class AddonManager {
     this.publishRuntime();
   }
 
+  /** The YouTube Music view finished loading: re-inject styles and let addons
+   *  run their page setup. An addon throwing here only hurts itself. */
+  public notifyYtmViewLoaded() {
+    for (const addon of this.addons) {
+      if (addon.descriptor.state !== "active") continue;
+      for (const handle of addon.cssHandles) {
+        handle.viewLoaded();
+      }
+      for (const callback of addon.loadedCallbacks) {
+        try {
+          callback();
+        } catch (error) {
+          log.error(`Addon loaded-callback failed: ${addon.definition.manifest.id}`, error);
+        }
+      }
+    }
+  }
+
   public async shutdown() {
     for (const addon of this.addons) {
+      for (const cleanup of addon.cleanups) {
+        try {
+          cleanup();
+        } catch {
+          // Ignore teardown noise; the process is exiting.
+        }
+      }
       if (addon.instance?.destroy) {
         try {
           await addon.instance.destroy();

@@ -42,9 +42,22 @@ const integrations: StoreSchema["integrations"] = await store.get("integrations"
 const shortcuts: StoreSchema["shortcuts"] = await store.get("shortcuts");
 const lastFM: StoreSchema["lastfm"] = await store.get("lastfm");
 const updates: StoreSchema["updates"] = await store.get("updates");
+const addonsSection: StoreSchema["addons"] = await store.get("addons");
 
-const staged = createStagedSettings({ general, developer, appearance, playback, integrations, shortcuts, lastfm: lastFM, updates }, entries =>
-  store.setMany(entries)
+const initialAddons: AddonDescriptor[] = window.ytmd.addons ? await window.ytmd.addons.getAll() : [];
+const addonSettingKeys: string[] = [];
+for (const addon of initialAddons) {
+  for (const section of addon.settingsSections) {
+    for (const field of section.fields) {
+      addonSettingKeys.push(`addons.settings.${addon.manifest.id}.${field.key}`);
+    }
+  }
+}
+
+const staged = createStagedSettings(
+  { general, developer, appearance, playback, integrations, shortcuts, lastfm: lastFM, updates, addons: addonsSection },
+  entries => store.setMany(entries),
+  addonSettingKeys
 );
 provide(stagedSettingsKey, staged);
 const { hasUnsavedChanges, restartNeeded, saveChanges, resetChanges } = staged;
@@ -80,7 +93,7 @@ const companionServerAuthWindowEnabled = ref<boolean>(await memoryStore.get("com
 const autoUpdaterDisabled = ref<boolean>(await memoryStore.get("autoUpdaterDisabled"));
 
 const addonsSupported = window.ytmd.addons !== undefined;
-const addons = ref<AddonDescriptor[]>(addonsSupported ? await window.ytmd.addons.getAll() : []);
+const addons = ref<AddonDescriptor[]>(initialAddons);
 const addonRestartPending = computed(() => addons.value.some(addon => addon.restartRequired));
 
 function setAddonEnabled(id: string, enabled: boolean) {
