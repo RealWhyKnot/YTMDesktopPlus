@@ -1,5 +1,6 @@
 <script setup lang="ts" generic="T extends 'checkbox' | 'text' | 'file' | 'range' | 'select' | 'custom'">
 import { computed, ref } from "vue";
+import ToggleSwitch from "./ToggleSwitch.vue";
 
 type ModelValue = {
   checkbox: boolean;
@@ -46,15 +47,17 @@ const hasDescription = computed(() => {
 
 const fileInput = ref(null);
 
-const selectOpen = ref(false);
-const selectedOption = computed(() => {
-  return props.optionsMap[props.modelValue as number];
+const checkboxValue = computed({
+  get() {
+    return props.modelValue as boolean;
+  },
+  set(value) {
+    emit("update:modelValue", value);
+  }
 });
 
-// This function should be using ModelValue[T] but because it's bound to @click it doesn't interpret it as correct
-function select(optionKey: string) {
-  value.value = Number.parseInt(optionKey) as ModelValue[T];
-  selectOpen.value = false;
+function selectChanged(event: Event) {
+  value.value = Number.parseInt((event.target as HTMLSelectElement).value) as ModelValue[T];
   emit("change");
 }
 </script>
@@ -80,11 +83,12 @@ function select(optionKey: string) {
       <p class="message">{{ disabledMessage }}</p>
     </div>
 
+    <ToggleSwitch v-if="type == 'checkbox'" v-model="checkboxValue" :disabled="disabled" @change="$emit('change', $event)" />
     <input
-      v-if="type !== 'file' && type !== 'range' && type !== 'select' && type !== 'custom'"
+      v-if="type == 'text'"
       v-model="value"
       :disabled="disabled"
-      :type="props.type"
+      type="text"
       :maxlength="props.maxlength"
       :placeholder="props.placeholder"
       @change="$emit('change', $event)"
@@ -101,16 +105,9 @@ function select(optionKey: string) {
         <button v-if="value" class="remove" @click="$emit('clear')"><span class="material-symbols-outlined">delete</span></button>
       </div>
     </div>
-    <div v-if="type == 'select'" :class="{ select: true, open: selectOpen }">
-      <div class="selected" @click="selectOpen = !selectOpen">
-        <p class="text">{{ selectedOption }}</p>
-        <span v-if="!selectOpen" class="material-symbols-outlined">arrow_drop_down</span>
-        <span v-if="selectOpen" class="material-symbols-outlined">arrow_drop_up</span>
-      </div>
-      <div class="options">
-        <div v-for="(optionValue, optionKey) of props.optionsMap" :key="optionKey" class="option" @click="select(optionKey)">{{ optionValue }}</div>
-      </div>
-    </div>
+    <select v-if="type == 'select'" class="select" :disabled="disabled" :value="String(modelValue)" @change="selectChanged">
+      <option v-for="(optionValue, optionKey) of props.optionsMap" :key="optionKey" :value="String(optionKey)">{{ optionValue }}</option>
+    </select>
 
     <slot></slot>
   </div>
@@ -121,6 +118,16 @@ function select(optionKey: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-sm) 12px;
+  flex-wrap: wrap;
+}
+
+/* Let long labels shrink and wrap instead of colliding with the control */
+.ytmd-setting > p,
+.name-description,
+.disabled-name-message {
+  min-width: 0;
+  flex: 1 1 240px;
 }
 
 .ytmd-setting.indented {
@@ -169,62 +176,12 @@ input[type="text"] {
   border-radius: var(--radius);
   padding: 8px 10px;
   outline: none;
-  min-width: 220px;
+  width: 216px;
+  max-width: 100%;
 }
 
 input[type="text"]:focus {
   border-color: var(--border-strong);
-}
-
-input[type="checkbox"] {
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
-  min-width: 62px;
-  min-height: 32px;
-  width: 62px;
-  height: 32px;
-  display: inline-block;
-  position: relative;
-  border-radius: 50px;
-  overflow: hidden;
-  outline: none;
-  border: none;
-  cursor: pointer;
-  background-color: var(--bg-control);
-  transition: background-color ease 0.3s;
-}
-
-input[type="checkbox"]:before {
-  content: "";
-  display: block;
-  position: absolute;
-  z-index: 2;
-  width: 28px;
-  height: 28px;
-  background: #fff;
-  left: 2px;
-  top: 2px;
-  border-radius: 50%;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-  transition: all ease 0.3s;
-}
-
-input[type="checkbox"]:checked {
-  background-color: var(--accent);
-}
-
-input[type="checkbox"]:checked:before {
-  left: 32px;
-}
-
-input[type="checkbox"]:disabled {
-  background-color: var(--bg-control);
-  cursor: not-allowed;
-}
-
-input[type="checkbox"]:disabled::before {
-  background-color: var(--text-faint);
 }
 
 input[type="file"] {
@@ -238,6 +195,7 @@ input[type="file"] {
 
 .file-input-button {
   width: 216px;
+  max-width: 100%;
   border-radius: var(--radius);
   display: flex;
   align-items: center;
@@ -309,52 +267,24 @@ input[type="range"]::-webkit-slider-thumb {
   cursor: pointer;
 }
 
+/* Native select so the option list pops above the window instead of being
+   clipped by the tab's scroll container */
 .select {
-  position: relative;
   width: 216px;
+  max-width: 100%;
   background-color: var(--bg-control);
+  color: var(--text);
+  border: none;
   border-radius: var(--radius);
-}
-
-.select.open {
-  border-radius: 4px 4px 0 0;
-}
-
-.select .selected {
-  cursor: pointer;
   padding: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.select .selected .text {
-  margin: unset;
-  padding: unset;
-}
-
-.select .options {
-  overflow: hidden;
-  position: absolute;
-  left: 0;
-  right: 0;
-  z-index: 1;
-  border-radius: 0 0 4px 4px;
-  width: 100%;
-}
-
-.select .options .option {
-  user-select: none;
+  font-family: inherit;
+  font-size: inherit;
   cursor: pointer;
-  background-color: var(--bg-control);
-  padding: 8px;
+  outline: none;
 }
 
-.select .options .option:hover {
-  background-color: var(--bg-control-hover);
-}
-
-.select:not(.open) .options {
-  display: none;
+.select:disabled {
+  cursor: not-allowed;
+  color: var(--text-faint);
 }
 </style>
