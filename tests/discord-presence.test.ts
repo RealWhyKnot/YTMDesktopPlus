@@ -141,7 +141,7 @@ describe("activity updates", () => {
     expect(calls).toEqual({ set: 1, clear: 1 });
   });
 
-  it("keeps the paused badge and clears after 30 seconds by default", () => {
+  it("keeps the paused badge and clears after 30 seconds when hide-on-pause is off", () => {
     vi.useFakeTimers();
     const { calls, stateChanged } = makePresence();
 

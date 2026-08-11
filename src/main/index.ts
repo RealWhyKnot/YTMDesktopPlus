@@ -453,7 +453,7 @@ const store = new Conf<StoreSchema>({
       companionServerAuthTokens: null,
       companionServerCORSWildcardEnabled: false,
       discordPresenceEnabled: false,
-      discordPresenceHideOnPause: false,
+      discordPresenceHideOnPause: true,
       lastFMEnabled: false,
       listenAlongEnabled: false,
       listenAlongHost: null,
@@ -546,7 +546,7 @@ if (store.get("playback").preventIdlePause === undefined) {
   store.set("playback.preventIdlePause", false);
 }
 if (store.get("integrations").discordPresenceHideOnPause === undefined) {
-  store.set("integrations.discordPresenceHideOnPause", false);
+  store.set("integrations.discordPresenceHideOnPause", true);
 }
 if (store.get("addons") === undefined) {
   store.set("addons", { states: {}, settings: {} });
