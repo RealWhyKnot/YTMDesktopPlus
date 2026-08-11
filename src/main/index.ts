@@ -61,6 +61,12 @@ declare const ALL_WINDOWS_VITE_DEV_SERVER_URL: string;
 
 declare const YTMD_DISABLE_UPDATES: boolean;
 declare const YTMD_LOCAL_BUILD: boolean;
+declare const YTMD_DEV_TOOLS: boolean;
+
+// The remote-playback probe ships only in dev and local builds (YTMD_DEV_TOOLS)
+// and stays dormant until launched with YTMD_REMOTE_PROBE=1, so a normal local
+// install is undisturbed. It appends its observations to logs/remote-probe.jsonl.
+const remoteProbeActive = YTMD_DEV_TOOLS && process.env.YTMD_REMOTE_PROBE === "1";
 
 // Must run before anything reads userData (logging, single instance lock,
 // config store).
@@ -1926,6 +1932,23 @@ app.on("ready", async () => {
     }
   });
 
+  if (YTMD_DEV_TOOLS) {
+    const probeLogPath = path.join(app.getPath("userData"), "logs", "remote-probe.jsonl");
+    ipcMain.on("ytmView:devProbeEnabled", event => {
+      event.returnValue = remoteProbeActive && ytmView !== null && event.sender === ytmView.webContents;
+    });
+    ipcMain.on("ytmView:devProbe", async (event, batch: unknown[]) => {
+      if (!remoteProbeActive || ytmView === null || event.sender !== ytmView.webContents) return;
+      if (!Array.isArray(batch) || batch.length === 0) return;
+      try {
+        await fs.mkdir(path.dirname(probeLogPath), { recursive: true });
+        await fs.appendFile(probeLogPath, batch.map(entry => JSON.stringify(entry)).join("\n") + "\n");
+      } catch (error) {
+        log.error("remote probe: failed to append", error);
+      }
+    });
+  }
+
   ipcMain.on("ytmView:hookFailed", (event, stage, detail) => {
     if (ytmView === null || event.sender !== ytmView.webContents) return;
 
@@ -1933,6 +1956,14 @@ app.on("ready", async () => {
     log.error(`YTM view hook failed at stage '${stage}'`, detail);
     memoryStore.set("ytmViewLoadingError", true);
     memoryStore.set("ytmViewLoadingStatus", "YouTube Music loaded but could not be hooked. It may have changed in a way this app does not understand yet.");
+  });
+
+  // Optional setup modules degrade alone; the failure is recorded here so a
+  // "feature X stopped working" report has the module name in the log.
+  ipcMain.on("ytmView:optionalModuleFailed", (event, name, detail) => {
+    if (ytmView === null || event.sender !== ytmView.webContents) return;
+
+    log.warn(`YTM view optional module '${name}' failed`, detail);
   });
 
   ipcMain.on("ytmView:videoProgressChanged", (event, progress) => {

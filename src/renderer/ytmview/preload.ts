@@ -18,6 +18,12 @@ import hookPlayerApiEventsScript from "./scripts/hookplayerapievents.script?raw"
 import getPlaylistsScript from "./scripts/getplaylists.script?raw";
 import toggleLikeScript from "./scripts/togglelike.script?raw";
 import toggleDislikeScript from "./scripts/toggledislike.script?raw";
+import devProbeScript from "./scripts/devprobe.script?raw";
+
+// Compiled to a literal by Vite: true in development and local sideload builds,
+// false (so the branches below are dropped) in published beta and release
+// builds.
+declare const YTMD_DEV_TOOLS: boolean;
 
 const store = new Store<StoreSchema>();
 
@@ -39,7 +45,8 @@ contextBridge.exposeInMainWorld("ytmd", {
   sendDeletePlaylistObservation: (playlistId: string) => ipcRenderer.send("ytmView:deletePlaylistObserved", playlistId),
   sendAudioChunks: (packets: { t: number; d: ArrayBuffer }[]) => ipcRenderer.send("ytmView:audioChunks", packets),
   sendAudioCaptureStatus: (status: { cfg?: { sr: number; ch: number; br: number }; muted?: boolean; error?: string }) =>
-    ipcRenderer.send("ytmView:audioCaptureStatus", status)
+    ipcRenderer.send("ytmView:audioCaptureStatus", status),
+  ...(YTMD_DEV_TOOLS ? { sendDevProbe: (batch: unknown[]) => ipcRenderer.send("ytmView:devProbe", batch) } : {})
 });
 
 function createStyleSheet() {
@@ -232,6 +239,20 @@ contextBridge.executeInMainWorld({
 // Hook setup starts at DOMContentLoaded rather than the load event: a watch
 // page with paused media can hold the load event open indefinitely, and the
 // polls below already wait for everything they need.
+
+// Runs one optional setup module. The loading overlay waits on ytmView:loaded,
+// so a throw between the essential hook stages and that signal would leave the
+// whole app on the spinner over a single broken module; these fail alone,
+// loudly, and let the rest of the setup finish.
+const optionalModule = async (name: string, fn: () => void | Promise<void>) => {
+  try {
+    await fn();
+  } catch (error) {
+    console.error(`[ytmd] optional module '${name}' failed`, error);
+    ipcRenderer.send("ytmView:optionalModuleFailed", name, String(error));
+  }
+};
+
 const startHooking = async () => {
   console.debug(`[ytmd] hook setup starting for ${window.location.hostname} (readyState=${document.readyState})`);
   if (window.location.hostname !== "music.youtube.com") {
@@ -282,27 +303,28 @@ const startHooking = async () => {
     40
   );
 
-  createStyleSheet();
-  createNavigationMenuArrows();
-  createKeyboardNavigation();
-  await createAdditionalPlayerBarControls();
-  await hideChromecastButton();
+  await optionalModule("style-sheet", () => createStyleSheet());
+  await optionalModule("navigation-arrows", () => createNavigationMenuArrows());
+  await optionalModule("keyboard-navigation", () => createKeyboardNavigation());
+  await optionalModule("player-bar-controls", () => createAdditionalPlayerBarControls());
+  await optionalModule("hide-chromecast-button", () => hideChromecastButton());
   await hookPlayerApiEvents();
-  overrideHistoryButtonDisplay();
+  await optionalModule("history-button-display", () => overrideHistoryButtonDisplay());
 
   const integrationScripts: { [integrationName: string]: { [scriptName: string]: string } } = await ipcRenderer.invoke("ytmView:getIntegrationScripts");
 
-  const state = await store.get("state");
-  const playbackSettings = await store.get("playback");
-  const continueWhereYouLeftOff = playbackSettings.continueWhereYouLeftOff;
+  await optionalModule("continue-where-you-left-off", async () => {
+    const state = await store.get("state");
+    const playbackSettings = await store.get("playback");
+    const continueWhereYouLeftOff = playbackSettings.continueWhereYouLeftOff;
 
-  if (continueWhereYouLeftOff) {
-    if (playbackSettings.continueWhereYouLeftOffPaused && state.lastVideoId) {
-      // The restore is allowed to autoplay so YTM never shows its blocked
-      // autoplay hint. Mute before it starts; the main process pauses it the
-      // moment it reports playing and then restores the mute state.
-      const wasMuted: boolean = (
-        await webFrame.executeJavaScript(`
+    if (continueWhereYouLeftOff) {
+      if (playbackSettings.continueWhereYouLeftOffPaused && state.lastVideoId) {
+        // The restore is allowed to autoplay so YTM never shows its blocked
+        // autoplay hint. Mute before it starts; the main process pauses it the
+        // moment it reports playing and then restores the mute state.
+        const wasMuted: boolean = (
+          await webFrame.executeJavaScript(`
           (function() {
             const playerApi = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi;
             const muted = playerApi.isMuted();
@@ -310,41 +332,44 @@ const startHooking = async () => {
             return muted;
           })
         `)
-      )();
-      ipcRenderer.send("ytmView:launchPauseArmed", state.lastVideoId, wasMuted);
-    }
+        )();
+        ipcRenderer.send("ytmView:launchPauseArmed", state.lastVideoId, wasMuted);
+      }
 
-    // The last page the user was on is already a page where it will be playing a song from (no point telling YTM to play it again)
-    if (!state.lastUrl.startsWith("https://music.youtube.com/watch")) {
-      if (state.lastVideoId) {
-        document.dispatchEvent(
-          new CustomEvent("yt-navigate", {
-            detail: {
-              endpoint: {
-                watchEndpoint: {
-                  videoId: state.lastVideoId,
-                  playlistId: state.lastPlaylistId
+      // The last page the user was on is already a page where it will be playing a song from (no point telling YTM to play it again)
+      if (!state.lastUrl.startsWith("https://music.youtube.com/watch")) {
+        if (state.lastVideoId) {
+          document.dispatchEvent(
+            new CustomEvent("yt-navigate", {
+              detail: {
+                endpoint: {
+                  watchEndpoint: {
+                    videoId: state.lastVideoId,
+                    playlistId: state.lastPlaylistId
+                  }
                 }
               }
-            }
-          })
-        );
-      }
-    } else {
-      (
-        await webFrame.executeJavaScript(`
+            })
+          );
+        }
+      } else {
+        (
+          await webFrame.executeJavaScript(`
           (function() {
             window.ytmd.sendVideoData(document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.getPlayerResponse().videoDetails, document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.getPlaylistId());
           })
         `)
-      )();
+        )();
+      }
     }
-  }
+  });
 
-  const alwaysShowVolumeSlider = (await store.get("appearance")).alwaysShowVolumeSlider;
-  if (alwaysShowVolumeSlider) {
-    document.querySelector("ytmusic-app-layout>ytmusic-player-bar #volume-slider").classList.add("ytmd-persist-volume-slider");
-  }
+  await optionalModule("persist-volume-slider", async () => {
+    const alwaysShowVolumeSlider = (await store.get("appearance")).alwaysShowVolumeSlider;
+    if (alwaysShowVolumeSlider) {
+      document.querySelector("ytmusic-app-layout>ytmusic-player-bar #volume-slider").classList.add("ytmd-persist-volume-slider");
+    }
+  });
 
   ipcRenderer.on("remoteControl:execute", async (_event, command, value) => {
     switch (command) {
@@ -668,13 +693,31 @@ const startHooking = async () => {
     }
   });
 
+  if (YTMD_DEV_TOOLS) {
+    await optionalModule("dev-probe", async () => {
+      if (ipcRenderer.sendSync("ytmView:devProbeEnabled") === true) {
+        (await webFrame.executeJavaScript(devProbeScript))();
+      }
+    });
+  }
+
   ipcRenderer.send("ytmView:loaded");
 };
 
+// A crash anywhere in setup must surface as the hook-failure overlay, not an
+// endless loading spinner: the main process only clears loading on
+// ytmView:loaded or ytmView:hookFailed.
+const startHookingSafely = () => {
+  startHooking().catch(error => {
+    console.error("[ytmd] hook setup crashed", error);
+    ipcRenderer.send("ytmView:hookFailed", "unexpected", { error: String(error) });
+  });
+};
+
 if (document.readyState !== "loading") {
-  startHooking();
+  startHookingSafely();
 } else {
   document.addEventListener("DOMContentLoaded", () => {
-    startHooking();
+    startHookingSafely();
   });
 }
