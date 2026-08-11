@@ -1,6 +1,18 @@
 # Changelog
 
 ## Unreleased
+- style(renderer): adopt the shared palette in the room and companion windows
+- feat(addons): confirm before enabling an external addon and document the format
+- feat(addons): ship listen along rooms as a bundled addon
+- refactor(main): route presence buttons, titlebar badges and deep links through the addon host
+- feat(addons): load addon folders and turn the custom css setting into one
+- feat(addons): give addons a full host context
+- feat(addons): addon manager skeleton with a settings tab
+- refactor(settings): split the tabs into components around a shared staging composable
+- fix(settings): keep the save bar on screen and adapt the sidebar to narrow widths
+- fix(settings): resizable window and controls that wrap instead of clipping
+- style(renderer): share the palette through css variables
+- feat(discord): add setting to hide presence while paused
 
 ## [v2026.807.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.807.0-beta) - 2026-08-07
 - ci(nightly-beta): skip nights with only changelog bookkeeping
