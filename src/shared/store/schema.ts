@@ -45,6 +45,7 @@ export type StoreSchema = {
     companionServerAuthTokens: string | null; // array[object] | Encrypted for security
     companionServerCORSWildcardEnabled: boolean;
     discordPresenceEnabled: boolean;
+    discordPresenceHideOnPause: boolean; // clear the activity while paused instead of showing the paused badge
     lastFMEnabled: boolean;
     listenAlongEnabled: boolean;
     listenAlongHost: string | null; // hostname or address, no scheme

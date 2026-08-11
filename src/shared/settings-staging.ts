@@ -24,6 +24,7 @@ export const STAGED_SETTING_KEYS = [
   "integrations.companionServerEnabled",
   "integrations.companionServerCORSWildcardEnabled",
   "integrations.discordPresenceEnabled",
+  "integrations.discordPresenceHideOnPause",
   "integrations.lastFMEnabled",
   "integrations.listenAlongRoomsEnabled",
   "integrations.listenAlongDisplayName",

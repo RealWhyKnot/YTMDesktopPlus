@@ -72,6 +72,7 @@ const stagedRefs: Record<StagedSettingKey, Ref<unknown>> = {
   "integrations.companionServerEnabled": ref<unknown>(integrations.companionServerEnabled),
   "integrations.companionServerCORSWildcardEnabled": ref<unknown>(integrations.companionServerCORSWildcardEnabled),
   "integrations.discordPresenceEnabled": ref<unknown>(integrations.discordPresenceEnabled),
+  "integrations.discordPresenceHideOnPause": ref<unknown>(integrations.discordPresenceHideOnPause),
   "integrations.lastFMEnabled": ref<unknown>(integrations.lastFMEnabled),
   "integrations.listenAlongRoomsEnabled": ref<unknown>(integrations.listenAlongRoomsEnabled),
   "integrations.listenAlongDisplayName": ref<unknown>(integrations.listenAlongDisplayName),
@@ -110,6 +111,7 @@ const preventIdlePause = stagedRefs["playback.preventIdlePause"];
 const companionServerEnabled = stagedRefs["integrations.companionServerEnabled"];
 const companionServerCORSWildcardEnabled = stagedRefs["integrations.companionServerCORSWildcardEnabled"];
 const discordPresenceEnabled = stagedRefs["integrations.discordPresenceEnabled"];
+const discordPresenceHideOnPause = stagedRefs["integrations.discordPresenceHideOnPause"];
 const lastFMEnabled = stagedRefs["integrations.lastFMEnabled"];
 const listenAlongRoomsEnabled = stagedRefs["integrations.listenAlongRoomsEnabled"];
 const listenAlongDisplayName = stagedRefs["integrations.listenAlongDisplayName"];
@@ -564,6 +566,15 @@ window.ytmd.handleUpdateDownloaded(() => {
             <button @click="openRoomWindow">Open</button>
           </div>
           <YTMDSetting v-model="discordPresenceEnabled" type="checkbox" name="Discord rich presence" @change="stageChanged" />
+          <YTMDSetting
+            v-if="discordPresenceEnabled"
+            v-model="discordPresenceHideOnPause"
+            type="checkbox"
+            indented
+            name="Hide presence while paused"
+            description="Clears your Discord activity as soon as playback pauses instead of showing a paused badge"
+            @change="stageChanged"
+          />
           <div v-if="discordPresenceEnabled && discordPresenceConnectionFailed" class="setting indented">
             <p class="discord-failure">Discord connection could not be established after 30 attempts</p>
             <button @click="restartDiscordPresence">Retry</button>

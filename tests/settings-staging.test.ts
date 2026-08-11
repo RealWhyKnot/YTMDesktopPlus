@@ -35,6 +35,7 @@ function stateFixture(overrides: Record<string, unknown> = {}) {
       companionServerEnabled: false,
       companionServerCORSWildcardEnabled: false,
       discordPresenceEnabled: true,
+      discordPresenceHideOnPause: false,
       lastFMEnabled: false,
       listenAlongRoomsEnabled: true,
       listenAlongDisplayName: null

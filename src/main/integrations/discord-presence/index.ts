@@ -86,6 +86,10 @@ export default class DiscordPresence implements IIntegration {
       const { title, author, album, id, thumbnails, durationSeconds, channelId, albumId, isLive } = this.videoDetails;
       const thumbnail = getHighestResThumbnail(thumbnails);
       const playing = this.videoState === VideoState.Playing;
+      if (!playing && this.store?.get("integrations").discordPresenceHideOnPause) {
+        this.discordClient.clearActivity();
+        return;
+      }
       // One clock read, so the elapsed bar and the listen along link agree.
       const nowMs = Date.now();
       const startEpochMs = nowMs - this.progress * 1000;

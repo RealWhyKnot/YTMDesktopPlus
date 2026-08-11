@@ -512,6 +512,7 @@ const store = new Conf<StoreSchema>({
       companionServerAuthTokens: null,
       companionServerCORSWildcardEnabled: false,
       discordPresenceEnabled: false,
+      discordPresenceHideOnPause: false,
       lastFMEnabled: false,
       listenAlongEnabled: false,
       listenAlongHost: null,
@@ -612,6 +613,9 @@ if (store.get("playback").adBlockerEnabled === undefined) {
 }
 if (store.get("playback").preventIdlePause === undefined) {
   store.set("playback.preventIdlePause", false);
+}
+if (store.get("integrations").discordPresenceHideOnPause === undefined) {
+  store.set("integrations.discordPresenceHideOnPause", false);
 }
 
 const applyUpdateFeed = () =>
@@ -808,6 +812,10 @@ store.onDidAnyChange(async (newState, oldState) => {
   } else if (!newState.integrations.discordPresenceEnabled && oldState.integrations.discordPresenceEnabled) {
     discordPresence.disable();
     log.info("Integration disabled: Discord presence");
+  }
+  if (newState.integrations.discordPresenceHideOnPause !== oldState.integrations.discordPresenceHideOnPause) {
+    // Takes effect immediately even while paused, not on the next player event
+    discordPresence.refreshActivity();
   }
 
   if (newState.integrations.lastFMEnabled) {

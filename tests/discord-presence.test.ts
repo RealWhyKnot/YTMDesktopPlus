@@ -63,6 +63,37 @@ function playingState(): PlayerState {
   } as PlayerState;
 }
 
+function pausedState(): PlayerState {
+  return { ...playingState(), trackState: VideoState.Paused };
+}
+
+type PresenceHarness = {
+  presence: DiscordPresence;
+  calls: { set: number; clear: number };
+  settings: { listenAlongRoomsEnabled: boolean; discordPresenceHideOnPause: boolean };
+  stateChanged(state: PlayerState): void;
+};
+
+function makePresence(settings: Partial<PresenceHarness["settings"]> = {}): PresenceHarness {
+  const calls = { set: 0, clear: 0 };
+  const resolved = { listenAlongRoomsEnabled: false, discordPresenceHideOnPause: false, ...settings };
+  const presence = new DiscordPresence();
+  presence.provide({ get: () => resolved } as never, { get: () => null } as never);
+  Object.assign(presence, {
+    ready: true,
+    discordClient: {
+      setActivity: () => calls.set++,
+      clearActivity: () => calls.clear++
+    }
+  });
+  return {
+    presence,
+    calls,
+    settings: resolved,
+    stateChanged: state => (presence as unknown as { playerStateChanged(state: PlayerState): void }).playerStateChanged(state)
+  };
+}
+
 describe("activity updates", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -90,5 +121,63 @@ describe("activity updates", () => {
     (presence as unknown as { playerStateChanged(state: PlayerState): void }).playerStateChanged(playingState());
     vi.advanceTimersByTime(1000);
     expect(calls).toEqual({ set: 1, clear: 1 });
+  });
+
+  it("keeps the paused badge and clears after 30 seconds by default", () => {
+    vi.useFakeTimers();
+    const { calls, stateChanged } = makePresence();
+
+    stateChanged(playingState());
+    vi.advanceTimersByTime(1000);
+    stateChanged(pausedState());
+    vi.advanceTimersByTime(1000);
+    expect(calls).toEqual({ set: 2, clear: 0 });
+
+    vi.advanceTimersByTime(30_000);
+    expect(calls.clear).toBe(1);
+  });
+
+  it("clears on pause when hide-on-pause is on", () => {
+    vi.useFakeTimers();
+    const { calls, stateChanged } = makePresence({ discordPresenceHideOnPause: true });
+
+    stateChanged(playingState());
+    vi.advanceTimersByTime(1000);
+    expect(calls).toEqual({ set: 1, clear: 0 });
+
+    stateChanged(pausedState());
+    vi.advanceTimersByTime(1000);
+    expect(calls).toEqual({ set: 1, clear: 1 });
+  });
+
+  it("restores the activity on resume after a hidden pause", () => {
+    vi.useFakeTimers();
+    const { calls, stateChanged } = makePresence({ discordPresenceHideOnPause: true });
+
+    stateChanged(playingState());
+    vi.advanceTimersByTime(1000);
+    stateChanged(pausedState());
+    vi.advanceTimersByTime(1000);
+    expect(calls).toEqual({ set: 1, clear: 1 });
+
+    stateChanged(playingState());
+    vi.advanceTimersByTime(1000);
+    expect(calls).toEqual({ set: 2, clear: 1 });
+  });
+
+  it("clears through refreshActivity when the setting turns on while paused", () => {
+    vi.useFakeTimers();
+    const { presence, calls, settings, stateChanged } = makePresence();
+
+    stateChanged(playingState());
+    vi.advanceTimersByTime(1000);
+    stateChanged(pausedState());
+    vi.advanceTimersByTime(1000);
+    expect(calls).toEqual({ set: 2, clear: 0 });
+
+    settings.discordPresenceHideOnPause = true;
+    presence.refreshActivity();
+    vi.advanceTimersByTime(1000);
+    expect(calls).toEqual({ set: 2, clear: 1 });
   });
 });
