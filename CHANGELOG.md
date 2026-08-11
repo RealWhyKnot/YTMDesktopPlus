@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- feat(addons): duration-aware mirror expiry with a one-shot lookup
+- feat(discord): phone badge asset on the remote track activity
+- feat(addons): phone playback addon mirroring what the phone is playing
+- fix(dev): probe history poll calls innertube directly
 - test(harness): stop vitest writing to the installed app's log file
 - test(harness): profile seeding and action and network recorders for the probe
 - feat(dev): remote playback probe compiled into dev and local builds only
