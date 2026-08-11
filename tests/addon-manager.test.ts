@@ -165,6 +165,23 @@ describe("AddonManager", () => {
     expect(manager.descriptors()[0].restartRequired).toBe(false);
   });
 
+  it("asks for acknowledgement only for external addons that lack it", async () => {
+    const { services } = fakeServices();
+    const manager = new AddonManager(services);
+    manager.registerBundled([{ manifest: manifest({ id: "built-in", defaultEnabled: true }), activate: () => {} }]);
+    manager.registerExternal([
+      { dir: "x", folderName: "outside", manifest: manifest({ id: "outside" }) },
+      { dir: "y", folderName: "trusted", manifest: manifest({ id: "trusted" }) }
+    ]);
+    await manager.boot();
+
+    expect(manager.needsRiskAcknowledgement("built-in")).toBe(false);
+    expect(manager.needsRiskAcknowledgement("outside")).toBe(true);
+
+    manager.acknowledgeRisk("trusted");
+    expect(manager.needsRiskAcknowledgement("trusted")).toBe(false);
+  });
+
   it("shuts instances down on quit", async () => {
     const { services } = fakeServices();
     const destroy = vi.fn();

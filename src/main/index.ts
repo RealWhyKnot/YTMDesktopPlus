@@ -2107,9 +2107,25 @@ app.on("ready", async () => {
     return addonManager.descriptors();
   });
 
-  ipcMain.handle("addons:setEnabled", (event, id: string, enabled: boolean) => {
+  ipcMain.handle("addons:setEnabled", async (event, id: string, enabled: boolean) => {
     if (settingsWindow && event.sender !== settingsWindow.webContents) return;
     if (typeof id !== "string" || typeof enabled !== "boolean") return;
+
+    if (enabled && addonManager.needsRiskAcknowledgement(id)) {
+      const name = addonManager.descriptors().find(descriptor => descriptor.manifest.id === id)?.manifest.name ?? id;
+      const result = await dialog.showMessageBox(settingsWindow, {
+        type: "warning",
+        title: "Enable external addon",
+        message: `Enable ${name}?`,
+        detail:
+          "External addons run with the same access as the app itself: your files, your session and your accounts. Only enable addons from sources you trust.",
+        buttons: ["Cancel", "Enable"],
+        defaultId: 0,
+        cancelId: 0
+      });
+      if (result.response !== 1) return;
+      addonManager.acknowledgeRisk(id);
+    }
 
     addonManager.setEnabled(id, enabled);
   });

@@ -198,6 +198,19 @@ export class AddonManager {
     this.services.memoryStore.set("addonTitlebarBadges", [...this.titlebarBadges.values()]);
   }
 
+  /** External addons run unsandboxed; the first enable asks the user once. */
+  public needsRiskAcknowledgement(id: string): boolean {
+    const addon = this.addons.find(entry => entry.definition.manifest.id === id);
+    if (!addon || addon.origin !== "external") return false;
+    return this.services.store.get("addons").states[id]?.riskAcknowledged !== true;
+  }
+
+  public acknowledgeRisk(id: string) {
+    const addonsSection = this.services.store.get("addons");
+    addonsSection.states[id] = { enabled: addonsSection.states[id]?.enabled ?? false, riskAcknowledged: true };
+    this.services.store.set("addons", addonsSection);
+  }
+
   /** Returns whether any addon owned the click. */
   public handleBadgeClick(id: string): boolean {
     const addon = this.addons.find(entry => entry.definition.manifest.id === id);
