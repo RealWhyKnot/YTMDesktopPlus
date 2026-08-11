@@ -18,7 +18,7 @@
 // environment blocked (companion port busy, consent wall), 6 teardown could
 // not verify a clean process table.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createEmitter } from "./events.mjs";
@@ -118,8 +118,31 @@ if (scenario.needsCompanion && (await companion.portInUse())) {
   process.exit(5);
 }
 
-writeFileSync(path.join(profileDir, "config.json"), JSON.stringify(scenario.fixture ?? {}, null, 2));
-writeFileSync(path.join(profileDir, ".first-run"), "");
+// YTMD_SEED_PROFILE clones an existing profile directory (cookies, storage,
+// config) into the run so a scenario can act against a signed-in state. The
+// scenario fixture still wins key-by-key over the seeded config, and the
+// first-run marker is skipped: a seeded profile is not a first run.
+const seedProfile = process.env.YTMD_SEED_PROFILE;
+if (seedProfile) {
+  cpSync(seedProfile, profileDir, { recursive: true });
+  const configPath = path.join(profileDir, "config.json");
+  let seededConfig = {};
+  try {
+    seededConfig = JSON.parse(readFileSync(configPath, "utf8"));
+  } catch {
+    // no or unreadable config in the seed; the fixture alone applies
+  }
+  const merged = { ...seededConfig };
+  for (const [section, values] of Object.entries(scenario.fixture ?? {})) {
+    merged[section] =
+      values && typeof values === "object" && !Array.isArray(values) ? { ...(seededConfig[section] ?? {}), ...values } : values;
+  }
+  writeFileSync(configPath, JSON.stringify(merged, null, 2));
+  emit("profile-seeded", { from: seedProfile });
+} else {
+  writeFileSync(path.join(profileDir, "config.json"), JSON.stringify(scenario.fixture ?? {}, null, 2));
+  writeFileSync(path.join(profileDir, ".first-run"), "");
+}
 
 watchdog = setTimeout(async () => {
   emit("watchdog", await evidence());

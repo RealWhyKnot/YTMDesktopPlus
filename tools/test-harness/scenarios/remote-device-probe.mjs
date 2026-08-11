@@ -26,6 +26,14 @@ export const fixture = {
     enableSpeakerFill: false,
     progressInTaskbar: false,
     ratioVolume: false
+  },
+  // A seeded (real, signed-in) profile carries live integrations. The probe
+  // must not compete with an installed instance for the companion port, show a
+  // second Discord presence, or auto-open a room, so they are forced off.
+  integrations: {
+    companionServerEnabled: false,
+    discordPresenceEnabled: false,
+    lastFMEnabled: false
   }
 };
 
@@ -145,14 +153,48 @@ export default async function remoteDeviceProbe(ctx) {
     605000
   );
 
-  await ctx.step("popup recorder installed", () =>
+  await ctx.step("recorders installed", () =>
     ctx.evalYtm(`(() => {
-      if (!window.__probePopups) {
-        window.__probePopups = [];
-        document.addEventListener("yt-popup-opened", event => {
-          window.__probePopups.push({ t: Date.now(), nodeName: event.detail?.nodeName ?? null });
-        });
-      }
+      if (window.__probePopups) return true;
+      window.__probePopups = [];
+      document.addEventListener("yt-popup-opened", event => {
+        window.__probePopups.push({ t: Date.now(), nodeName: event.detail?.nodeName ?? null });
+      });
+      // Server-pushed events surface as actions on the same bus the app's
+      // integrations already use; record every action name that flows by.
+      window.__probeActions = [];
+      document.addEventListener("yt-action", event => {
+        const name = event.detail?.actionName;
+        if (name) window.__probeActions.push({ t: Date.now(), name });
+      });
+      // Passive network tap: anything the page requests after this point, plus
+      // the resource log for what it requested before. Finds any realtime
+      // channel (signaler, push, heartbeat) without touching its traffic.
+      window.__probeNet = [];
+      const seen = new Set();
+      const note = url => {
+        const u = String(url).slice(0, 200);
+        if (seen.has(u)) return;
+        seen.add(u);
+        window.__probeNet.push({ t: Date.now(), u });
+      };
+      for (const entry of performance.getEntriesByType("resource")) note(entry.name);
+      const originalFetch = window.fetch;
+      window.fetch = function (...args) {
+        try { note(args[0]?.url ?? args[0]); } catch { /* recording only */ }
+        return originalFetch.apply(this, args);
+      };
+      const originalOpen = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+        try { note(url); } catch { /* recording only */ }
+        return originalOpen.call(this, method, url, ...rest);
+      };
+      window.WebSocket = new Proxy(window.WebSocket, {
+        construct(target, args) {
+          try { note("ws:" + args[0]); } catch { /* recording only */ }
+          return new target(...args);
+        }
+      });
       return true;
     })()`)
   );
