@@ -1,7 +1,7 @@
 import path from "path";
 import { describe, expect, it, vi } from "vitest";
 import { AddonManager, BundledAddonDefinition } from "../src/main/addons/manager";
-import { validateManifest, versionAtLeast } from "../src/main/addons/validate-manifest";
+import { manifestWarnings, SUPPORTED_ADDON_API_VERSION, validateManifest, versionAtLeast } from "../src/main/addons/validate-manifest";
 import { createAddonContext, type AddonHostBridge, type BundledAddonContext } from "../src/main/addons/context";
 import type { AddonManifest, PlayerEventMap } from "../src/shared/addons/types";
 import { makeManifest as manifest } from "./helpers/fake-addon-context";
@@ -82,6 +82,19 @@ describe("AddonManager", () => {
 
     expect(activate).not.toHaveBeenCalled();
     expect(manager.descriptors()[0].state).toBe("incompatible");
+  });
+
+  it("never loads an addon targeting a newer api generation", async () => {
+    const { services } = fakeServices();
+    const activate = vi.fn();
+    const manager = new AddonManager(services);
+    manager.registerBundled([{ manifest: manifest({ id: "tomorrow", defaultEnabled: true, apiVersion: SUPPORTED_ADDON_API_VERSION + 1 }), activate }]);
+    await manager.boot();
+
+    expect(activate).not.toHaveBeenCalled();
+    const descriptor = manager.descriptors()[0];
+    expect(descriptor.state).toBe("incompatible");
+    expect(descriptor.error).toContain("addon API");
   });
 
   it("rejects duplicate ids at registration", () => {
@@ -508,9 +521,25 @@ describe("validateManifest", () => {
     ["escaping style path", manifest({ styles: ["../outside.css"] })],
     ["absolute main", manifest({ main: "C:/evil.js" })],
     ["non-array scripts", { ...manifest(), ytmScripts: "index.js" }],
+    ["non-string homepage", { ...manifest(), homepage: 42 }],
+    ["fractional apiVersion", { ...manifest(), apiVersion: 1.5 }],
     ["not an object", "nope"]
   ])("rejects %s", (_label, value) => {
     expect(validateManifest(value)).not.toBeNull();
+  });
+
+  it("accepts homepage and apiVersion when well formed", () => {
+    expect(validateManifest(manifest({ homepage: "https://example.invalid", apiVersion: 1 }))).toBeNull();
+  });
+});
+
+describe("manifestWarnings", () => {
+  it("warns on loose versions and non-http homepages without failing the addon", () => {
+    expect(manifestWarnings(manifest())).toEqual([]);
+    expect(manifestWarnings(manifest({ version: "v2" }))).toHaveLength(1);
+    expect(manifestWarnings(manifest({ minAppVersion: "latest" }))).toHaveLength(1);
+    expect(manifestWarnings(manifest({ homepage: "ftp://example.invalid" }))).toHaveLength(1);
+    expect(manifestWarnings(manifest({ homepage: "https://example.invalid" }))).toEqual([]);
   });
 });
 

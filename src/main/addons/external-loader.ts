@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { createRequire } from "node:module";
 import type { AddonManifest } from "~shared/addons/types";
-import { validateManifest } from "./validate-manifest";
+import { manifestWarnings, validateManifest } from "./validate-manifest";
 import type { BundledAddonDefinition } from "./manager";
 import type { AddonInstance } from "./context";
 
@@ -11,6 +11,8 @@ export type ExternalAddonScan = {
   folderName: string;
   manifest?: AddonManifest;
   error?: string;
+  /** Non-fatal manifest problems, logged at registration */
+  warnings?: string[];
 };
 
 /** Reads every folder in the addons directory and validates its manifest.
@@ -43,7 +45,8 @@ export function scanExternalAddons(addonsDir: string): ExternalAddonScan[] {
       results.push({ dir, folderName: entry.name, manifest, error: "folder name must match the addon id" });
       continue;
     }
-    results.push({ dir, folderName: entry.name, manifest });
+    const warnings = manifestWarnings(manifest);
+    results.push({ dir, folderName: entry.name, manifest, warnings: warnings.length > 0 ? warnings : undefined });
   }
   return results;
 }

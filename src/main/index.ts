@@ -2272,6 +2272,15 @@ app.on("ready", async () => {
     addonManager.handleBadgeClick(addonId);
   });
 
+  ipcMain.on("addons:openHomepage", (event, id: string) => {
+    if (!isSettingsSender(event.sender)) return;
+    if (typeof id !== "string") return;
+
+    // The url comes from the installed manifest, never from the renderer.
+    const homepage = addonManager.descriptors().find(descriptor => descriptor.manifest.id === id)?.manifest.homepage;
+    if (homepage && /^https?:\/\//.test(homepage)) shell.openExternal(homepage);
+  });
+
   ipcMain.on("addons:invokeAction", (event, id: string, key: string) => {
     if (!isSettingsSender(event.sender)) return;
     if (typeof id !== "string" || typeof key !== "string") return;

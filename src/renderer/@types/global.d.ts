@@ -24,6 +24,7 @@ declare global {
         setEnabled(id: string, enabled: boolean): Promise<void>;
         openFolder(): void;
         invokeAction(id: string, key: string): void;
+        openHomepage(id: string): void;
       };
       addonBadgeClick?(addonId: string): void;
       restartApplication(): void;

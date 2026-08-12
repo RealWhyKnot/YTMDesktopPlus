@@ -29,6 +29,11 @@ export type AddonManifest = {
   description: string;
   /** Oldest app version the addon works with; incompatible addons are listed but never loaded */
   minAppVersion?: string;
+  /** Homepage or repository shown on the addon card; http(s) only */
+  homepage?: string;
+  /** Addon API generation this addon targets. Additive context growth never
+   *  bumps it; a too-new addon is listed as incompatible. Current: 1 */
+  apiVersion?: number;
   /** Relative path to a CommonJS entry. Optional: pure style/script addons need none */
   main?: string;
   /** CSS files injected into the YouTube Music view, watched for edits */

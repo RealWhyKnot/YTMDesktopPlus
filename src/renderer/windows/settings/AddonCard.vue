@@ -55,6 +55,12 @@ function selectValueType(field: AddonSettingsField & { type: "select" }) {
 function invokeAction(key: string) {
   window.ytmd.addons?.invokeAction(props.addon.manifest.id, key);
 }
+
+const hasHomepage = computed(() => /^https?:\/\//.test(props.addon.manifest.homepage ?? ""));
+
+function openHomepage() {
+  window.ytmd.addons?.openHomepage(props.addon.manifest.id);
+}
 </script>
 
 <template>
@@ -67,7 +73,10 @@ function invokeAction(key: string) {
       <span v-if="addon.restartRequired" class="pill restart"><span class="material-symbols-outlined">autorenew</span>Restart required</span>
       <ToggleSwitch class="toggle" :model-value="addon.enabled" @update:model-value="emit('toggle', $event as boolean)" />
     </div>
-    <p class="author">by {{ addon.manifest.author }}</p>
+    <p class="author">
+      by {{ addon.manifest.author }}
+      <button v-if="hasHomepage" class="homepage" @click="openHomepage"><span class="material-symbols-outlined">open_in_new</span>Homepage</button>
+    </p>
     <p class="description">{{ addon.manifest.description }}</p>
     <p v-if="statusText" class="status"><span class="material-symbols-outlined">error</span>{{ statusText }}</p>
     <p v-if="addon.state === 'active' && addon.lastError" class="status runtime">
@@ -191,6 +200,23 @@ function invokeAction(key: string) {
 .author {
   margin: 4px 0 0 0;
   color: var(--text-faint);
+  font-size: 14px;
+}
+
+.author .homepage {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.author .homepage .material-symbols-outlined {
   font-size: 14px;
 }
 

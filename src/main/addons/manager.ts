@@ -1,6 +1,6 @@
 import log from "electron-log";
 import type { AddonDescriptor, AddonManifest, AddonOrigin, AddonSettingsSection, AddonTitlebarBadge, AddonTrayMenuItem } from "~shared/addons/types";
-import { manifestSatisfiesApp } from "./validate-manifest";
+import { manifestSatisfiesApp, SUPPORTED_ADDON_API_VERSION } from "./validate-manifest";
 import { AddonHostServices, AddonHostWindow, AddonInstance, BundledAddonContext, createAddonContext, HOST_SCRIPT_NAMESPACE } from "./context";
 import innertubeRequestScript from "./scripts/innertube-request.script?raw";
 import type { AddonCssHandle } from "./css";
@@ -63,6 +63,9 @@ export class AddonManager {
   public registerExternal(scans: ExternalAddonScan[]) {
     if (this.booted) throw new Error("Addons must be registered before boot");
     for (const scan of scans) {
+      for (const warning of scan.warnings ?? []) {
+        log.warn(`Addon manifest warning (${scan.folderName}): ${warning}`);
+      }
       const id = scan.manifest?.id ?? scan.folderName;
       const conflict = this.addons.some(addon => addon.definition.manifest.id === id);
       const manifest: AddonManifest = scan.manifest ?? {
@@ -109,6 +112,11 @@ export class AddonManager {
       if (!manifestSatisfiesApp(manifest, this.services.appVersion)) {
         addon.descriptor.state = "incompatible";
         addon.descriptor.error = `Needs app version ${manifest.minAppVersion} or newer`;
+        continue;
+      }
+      if (manifest.apiVersion !== undefined && manifest.apiVersion > SUPPORTED_ADDON_API_VERSION) {
+        addon.descriptor.state = "incompatible";
+        addon.descriptor.error = `Requires a newer app (addon API v${manifest.apiVersion})`;
         continue;
       }
       try {
