@@ -277,6 +277,22 @@ describe("AddonContext", () => {
     expect(manager.descriptors()[0].lastError).toContain("badge boom");
   });
 
+  it("routes named playback methods through the command channel and serves queue reads", async () => {
+    const fixture = fakeServices();
+    const { ctx } = await bootWithContext(fixture);
+    const send = fixture.services.playback.sendPlaybackCommand as ReturnType<typeof vi.fn>;
+
+    ctx.playback.play();
+    ctx.playback.setVolume(30);
+    ctx.playback.setRepeatMode("ONE");
+    ctx.playback.playQueueIndex(2);
+
+    expect(send.mock.calls).toEqual([["play"], ["setVolume", 30], ["repeatMode", "ONE"], ["playQueueIndex", 2]]);
+    expect(ctx.player.getQueue()).toBeNull();
+    expect(ctx.player.getPlaylistId()).toBeNull();
+    await expect(ctx.playback.getPlaylists()).resolves.toEqual([]);
+  });
+
   it("recognizes its own windows by web contents until they close", async () => {
     const fixture = fakeServices();
     const { manager, ctx } = await bootWithContext(fixture);

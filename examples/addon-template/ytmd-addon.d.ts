@@ -166,6 +166,55 @@ export type PlayerState = {
     adPlaying: boolean;
     hasFullMetadata: boolean;
 };
+/** Repeat mode as the page names it. */
+export type YTMRepeatMode = "NONE" | "ALL" | "ONE";
+/** The complete remote-control vocabulary the player page understands. */
+export type RemoteCommand = {
+    command: "playPause";
+} | {
+    command: "play";
+} | {
+    command: "pause";
+} | {
+    command: "next";
+} | {
+    command: "previous";
+} | {
+    command: "toggleLike";
+} | {
+    command: "toggleDislike";
+} | {
+    command: "volumeUp";
+} | {
+    command: "volumeDown";
+} | {
+    command: "setVolume";
+    value: number;
+} | {
+    command: "mute";
+} | {
+    command: "unmute";
+} | {
+    command: "repeatMode";
+    value: YTMRepeatMode;
+} | {
+    command: "seekTo";
+    value: number;
+} | {
+    command: "shuffle";
+} | {
+    command: "playQueueIndex";
+    value: number;
+} | {
+    command: "navigate";
+    value: {
+        watchEndpoint: {
+            videoId?: string;
+            playlistId?: string;
+        };
+    };
+};
+export type RemoteCommandName = RemoteCommand["command"];
 /** Where to land inside a track: an absolute position, or a shared moment in
  *  time everyone seeks relative to. */
 export type PositionAnchor = {
@@ -270,13 +319,42 @@ export interface AddonContext {
     };
     player: {
         getState(): PlayerState;
+        getQueue(): PlayerQueue | null;
+        getPlaylistId(): string | null;
         onStateChanged(callback: (state: PlayerState) => void): Unsubscribe;
     };
+    /** Every method returns false when the player page is not available. */
     playback: {
+        play(): boolean;
+        pause(): boolean;
+        playPause(): boolean;
+        next(): boolean;
+        previous(): boolean;
+        toggleLike(): boolean;
+        toggleDislike(): boolean;
+        /** 0 to 100; anything else throws */
+        setVolume(volume: number): boolean;
+        volumeUp(): boolean;
+        volumeDown(): boolean;
+        mute(): boolean;
+        unmute(): boolean;
+        /** Absolute position in seconds */
+        seekTo(seconds: number): boolean;
+        setRepeatMode(mode: YTMRepeatMode): boolean;
+        shuffle(): boolean;
+        /** Index into ctx.player.getQueue(): items first, then automix items */
+        playQueueIndex(index: number): boolean;
         /** Opens a track and lands at the requested position, retrying seeks until
          *  the page settles. */
         cueTrack(request: CueRequest): Promise<CueResult>;
-        sendPlaybackCommand(command: string, value?: unknown): void;
+        /** The low-level escape hatch behind the named methods; throws on a
+         *  malformed value. */
+        sendPlaybackCommand(command: RemoteCommandName, value?: unknown): boolean;
+        /** The signed-in account's playlists, fetched live from the page. */
+        getPlaylists(): Promise<{
+            id: string;
+            title: string;
+        }[]>;
     };
     /** Channels are namespaced per addon: a renderer reaches this addon at
      *  addon:<id>:<channel>. */

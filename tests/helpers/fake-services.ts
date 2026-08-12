@@ -73,8 +73,18 @@ export function fakeServices(persistedStates: Record<string, { enabled: boolean 
       registeredScripts[namespace][name] = script;
     },
     invokeYtmScript: vi.fn(async () => undefined),
-    player: { getState: () => makePlayerState(), addEventListener: vi.fn(), removeEventListener: vi.fn() },
-    playback: { cueTrack: vi.fn(async (): Promise<CueResult> => "no-view"), sendPlaybackCommand: vi.fn() },
+    player: {
+      getState: () => makePlayerState(),
+      getQueue: () => null,
+      getPlaylistId: () => null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    },
+    playback: {
+      cueTrack: vi.fn(async (): Promise<CueResult> => "no-view"),
+      sendPlaybackCommand: vi.fn(() => true),
+      getPlaylists: vi.fn(async () => [])
+    },
     ipc: {
       handle: (channel: string, listener: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => {
         ipcHandlers.set(channel, listener as (event: unknown, ...args: unknown[]) => unknown);

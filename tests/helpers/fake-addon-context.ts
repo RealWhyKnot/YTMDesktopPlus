@@ -172,14 +172,33 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
     },
     player: {
       getState: vi.fn(() => makePlayerState()),
+      getQueue: vi.fn(() => null),
+      getPlaylistId: vi.fn(() => null),
       onStateChanged: vi.fn((callback: (state: PlayerState) => void) => {
         captured.stateListeners.push(callback);
         return unsubscribe;
       })
     },
     playback: {
+      play: vi.fn(() => true),
+      pause: vi.fn(() => true),
+      playPause: vi.fn(() => true),
+      next: vi.fn(() => true),
+      previous: vi.fn(() => true),
+      toggleLike: vi.fn(() => true),
+      toggleDislike: vi.fn(() => true),
+      setVolume: vi.fn(() => true),
+      volumeUp: vi.fn(() => true),
+      volumeDown: vi.fn(() => true),
+      mute: vi.fn(() => true),
+      unmute: vi.fn(() => true),
+      seekTo: vi.fn(() => true),
+      setRepeatMode: vi.fn(() => true),
+      shuffle: vi.fn(() => true),
+      playQueueIndex: vi.fn(() => true),
       cueTrack: vi.fn(async (): Promise<CueResult> => "no-view"),
-      sendPlaybackCommand: vi.fn()
+      sendPlaybackCommand: vi.fn(() => true),
+      getPlaylists: vi.fn(async () => [])
     },
     ipc: {
       handle: vi.fn(() => unsubscribe),

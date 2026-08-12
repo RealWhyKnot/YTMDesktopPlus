@@ -10,9 +10,12 @@ import type {
   AddonWindowOptions,
   CueRequest,
   CueResult,
+  PlayerQueue,
   PlayerState,
+  RemoteCommandName,
   RemoteTrackActivity,
-  Unsubscribe
+  Unsubscribe,
+  YTMRepeatMode
 } from "~shared/addons/sdk";
 import type { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
 import { AddonCssHandle, cssHandleFromFile } from "./css";
@@ -46,12 +49,15 @@ export type AddonHostServices = {
   invokeYtmScript(namespace: string, name: string, arg?: unknown): Promise<unknown>;
   player: {
     getState(): PlayerState;
+    getQueue(): PlayerQueue | null;
+    getPlaylistId(): string | null;
     addEventListener(listener: (state: PlayerState) => void): void;
     removeEventListener(listener: (state: PlayerState) => void): void;
   };
   playback: {
     cueTrack(request: CueRequest): Promise<CueResult>;
-    sendPlaybackCommand(command: string, value?: unknown): void;
+    sendPlaybackCommand(command: RemoteCommandName, value?: unknown): boolean;
+    getPlaylists(): Promise<{ id: string; title: string }[]>;
   };
   ipc: {
     handle(channel: string, listener: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown): void;
@@ -226,6 +232,12 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       getState() {
         return services.player.getState();
       },
+      getQueue() {
+        return services.player.getQueue();
+      },
+      getPlaylistId() {
+        return services.player.getPlaylistId();
+      },
       onStateChanged(callback) {
         const guarded = guard("player.onStateChanged", callback);
         services.player.addEventListener(guarded);
@@ -235,7 +247,27 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       }
     },
 
-    playback: services.playback,
+    playback: {
+      play: () => services.playback.sendPlaybackCommand("play"),
+      pause: () => services.playback.sendPlaybackCommand("pause"),
+      playPause: () => services.playback.sendPlaybackCommand("playPause"),
+      next: () => services.playback.sendPlaybackCommand("next"),
+      previous: () => services.playback.sendPlaybackCommand("previous"),
+      toggleLike: () => services.playback.sendPlaybackCommand("toggleLike"),
+      toggleDislike: () => services.playback.sendPlaybackCommand("toggleDislike"),
+      setVolume: (volume: number) => services.playback.sendPlaybackCommand("setVolume", volume),
+      volumeUp: () => services.playback.sendPlaybackCommand("volumeUp"),
+      volumeDown: () => services.playback.sendPlaybackCommand("volumeDown"),
+      mute: () => services.playback.sendPlaybackCommand("mute"),
+      unmute: () => services.playback.sendPlaybackCommand("unmute"),
+      seekTo: (seconds: number) => services.playback.sendPlaybackCommand("seekTo", seconds),
+      setRepeatMode: (mode: YTMRepeatMode) => services.playback.sendPlaybackCommand("repeatMode", mode),
+      shuffle: () => services.playback.sendPlaybackCommand("shuffle"),
+      playQueueIndex: (index: number) => services.playback.sendPlaybackCommand("playQueueIndex", index),
+      cueTrack: request => services.playback.cueTrack(request),
+      sendPlaybackCommand: (command, value) => services.playback.sendPlaybackCommand(command, value),
+      getPlaylists: () => services.playback.getPlaylists()
+    },
 
     ipc: {
       handle(channel, listener) {

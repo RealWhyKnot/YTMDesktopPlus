@@ -1,5 +1,6 @@
 import { VideoState, type PlayerState } from "../../player-state-store";
 import type { CueResult } from "../../playback/cue-track";
+import type { RemoteCommandName } from "~shared/addons/sdk";
 import {
   ROLE_LISTENER,
   anchorFrameFrom,
@@ -38,7 +39,7 @@ export interface RelayTransport {
 export interface RoomSessionDeps {
   createClient(handlers: RelayHandlers): RelayTransport;
   cueTrack(request: { videoId: string; anchor: { kind: "anchor"; epochMs: number } | null }): Promise<CueResult>;
-  sendCommand(command: string, value?: unknown): void;
+  sendCommand(command: RemoteCommandName, value?: unknown): void;
   publish(snapshot: RoomSnapshot): void;
   getPlayerState(): PlayerState;
   now(): number;

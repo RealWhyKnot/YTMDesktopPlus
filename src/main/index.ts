@@ -48,7 +48,7 @@ import { getRoomsAudioSink } from "../addons/bundled/rooms/audio-sink";
 import type { BatchPacket } from "~shared/audio-protocol";
 import { initializeTestSeams, isTestRun } from "./test-seams";
 import { migrateLegacyProfile } from "./profile-migration";
-import { cancelCue, cueTrack, providePlaybackView, sendPlaybackCommand } from "./playback";
+import { cancelCue, cueTrack, getPlaylists, providePlaybackView, sendPlaybackCommand } from "./playback";
 import { createLaunchPause } from "./playback/launch-pause";
 import { parseProtocolUrl } from "../shared/protocol-url";
 import { buildUpdateFeedUrl, isNewerVersion } from "../shared/update-feed";
@@ -597,7 +597,8 @@ const addonManager: AddonManager = new AddonManager({
   player: playerStateStore,
   playback: {
     cueTrack,
-    sendPlaybackCommand
+    sendPlaybackCommand,
+    getPlaylists
   },
   ipc: {
     handle: (channel, listener) => ipcMain.handle(channel, listener),
