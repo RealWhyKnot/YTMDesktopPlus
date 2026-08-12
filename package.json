@@ -27,7 +27,7 @@
     "sdk:dts": "node tools/generate-addon-dts.mjs",
     "prettier": "prettier --check \"src/**/*.{ts,tsx,vue}\" \"viteconfig/**/*.ts\" \"tests/**/*.ts\" \"tools/**/*.mjs\" \"examples/**/*.{js,json,md,css}\" \"*.{ts,mjs}\"",
     "prettier:fix": "prettier --write \"src/**/*.{ts,tsx,vue}\" \"viteconfig/**/*.ts\" \"tests/**/*.ts\" \"tools/**/*.mjs\" \"examples/**/*.{js,json,md,css}\" \"*.{ts,mjs}\"",
-    "postinstall": "husky install"
+    "postinstall": "husky"
   },
   "keywords": [],
   "author": {
