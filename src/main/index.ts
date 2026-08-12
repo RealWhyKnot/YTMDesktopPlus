@@ -2092,9 +2092,14 @@ app.on("ready", async () => {
     listenAlong.resume();
   });
 
+  // Sender guards. Each one is false while its window does not exist, so a
+  // channel is never open just because its window is closed.
+  const isSettingsSender = (sender: Electron.WebContents) => settingsWindow !== null && sender === settingsWindow.webContents;
+  const isMainWindowSender = (sender: Electron.WebContents) => mainWindow !== null && sender === mainWindow.webContents;
+  const isYtmViewSender = (sender: Electron.WebContents) => ytmView !== null && sender === ytmView.webContents;
+
   // Handle memory store ipc
-  const isMemoryStoreSender = (sender: Electron.WebContents) =>
-    (mainWindow && sender === mainWindow.webContents) || (settingsWindow && sender === settingsWindow.webContents) || addonManager.ownsWebContents(sender);
+  const isMemoryStoreSender = (sender: Electron.WebContents) => isMainWindowSender(sender) || isSettingsSender(sender) || addonManager.ownsWebContents(sender);
 
   ipcMain.on("memoryStore:set", (event, key: string, value?: unknown) => {
     if (!isMemoryStoreSender(event.sender)) return;
@@ -2110,13 +2115,13 @@ app.on("ready", async () => {
 
   // Handle settings store ipc
   ipcMain.on("settings:set", (event, key: string, value?: unknown) => {
-    if (settingsWindow && event.sender !== settingsWindow.webContents) return;
+    if (!isSettingsSender(event.sender)) return;
 
     store.set(key, value);
   });
 
   ipcMain.on("settings:setMany", (event, entries: Array<[string, unknown]>) => {
-    if (settingsWindow && event.sender !== settingsWindow.webContents) return;
+    if (!isSettingsSender(event.sender)) return;
     if (!Array.isArray(entries)) return;
 
     for (const entry of entries) {
@@ -2126,22 +2131,14 @@ app.on("ready", async () => {
   });
 
   ipcMain.handle("settings:get", (event, key: string) => {
-    if (
-      mainWindow &&
-      event.sender !== mainWindow.webContents &&
-      settingsWindow &&
-      event.sender !== settingsWindow.webContents &&
-      ytmView &&
-      event.sender !== ytmView.webContents &&
-      !addonManager.ownsWebContents(event.sender)
-    )
+    if (!isMainWindowSender(event.sender) && !isSettingsSender(event.sender) && !isYtmViewSender(event.sender) && !addonManager.ownsWebContents(event.sender))
       return;
 
     return store.get(key);
   });
 
   ipcMain.handle("settings:reset", (event, key: keyof StoreSchema) => {
-    if (event.sender !== settingsWindow.webContents) return;
+    if (!isSettingsSender(event.sender)) return;
 
     store.reset(key);
   });
@@ -2154,7 +2151,7 @@ app.on("ready", async () => {
   });
 
   ipcMain.handle("addons:setEnabled", async (event, id: string, enabled: boolean) => {
-    if (settingsWindow && event.sender !== settingsWindow.webContents) return;
+    if (!isSettingsSender(event.sender)) return;
     if (typeof id !== "string" || typeof enabled !== "boolean") return;
 
     if (enabled && addonManager.needsRiskAcknowledgement(id)) {
@@ -2177,14 +2174,14 @@ app.on("ready", async () => {
   });
 
   ipcMain.on("addons:badgeClick", (event, addonId: string) => {
-    if (!isMemoryStoreSender(event.sender) && (!mainWindow || event.sender !== mainWindow.webContents)) return;
+    if (!isMemoryStoreSender(event.sender)) return;
     if (typeof addonId !== "string") return;
 
     addonManager.handleBadgeClick(addonId);
   });
 
   ipcMain.on("addons:openFolder", async event => {
-    if (settingsWindow && event.sender !== settingsWindow.webContents) return;
+    if (!isSettingsSender(event.sender)) return;
 
     const addonsDir = path.join(app.getPath("userData"), "addons");
     await fs.mkdir(addonsDir, { recursive: true });
@@ -2194,7 +2191,7 @@ app.on("ready", async () => {
   // Handle safeStorage ipc
   ipcMain.handle("safeStorage:decryptString", (event, value: string) => {
     if (!memoryStore.get("safeStorageAvailable")) throw new Error("safeStorage is unavailable");
-    if (event.sender !== settingsWindow.webContents) return;
+    if (!isSettingsSender(event.sender)) return;
 
     if (value) {
       return safeStorage.decryptString(Buffer.from(value, "hex"));
@@ -2205,20 +2202,20 @@ app.on("ready", async () => {
 
   ipcMain.handle("safeStorage:encryptString", (event, value: string) => {
     if (!memoryStore.get("safeStorageAvailable")) throw new Error("safeStorage is unavailable");
-    if (event.sender !== settingsWindow.webContents) return;
+    if (!isSettingsSender(event.sender)) return;
 
     return safeStorage.encryptString(value).toString("hex");
   });
 
   // Handle app ipc
   ipcMain.handle("app:getVersion", event => {
-    if (event.sender !== settingsWindow.webContents) return;
+    if (!isSettingsSender(event.sender)) return;
 
     return app.getVersion();
   });
 
   ipcMain.on("app:checkForUpdates", event => {
-    if (event.sender !== settingsWindow.webContents) return;
+    if (!isSettingsSender(event.sender)) return;
 
     // autoUpdater downloads automatically and calling checkForUpdates causes duplicate install
     if (!appUpdateAvailable || !appUpdateDownloaded) {
@@ -2227,19 +2224,19 @@ app.on("ready", async () => {
   });
 
   ipcMain.handle("app:isUpdateAvailable", event => {
-    if (event.sender !== settingsWindow.webContents) return;
+    if (!isSettingsSender(event.sender)) return;
 
     return appUpdateAvailable;
   });
 
   ipcMain.handle("app:isUpdateDownloaded", event => {
-    if (event.sender !== settingsWindow.webContents) return;
+    if (!isSettingsSender(event.sender)) return;
 
     return appUpdateDownloaded;
   });
 
   ipcMain.on("app:restartApplicationForUpdate", event => {
-    if (mainWindow && event.sender !== mainWindow.webContents && settingsWindow && event.sender !== settingsWindow.webContents) return;
+    if (!isMainWindowSender(event.sender) && !isSettingsSender(event.sender)) return;
 
     // Electron explicitly will not call before-quit until after all the windows have closed, requiring us to have set that the application is quitting before hand
     applicationQuitting = true;
