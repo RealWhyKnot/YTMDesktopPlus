@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LAUNCH_PAUSE_TIMEOUT_MS, createLaunchPause } from "../src/main/playback/launch-pause";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
+import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
 
 function makeHarness() {
   const listeners = new Set<(state: PlayerState) => void>();
@@ -11,7 +12,7 @@ function makeHarness() {
     send: command => sent.push(command)
   });
   const emit = (videoId: string, trackState: VideoState) => {
-    const state = { trackState, videoDetails: { id: videoId } } as unknown as PlayerState;
+    const state = makePlayerState({ trackState, videoDetails: makeVideoDetails({ id: videoId }) });
     for (const listener of [...listeners]) listener(state);
   };
   return { launchPause, emit, sent, listeners };

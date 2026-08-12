@@ -2,15 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RoomSession, type RelayTransport, type RoomSnapshot } from "../src/main/integrations/listen-along/room-session";
 import type { RelayHandlers } from "../src/main/integrations/listen-along/relay-client";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
+import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
 
 function playerState(videoId: string | null, trackState: VideoState, progress = 0): PlayerState {
-  return {
-    videoDetails: videoId ? { id: videoId, durationSeconds: 300 } : null,
+  return makePlayerState({
+    videoDetails: videoId ? makeVideoDetails({ id: videoId, durationSeconds: 300 }) : null,
     videoProgress: progress,
     trackState,
-    adPlaying: false,
     hasFullMetadata: true
-  } as unknown as PlayerState;
+  });
 }
 
 function makeHarness() {

@@ -1,35 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTrackCue, LOAD_TIMEOUT_MS, SETTLE_MS, VERIFY_MS, type CueDeps } from "../src/main/playback/cue-track";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
+import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
 
 const NOW = 1754236800000;
 
 function playerState(overrides: Partial<PlayerState> & { id?: string; durationSeconds?: number } = {}): PlayerState {
   const { id = "abc123", durationSeconds = 200, ...rest } = overrides;
-  return {
-    videoDetails: {
-      album: "",
-      albumId: "",
-      author: "",
-      channelId: "",
-      durationSeconds,
-      thumbnails: [],
-      title: "",
-      id,
-      likeStatus: -1,
-      videoType: 0,
-      isLive: false
-    },
+  return makePlayerState({
+    videoDetails: makeVideoDetails({ album: "", albumId: "", author: "", channelId: "", durationSeconds, thumbnails: [], title: "", id }),
     playlistId: "",
     trackState: VideoState.Playing,
-    queue: null,
     videoProgress: 0,
     volume: 100,
-    muted: false,
-    adPlaying: false,
     hasFullMetadata: true,
     ...rest
-  } as PlayerState;
+  });
 }
 
 function harness(initial: PlayerState | null = null) {

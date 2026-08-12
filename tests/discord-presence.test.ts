@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import DiscordPresence, { type PresenceButtonsProvider, type RemoteTrackActivity } from "../src/main/integrations/discord-presence";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
+import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
 
 // The buttons discord shows on the presence. Discord renders at most two
 // buttons and only http(s) urls; anything else silently drops the whole
@@ -62,8 +63,8 @@ describe("buildButtons", () => {
 });
 
 function playingState(): PlayerState {
-  return {
-    videoDetails: {
+  return makePlayerState({
+    videoDetails: makeVideoDetails({
       album: "Album",
       albumId: "MPREb_album",
       author: "Author",
@@ -71,14 +72,12 @@ function playingState(): PlayerState {
       durationSeconds: 200,
       thumbnails: [{ url: "https://example.invalid/art.jpg", width: 60, height: 60 }],
       title: "Title",
-      id: "videoid1234",
-      isLive: false
-    },
+      id: "videoid1234"
+    }),
     videoProgress: 12,
     trackState: VideoState.Playing,
-    hasFullMetadata: true,
-    adPlaying: false
-  } as PlayerState;
+    hasFullMetadata: true
+  });
 }
 
 function pausedState(): PlayerState {

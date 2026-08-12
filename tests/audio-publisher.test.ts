@@ -3,11 +3,12 @@ import { describe, expect, it } from "vitest";
 import { AudioPublisher, type AudioTransport, type AudioTransportHandlers } from "../src/main/integrations/listen-along/audio-publisher";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
 import type { AudioClientFrame, BatchPacket } from "../src/shared/audio-protocol";
+import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
 
 function playerState(videoId: string | null, trackState: VideoState, progress = 0, extra: Partial<PlayerState> = {}): PlayerState {
-  return {
+  return makePlayerState({
     videoDetails: videoId
-      ? {
+      ? makeVideoDetails({
           id: videoId,
           title: "Song",
           author: "Artist",
@@ -17,14 +18,13 @@ function playerState(videoId: string | null, trackState: VideoState, progress = 
             { url: "https://i.ytimg.com/small.jpg", width: 60, height: 60 },
             { url: "https://i.ytimg.com/large.jpg", width: 544, height: 544 }
           ]
-        }
+        })
       : null,
     videoProgress: progress,
     trackState,
-    adPlaying: false,
     hasFullMetadata: true,
     ...extra
-  } as unknown as PlayerState;
+  });
 }
 
 function packets(at = 0): BatchPacket[] {
