@@ -202,6 +202,18 @@ describe("AddonContext", () => {
     expect(listener).toHaveBeenCalledOnce();
   });
 
+  it("recognizes its own windows by web contents until they close", async () => {
+    const fixture = fakeServices();
+    const { manager, ctx } = await bootWithContext(fixture);
+    const handle = ctx.windows.create({ entry: "room", width: 100, height: 100 });
+
+    const contents = fixture.windows[0].webContents;
+    expect(manager.ownsWebContents(contents)).toBe(true);
+
+    handle.close();
+    expect(manager.ownsWebContents(contents)).toBe(false);
+  });
+
   it("keeps per-addon memory namespaced", async () => {
     const fixture = fakeServices();
     const { ctx } = await bootWithContext(fixture);

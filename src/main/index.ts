@@ -562,7 +562,7 @@ if (store.get("addons") === undefined) {
   store.set("addons", { states: {}, settings: {} });
 }
 
-const addonManager = new AddonManager({
+const addonManager: AddonManager = new AddonManager({
   store,
   memoryStore,
   appVersion: app.getVersion(),
@@ -613,7 +613,8 @@ const addonManager = new AddonManager({
     Boolean(
       (mainWindow && sender === mainWindow.webContents) ||
       (settingsWindow && sender === settingsWindow.webContents) ||
-      (ytmView && sender === ytmView.webContents)
+      (ytmView && sender === ytmView.webContents) ||
+      (addonManagerCreated && addonManager.ownsWebContents(sender))
     ),
   notify: options => {
     const notification = new Notification({ title: options.title, body: options.body });
