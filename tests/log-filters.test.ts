@@ -6,8 +6,19 @@ describe("isSpamLogMessage", () => {
     expect(isSpamLogMessage("Reading cookie in cross-site context will be blocked... third-party cookie will be blocked.")).toBe(true);
   });
 
+  it("matches the devtools issue channel complaining about unknown categories", () => {
+    expect(isSpamLogMessage("No handler registered for issue code PerformanceIssue")).toBe(true);
+  });
+
+  it("matches the Autofill domain Electron does not implement", () => {
+    expect(isSpamLogMessage(`Request Autofill.enable failed. {"code":-32601,"message":"'Autofill.enable' wasn't found"}`)).toBe(true);
+    expect(isSpamLogMessage(`Request Autofill.setAddresses failed. {"code":-32601}`)).toBe(true);
+  });
+
   it("ignores normal messages and non-strings", () => {
-    expect(isSpamLogMessage("Integration enabled: Custom CSS")).toBe(false);
+    expect(isSpamLogMessage("Integration enabled: Companion Server")).toBe(false);
+    // Near miss: a real failure that happens to mention autofill must survive.
+    expect(isSpamLogMessage("Autofill request failed for the settings window")).toBe(false);
     expect(isSpamLogMessage(42)).toBe(false);
     expect(isSpamLogMessage(undefined)).toBe(false);
   });

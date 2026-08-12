@@ -1,5 +1,29 @@
+import { app } from "electron";
 import log from "electron-log";
 import { isSpamLogMessage, redactLogUrls } from "./log-filters";
+
+// electron-log's own renderer console spy still listens with the positional
+// console-message signature Electron deprecated, which prints a warning on every
+// launch. Its spy is switched off below and this does the same job.
+const RENDERER_LEVEL = {
+  debug: "debug",
+  info: "info",
+  warning: "warn",
+  error: "error"
+} as const;
+
+function spyRendererConsole() {
+  app.on("web-contents-created", (_event, contents) => {
+    contents.on("console-message", details => {
+      log.processMessage({
+        data: [details.message],
+        date: new Date(),
+        level: RENDERER_LEVEL[details.level] ?? "info",
+        variables: { processType: "renderer" }
+      });
+    });
+  });
+}
 
 export function setupLogging(startSilenced: boolean) {
   log.transports.console.format = "[{processType}][{level}]{text}";
@@ -31,8 +55,9 @@ export function setupLogging(startSilenced: boolean) {
 
   log.initialize({
     preload: true,
-    spyRendererConsole: true
+    spyRendererConsole: false
   });
+  spyRendererConsole();
 }
 
 export function setLogOutputEnabled(enabled: boolean) {
