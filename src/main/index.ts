@@ -48,11 +48,11 @@ import { initializeTestSeams, isTestRun } from "./test-seams";
 import { migrateLegacyProfile } from "./profile-migration";
 import { cancelCue, cueTrack, getPlaylists, providePlaybackView, sendPlaybackCommand } from "./playback";
 import { createLaunchPause } from "./playback/launch-pause";
-import { parseProtocolUrl } from "../shared/protocol-url";
 import { createSenderGuards, senderIsView } from "./ipc/sender-guards";
 import { createAppWindow, loadWindowEntry } from "./windows/window-factory";
 import { createAppStore } from "./store/create-store";
 import { createStoreBroadcaster } from "./windows/broadcast";
+import { createDeepLinkRouter, findProtocolUrl } from "./deep-links";
 import { buildUpdateFeedUrl, isNewerVersion } from "../shared/update-feed";
 
 // Injected by Forge's Vite plugin; empty in packaged builds.
@@ -208,57 +208,11 @@ if (!gotTheLock) {
       mainWindow.focus();
     }
 
-    handleProtocol(findProtocolUrl(commandLine));
+    deepLinks.handleProtocol(findProtocolUrl(commandLine));
   });
 }
 
-function findProtocolUrl(argv: string[]) {
-  return argv.find(argument => argument.startsWith("ytmdplus://")) ?? "";
-}
-
-// A link that starts the app arrives on argv, before there is a view to drive.
-// It is replayed once YouTube Music reports itself loaded.
-let pendingProtocolUrl: string | null = null;
-
-// Deep link commands other than play are pluggable; a feature registers its
-// command name and owns everything after it in the url.
-const deepLinkHandlers = new Map<string, (segments: string[], params: URLSearchParams) => void>();
-function registerDeepLink(command: string, handler: (segments: string[], params: URLSearchParams) => void): () => void {
-  const name = command.toLowerCase();
-  if (name === "play" || deepLinkHandlers.has(name)) {
-    throw new Error(`Deep link command already taken: ${name}`);
-  }
-  deepLinkHandlers.set(name, handler);
-  return () => {
-    deepLinkHandlers.delete(name);
-  };
-}
-
-// Protocol handler
-function handleProtocol(url: string) {
-  if (!url) return;
-  log.info("Handling protocol url", url);
-
-  const request = parseProtocolUrl(url);
-  if (!request) {
-    log.info("Ignoring unrecognized protocol url");
-    return;
-  }
-
-  if (!ytmView) {
-    pendingProtocolUrl = url;
-    return;
-  }
-
-  if (request.command === "other") {
-    const handler = deepLinkHandlers.get(request.name);
-    if (handler) handler(request.segments, request.params);
-    else log.info(`Ignoring protocol url with unknown command ${request.name}`);
-    return;
-  }
-
-  void cueTrack({ videoId: request.videoId, playlistId: request.playlistId, anchor: request.anchor });
-}
+const deepLinks = createDeepLinkRouter({ hasYtmView: () => ytmView !== null });
 
 // This will register the protocol in development, this is intentional and should stay this way for development purposes
 // Test runs skip it: they should never change system-wide handler registrations.
@@ -280,7 +234,7 @@ if (!isTestRun()) {
   const launchUrl = findProtocolUrl(process.argv);
   if (launchUrl) {
     log.info("Queuing protocol url from launch arguments", launchUrl);
-    pendingProtocolUrl = launchUrl;
+    deepLinks.queueProtocolUrl(launchUrl);
   }
 }
 
@@ -523,7 +477,7 @@ const addonManager: AddonManager = new AddonManager({
     refreshActivity: () => discordPresence.refreshActivity()
   },
   deepLinks: {
-    register: registerDeepLink
+    register: deepLinks.registerDeepLink
   }
 });
 addonManager.registerBundled(BUNDLED_ADDONS);
@@ -1793,11 +1747,7 @@ app.on("ready", async () => {
 
       addonManager.notifyYtmViewLoaded();
 
-      if (pendingProtocolUrl) {
-        const url = pendingProtocolUrl;
-        pendingProtocolUrl = null;
-        handleProtocol(url);
-      }
+      deepLinks.flushPending();
     }
   });
 
@@ -2377,7 +2327,7 @@ app.on("before-quit", event => {
 });
 
 app.on("open-url", (_, url) => {
-  handleProtocol(url);
+  deepLinks.handleProtocol(url);
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
