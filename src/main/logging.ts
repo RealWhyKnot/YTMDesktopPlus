@@ -26,8 +26,11 @@ function spyRendererConsole() {
 }
 
 export function setupLogging(startSilenced: boolean) {
-  log.transports.console.format = "[{processType}][{level}]{text}";
-  log.transports.file.format = "[{y}-{m}-{d} {h}:{i}:{s}.{ms}][{processType}][{level}]{text}";
+  // Scoped loggers (addons log under addon:<id>) carry their label into every
+  // line; without padding, unscoped lines stay exactly as they were.
+  log.scope.labelPadding = false;
+  log.transports.console.format = "[{processType}][{level}]{scope}{text}";
+  log.transports.file.format = "[{y}-{m}-{d} {h}:{i}:{s}.{ms}][{processType}][{level}]{scope}{text}";
   log.eventLogger.format = "Electron event {eventSource}#{eventName} observed";
 
   log.hooks.push((message, transport) => {
