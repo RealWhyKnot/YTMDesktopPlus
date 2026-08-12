@@ -19,7 +19,6 @@ import {
   shell,
   Tray
 } from "electron";
-import Conf from "conf";
 import log from "electron-log";
 import path from "path";
 import { randomUUID } from "crypto";
@@ -35,7 +34,7 @@ import { migrateCustomCssSetting } from "./addons/migrate-custom-css";
 import { BUNDLED_ADDONS } from "../addons/bundled";
 import playerStateStore, { playerEvents, PlayerState, VideoState } from "./player-state-store";
 import { setLogOutputEnabled, setupLogging } from "./logging";
-import { MemoryStoreSchema, StoreSchema, TrayIconStyle, UpdateChannel } from "../shared/store/schema";
+import { MemoryStoreSchema, StoreSchema, TrayIconStyle } from "../shared/store/schema";
 
 import CompanionServer from "./integrations/companion-server";
 import DiscordPresence from "./integrations/discord-presence";
@@ -52,6 +51,7 @@ import { createLaunchPause } from "./playback/launch-pause";
 import { parseProtocolUrl } from "../shared/protocol-url";
 import { createSenderGuards, senderIsView } from "./ipc/sender-guards";
 import { createAppWindow, loadWindowEntry } from "./windows/window-factory";
+import { createAppStore } from "./store/create-store";
 import { buildUpdateFeedUrl, isNewerVersion } from "../shared/update-feed";
 
 // Injected by Forge's Vite plugin; empty in packaged builds.
@@ -193,19 +193,6 @@ let ytmViewLoadTimeout: NodeJS.Timeout | null = null;
 
 // These are global accelerators: they fire whether or not the window is
 // focused, so binding one takes that key away from every other application.
-// Nothing is bound by default. Media keys are deliberately left alone so
-// Chromium keeps answering them through the page's own media session, which
-// only responds while this app holds audio focus.
-const DEFAULT_SHORTCUTS = {
-  playPause: "",
-  next: "",
-  previous: "",
-  thumbsUp: "",
-  thumbsDown: "",
-  volumeUp: "",
-  volumeDown: ""
-};
-
 // Single Instances Lock
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -420,145 +407,12 @@ function anyShortcutChanged(newState: Readonly<StoreSchema>, oldState: Readonly<
 }
 
 // Create the persistent config store
-const store = new Conf<StoreSchema>({
-  configName: "config",
-  cwd: app.getPath("userData"),
-  projectVersion: app.getVersion(),
-  watch: true,
-  defaults: {
-    metadata: {
-      version: 1
-    },
-    general: {
-      disableHardwareAcceleration: false,
-      hideToTrayOnClose: false,
-      showNotificationOnSongChange: false,
-      startOnBoot: false,
-      startMinimized: false
-    },
-    appearance: {
-      alwaysShowVolumeSlider: false,
-      zoom: 100,
-      trayIconStyle: TrayIconStyle.Auto
-    },
-    playback: {
-      continueWhereYouLeftOff: true,
-      continueWhereYouLeftOffPaused: true,
-      enableSpeakerFill: false,
-      progressInTaskbar: false,
-      ratioVolume: false,
-      adBlockerEnabled: false,
-      preventIdlePause: false
-    },
-    integrations: {
-      companionServerEnabled: false,
-      companionServerAuthTokens: null,
-      companionServerCORSWildcardEnabled: false,
-      discordPresenceEnabled: false,
-      discordPresenceHideOnPause: true,
-      lastFMEnabled: false,
-      listenAlongEnabled: false,
-      listenAlongHost: null,
-      listenAlongHostPort: 9863,
-      listenAlongToken: null
-    },
-    shortcuts: {
-      ...DEFAULT_SHORTCUTS
-    },
-    state: {
-      lastUrl: "https://music.youtube.com/",
-      lastPlaylistId: "",
-      lastVideoId: "",
-      windowBounds: null,
-      windowMaximized: false
-    },
-    lastfm: {
-      // Last FM Keys belong to @Alipoodle
-      api_key: "2a69bcf769a7a28a8bf2f6a5100accad",
-      secret: "46eea23770a459a49eb4d26cbf46b41c",
-      token: null,
-      sessionKey: null,
-      scrobblePercent: 50
-    },
-    developer: {
-      enableDevTools: false,
-      // Nightly builds default to debug logging so issues can be reported with
-      // logs attached. Stable builds stay quiet unless the user opts in.
-      debugLogging: app.getVersion().includes("-beta")
-    },
-    updates: {
-      autoUpdateEnabled: false,
-      channel: UpdateChannel.Auto,
-      firstRunPromptShown: false
-    },
-    addons: {
-      states: {},
-      settings: {}
-    }
-  },
-  beforeEachMigration: (store, context) => {
-    log.info(`Performing store migration from ${context.fromVersion} to ${context.toVersion}`);
-  },
-  migrations: {
-    ">=2.0.0": store => {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      store.delete("integrations.companionServerAuthWindowEnabled");
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      store.delete("state.companionServerAuthWindowEnableTime");
-      if (!store.has("appearance.zoom")) {
-        store.set("appearance.zoom", 100);
-      }
-    },
-    ">=2.0.1": store => {
-      if (!store.has("lastfm.scrobblePercent")) {
-        store.set("lastfm.scrobblePercent", 50);
-      }
-    },
-    ">=2.0.7": store => {
-      if (!store.has("appearance.trayIconStyle")) {
-        store.set("appearance.trayIconStyle", 0);
-      }
-    }
-  }
-});
+const store = createAppStore();
 
 // Development builds always write logs. Packaged builds only write them when
 // the debug logging setting is on.
-//
-// Configs migrated from before the setting existed lack the key entirely and
-// conf does not deep-merge defaults into stored sections, so backfill it once
-// with the channel default: on for beta builds, off for stable.
-if (store.get("developer").debugLogging === undefined) {
-  store.set("developer.debugLogging", app.getVersion().includes("-beta"));
-}
 const applyDebugLogging = () => setLogOutputEnabled(!app.isPackaged || store.get("developer").debugLogging);
 applyDebugLogging();
-
-// Configs migrated from before the updates section existed lack it entirely,
-// same shallow-merge caveat as debugLogging above.
-if (store.get("updates") === undefined) {
-  store.set("updates", { autoUpdateEnabled: false, channel: UpdateChannel.Auto, firstRunPromptShown: false });
-}
-if (store.get("playback").adBlockerEnabled === undefined) {
-  store.set("playback.adBlockerEnabled", false);
-}
-// YouTube Music applies its own measured-loudness attenuation to the media
-// element, so the setting that did the same thing on a gain node halved the
-// track twice. Removed rather than fixed; the key goes with it.
-if ((store.get("playback") as Record<string, unknown>).loudnessNormalization !== undefined) {
-  store.delete("playback.loudnessNormalization" as keyof StoreSchema);
-}
-if (store.get("playback").preventIdlePause === undefined) {
-  store.set("playback.preventIdlePause", false);
-}
-if (store.get("integrations").discordPresenceHideOnPause === undefined) {
-  store.set("integrations.discordPresenceHideOnPause", true);
-}
-if (store.get("addons") === undefined) {
-  store.set("addons", { states: {}, settings: {} });
-}
 
 const addonManager: AddonManager = new AddonManager({
   store,
