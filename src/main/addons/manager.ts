@@ -122,7 +122,8 @@ export class AddonManager {
           addWindow: window => {
             this.windows.add(window);
             window.once("closed", () => this.windows.delete(window));
-          }
+          },
+          reportError: (source, error) => this.reportRuntimeError(manifest.id, source, error)
         });
         addon.instance = ((await addon.definition.activate(addon.context)) as AddonInstance | undefined) ?? {};
         addon.descriptor.state = "active";
@@ -149,6 +150,7 @@ export class AddonManager {
           callback();
         } catch (error) {
           log.error(`Addon loaded-callback failed: ${addon.definition.manifest.id}`, error);
+          this.reportRuntimeError(addon.definition.manifest.id, "ytmview.onLoaded", error);
         }
       }
     }
@@ -223,9 +225,19 @@ export class AddonManager {
         callback();
       } catch (error) {
         log.error(`Addon badge click failed: ${id}`, error);
+        this.reportRuntimeError(id, "titlebar.onBadgeClick", error);
       }
     }
     return true;
+  }
+
+  /** A callback failure after activation: recorded and shown on the card, but
+   *  the addon stays active. Logging happens where the error is caught. */
+  public reportRuntimeError(id: string, source: string, error: unknown) {
+    const addon = this.addons.find(entry => entry.definition.manifest.id === id);
+    if (!addon) return;
+    addon.descriptor.lastError = `${source}: ${error instanceof Error ? error.message : String(error)}`;
+    if (this.booted) this.publishRuntime();
   }
 
   public ownsWebContents(sender: Electron.WebContents): boolean {

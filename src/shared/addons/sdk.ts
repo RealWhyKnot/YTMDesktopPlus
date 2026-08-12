@@ -71,6 +71,8 @@ export type AddonDescriptor = {
   enabled: boolean;
   state: AddonRuntimeState;
   error?: string;
+  /** Most recent runtime error from one of the addon's callbacks; the addon stays active */
+  lastError?: string;
   restartRequired: boolean;
   settingsSections: AddonSettingsSection[];
 };

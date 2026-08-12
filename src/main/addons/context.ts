@@ -90,6 +90,8 @@ export type AddonHostBridge = {
   setTitlebarBadge(badge: Omit<AddonTitlebarBadge, "addonId"> | null): void;
   addBadgeClickCallback(callback: () => void): Unsubscribe;
   addWindow(window: AddonHostWindow): void;
+  /** Records a runtime failure on the descriptor so the settings card shows it. */
+  reportError(source: string, error: unknown): void;
 };
 
 /** Internal superset handed to bundled addons; absent from the published SDK.
@@ -115,6 +117,24 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
   fs.mkdirSync(dataPath, { recursive: true });
 
   const settingsOf = (state: StoreSchema): Record<string, unknown> => state.addons.settings[id] ?? {};
+
+  const reportError = (source: string, error: unknown) => {
+    scopedLog.error(`${source} failed`, error);
+    bridge.reportError(source, error);
+  };
+
+  // An addon callback that throws (or rejects) is contained here: the failure
+  // lands on the descriptor and in the log instead of inside a host emitter.
+  const guard = <A extends unknown[]>(source: string, fn: (...args: A) => unknown): ((...args: A) => void) => {
+    return (...args: A) => {
+      try {
+        const result = fn(...args);
+        if (result instanceof Promise) result.catch(error => reportError(source, error));
+      } catch (error) {
+        reportError(source, error);
+      }
+    };
+  };
 
   return {
     manifest,
@@ -149,10 +169,11 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
         services.store.set("addons", addonsSection);
       },
       onDidChange(key, callback) {
+        const guarded = guard(`settings.onDidChange(${key})`, callback);
         const unsubscribe = services.store.onDidChange("addons", (newValue, oldValue) => {
           const next = newValue?.settings[id]?.[key];
           const prev = oldValue?.settings[id]?.[key];
-          if (!Object.is(next, prev)) callback(next, prev);
+          if (!Object.is(next, prev)) guarded(next, prev);
         });
         bridge.addCleanup(unsubscribe);
         return unsubscribe;
@@ -206,8 +227,9 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
         return services.player.getState();
       },
       onStateChanged(callback) {
-        services.player.addEventListener(callback);
-        const unsubscribe = () => services.player.removeEventListener(callback);
+        const guarded = guard("player.onStateChanged", callback);
+        services.player.addEventListener(guarded);
+        const unsubscribe = () => services.player.removeEventListener(guarded);
         bridge.addCleanup(unsubscribe);
         return unsubscribe;
       }
@@ -218,9 +240,23 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
     ipc: {
       handle(channel, listener) {
         const fullChannel = `addon:${id}:${channel}`;
+        // A throw still rejects the renderer's invoke promise; it is recorded
+        // on the way through rather than swallowed.
         services.ipc.handle(fullChannel, (event, ...args) => {
           if (!services.isAppSender(event.sender)) return;
-          return listener(event, ...args);
+          try {
+            const result = listener(event, ...args);
+            if (result instanceof Promise) {
+              return result.catch((error: unknown) => {
+                reportError(`ipc.handle(${channel})`, error);
+                throw error;
+              });
+            }
+            return result;
+          } catch (error) {
+            reportError(`ipc.handle(${channel})`, error);
+            throw error;
+          }
         });
         const unsubscribe = () => services.ipc.removeHandler(fullChannel);
         bridge.addCleanup(unsubscribe);
@@ -228,9 +264,10 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       },
       on(channel, listener) {
         const fullChannel = `addon:${id}:${channel}`;
+        const safeListener = guard(`ipc.on(${channel})`, listener);
         const guarded = (event: IpcMainEvent, ...args: unknown[]) => {
           if (!services.isAppSender(event.sender)) return;
-          listener(event, ...args);
+          safeListener(event, ...args);
         };
         services.ipc.on(fullChannel, guarded);
         const unsubscribe = () => services.ipc.removeListener(fullChannel, guarded);
@@ -270,13 +307,7 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
 
     deepLinks: {
       register(command, handler) {
-        const unsubscribe = services.deepLinks.register(command, (segments, params) => {
-          try {
-            handler(segments, params);
-          } catch (error) {
-            scopedLog.error(`Deep link handler failed for ${command}`, error);
-          }
-        });
+        const unsubscribe = services.deepLinks.register(command, guard(`deepLinks(${command})`, handler));
         bridge.addCleanup(unsubscribe);
         return unsubscribe;
       }
@@ -288,7 +319,7 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
           try {
             return provider(trackShareUrl);
           } catch (error) {
-            scopedLog.error("Presence buttons provider failed", error);
+            reportError("discord.buttonsProvider", error);
             return undefined;
           }
         });
@@ -300,7 +331,7 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
           try {
             return provider();
           } catch (error) {
-            scopedLog.error("Remote activity provider failed", error);
+            reportError("discord.remoteActivityProvider", error);
             return undefined;
           }
         });

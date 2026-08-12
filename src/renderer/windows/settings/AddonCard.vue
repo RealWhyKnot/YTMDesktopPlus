@@ -62,6 +62,9 @@ function optionsMapOf(field: AddonSettingsField & { type: "select" }) {
     <p class="author">by {{ addon.manifest.author }}</p>
     <p class="description">{{ addon.manifest.description }}</p>
     <p v-if="statusText" class="status"><span class="material-symbols-outlined">error</span>{{ statusText }}</p>
+    <p v-if="addon.state === 'active' && addon.lastError" class="status runtime">
+      <span class="material-symbols-outlined">warning</span>Recent error: {{ addon.lastError }}
+    </p>
     <button v-if="hasSettings" class="expander" @click="expanded = !expanded">
       <span class="material-symbols-outlined">{{ expanded ? "expand_less" : "expand_more" }}</span
       >{{ expanded ? "Hide settings" : "Settings" }}
@@ -192,6 +195,10 @@ function optionsMapOf(field: AddonSettingsField & { type: "select" }) {
 
 .status .material-symbols-outlined {
   font-size: 18px;
+}
+
+.status.runtime {
+  color: var(--text-muted);
 }
 
 .expander {

@@ -220,6 +220,63 @@ describe("AddonContext", () => {
     expect(listener).toHaveBeenCalledOnce();
   });
 
+  it("contains a throwing settings listener and records it on the descriptor", async () => {
+    const fixture = fakeServices();
+    const { manager, ctx } = await bootWithContext(fixture);
+    ctx.settings.onDidChange("volume", () => {
+      throw new Error("listener blew up");
+    });
+
+    ctx.settings.set("volume", 5);
+
+    const descriptor = manager.descriptors()[0];
+    expect(descriptor.state).toBe("active");
+    expect(descriptor.lastError).toContain("listener blew up");
+    expect(descriptor.lastError).toContain("settings.onDidChange");
+  });
+
+  it("contains a throwing player listener", async () => {
+    const fixture = fakeServices();
+    const { manager, ctx } = await bootWithContext(fixture);
+    ctx.player.onStateChanged(() => {
+      throw new Error("state handler down");
+    });
+
+    const registered = (fixture.services.player.addEventListener as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(() => registered({})).not.toThrow();
+    expect(manager.descriptors()[0].lastError).toContain("state handler down");
+  });
+
+  it("contains a throwing ipc listener and rethrows from handle for the renderer", async () => {
+    const fixture = fakeServices();
+    const { manager, ctx } = await bootWithContext(fixture);
+    ctx.ipc.on("poke", () => {
+      throw new Error("on failed");
+    });
+    ctx.ipc.handle("ask", () => {
+      throw new Error("handle failed");
+    });
+
+    const onListener = fixture.ipcListeners.get("addon:sample:poke");
+    expect(() => onListener({ sender: {} })).not.toThrow();
+    expect(manager.descriptors()[0].lastError).toContain("on failed");
+
+    const handleListener = fixture.ipcHandlers.get("addon:sample:ask");
+    expect(() => handleListener({ sender: {} })).toThrow("handle failed");
+    expect(manager.descriptors()[0].lastError).toContain("handle failed");
+  });
+
+  it("records a throwing badge click", async () => {
+    const fixture = fakeServices();
+    const { manager, ctx } = await bootWithContext(fixture);
+    ctx.titlebar.onBadgeClick(() => {
+      throw new Error("badge boom");
+    });
+
+    expect(manager.handleBadgeClick("sample")).toBe(true);
+    expect(manager.descriptors()[0].lastError).toContain("badge boom");
+  });
+
   it("recognizes its own windows by web contents until they close", async () => {
     const fixture = fakeServices();
     const { manager, ctx } = await bootWithContext(fixture);
