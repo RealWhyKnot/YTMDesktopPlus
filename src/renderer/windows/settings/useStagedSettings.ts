@@ -24,6 +24,10 @@ export interface StagedSettings {
   /** For flows that write the store directly (like a Last.fm logout): moves the
    *  saved baseline and the draft together so the key does not read as dirty. */
   markSavedValue(key: string, value: unknown): void;
+  /** Staged keys discovered after this window opened (an addon registering its
+   *  settings UI late). New keys snapshot their value from the given state and
+   *  start clean; keys already present are untouched. */
+  addKeys(keys: readonly string[], state: unknown): void;
 }
 
 export const stagedSettingsKey: InjectionKey<StagedSettings> = Symbol("staged-settings");
@@ -33,8 +37,9 @@ export function createStagedSettings(
   setMany: (entries: [string, unknown][]) => void,
   extraKeys: readonly string[] = []
 ): StagedSettings {
-  const allKeys: readonly string[] = [...STAGED_SETTING_KEYS, ...extraKeys];
-  let pristine: SettingsSnapshot = snapshotFromState(initialState, extraKeys);
+  const dynamicKeys: string[] = [...extraKeys];
+  const allKeys: string[] = [...STAGED_SETTING_KEYS, ...dynamicKeys];
+  let pristine: SettingsSnapshot = snapshotFromState(initialState, dynamicKeys);
 
   const refs = {} as Record<string, Ref<unknown>>;
   for (const key of allKeys) {
@@ -61,7 +66,7 @@ export function createStagedSettings(
   }
 
   function stageChanged() {
-    dirtyKeys.value = diffSnapshots(pristine, draftSnapshot(), extraKeys);
+    dirtyKeys.value = diffSnapshots(pristine, draftSnapshot(), dynamicKeys);
   }
 
   function updateRestartNeeded() {
@@ -70,7 +75,7 @@ export function createStagedSettings(
 
   function saveChanges() {
     const draft = draftSnapshot();
-    const changed = diffSnapshots(pristine, draft, extraKeys);
+    const changed = diffSnapshots(pristine, draft, dynamicKeys);
     if (changed.length > 0) {
       setMany(changed.map(key => [key, draft[key]] as [string, unknown]));
     }
@@ -87,20 +92,32 @@ export function createStagedSettings(
   }
 
   function applyExternalState(newState: unknown) {
-    const merged = mergeExternalState(pristine, draftSnapshot(), newState, extraKeys);
+    const merged = mergeExternalState(pristine, draftSnapshot(), newState, dynamicKeys);
     pristine = merged.pristine;
     for (const key of merged.followedKeys) {
       refs[key].value = pristine[key];
     }
-    dirtyKeys.value = diffSnapshots(pristine, draftSnapshot(), extraKeys);
+    dirtyKeys.value = diffSnapshots(pristine, draftSnapshot(), dynamicKeys);
     updateRestartNeeded();
   }
 
   function markSavedValue(key: string, value: unknown) {
     pristine = { ...pristine, [key]: value };
     refs[key].value = value;
-    dirtyKeys.value = diffSnapshots(pristine, draftSnapshot(), extraKeys);
+    dirtyKeys.value = diffSnapshots(pristine, draftSnapshot(), dynamicKeys);
   }
 
-  return { refs, dirtyKeys, hasUnsavedChanges, restartNeeded, stageChanged, saveChanges, resetChanges, applyExternalState, markSavedValue };
+  function addKeys(keys: readonly string[], state: unknown) {
+    const fresh = keys.filter(key => !(key in refs));
+    if (fresh.length === 0) return;
+    const snapshot = snapshotFromState(state, fresh);
+    for (const key of fresh) {
+      dynamicKeys.push(key);
+      allKeys.push(key);
+      pristine = { ...pristine, [key]: snapshot[key] };
+      refs[key] = ref<unknown>(snapshot[key]);
+    }
+  }
+
+  return { refs, dirtyKeys, hasUnsavedChanges, restartNeeded, stageChanged, saveChanges, resetChanges, applyExternalState, markSavedValue, addKeys };
 }

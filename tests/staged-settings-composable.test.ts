@@ -61,6 +61,39 @@ describe("createStagedSettings", () => {
     expect(staged.hasUnsavedChanges.value).toBe(false);
   });
 
+  it("adds late keys clean, editable and saved like any other", () => {
+    const setMany = vi.fn();
+    const staged = createStagedSettings(stateFixture(), setMany);
+
+    staged.addKeys(["addons.settings.late.mode"], { addons: { settings: { late: { mode: 2 } } } });
+    expect(staged.refs["addons.settings.late.mode"].value).toBe(2);
+    expect(staged.hasUnsavedChanges.value).toBe(false);
+
+    staged.refs["addons.settings.late.mode"].value = 5;
+    staged.stageChanged();
+    expect(staged.dirtyKeys.value).toEqual(["addons.settings.late.mode"]);
+
+    staged.saveChanges();
+    expect(setMany).toHaveBeenCalledWith([["addons.settings.late.mode", 5]]);
+  });
+
+  it("late keys keep drafts through external state updates and ignore duplicates", () => {
+    const staged = createStagedSettings(stateFixture(), () => {});
+    staged.addKeys(["addons.settings.late.mode"], { addons: { settings: { late: { mode: 1 } } } });
+
+    staged.refs["addons.settings.late.mode"].value = 9;
+    staged.stageChanged();
+
+    // A second add of the same key must not reset the draft.
+    staged.addKeys(["addons.settings.late.mode"], { addons: { settings: { late: { mode: 1 } } } });
+    expect(staged.refs["addons.settings.late.mode"].value).toBe(9);
+
+    // An external write to an untouched late key follows; the dirty one keeps its draft.
+    staged.applyExternalState({ ...stateFixture(), addons: { settings: { late: { mode: 3 } } } });
+    expect(staged.refs["addons.settings.late.mode"].value).toBe(9);
+    expect(staged.dirtyKeys.value).toEqual(["addons.settings.late.mode"]);
+  });
+
   it("reset restores the pristine values", () => {
     const staged = createStagedSettings(stateFixture(), () => {});
     staged.refs["appearance.zoom"].value = 200;

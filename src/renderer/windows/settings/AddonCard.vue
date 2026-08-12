@@ -73,44 +73,46 @@ function optionsMapOf(field: AddonSettingsField & { type: "select" }) {
       <template v-for="(section, sectionIndex) in addon.settingsSections" :key="sectionIndex">
         <p v-if="section.title" class="section-title">{{ section.title }}</p>
         <template v-for="field in section.fields" :key="field.key">
-          <YTMDSetting
-            v-if="field.type === 'toggle'"
-            v-model="staged.refs[fieldPath(field.key)].value"
-            type="checkbox"
-            :name="field.label"
-            :description="field.description"
-            @change="staged.stageChanged"
-          />
-          <YTMDSetting
-            v-else-if="field.type === 'text'"
-            v-model="staged.refs[fieldPath(field.key)].value"
-            type="text"
-            :name="field.label"
-            :description="field.description"
-            :placeholder="field.placeholder"
-            :maxlength="field.maxlength"
-            @change="staged.stageChanged"
-          />
-          <YTMDSetting
-            v-else-if="field.type === 'number'"
-            v-model="staged.refs[fieldPath(field.key)].value"
-            type="range"
-            :name="field.label"
-            :description="field.description"
-            :min="field.min"
-            :max="field.max"
-            :step="field.step"
-            @change="numberChanged(field.key)"
-          />
-          <YTMDSetting
-            v-else-if="field.type === 'select'"
-            v-model="staged.refs[fieldPath(field.key)].value"
-            type="select"
-            :name="field.label"
-            :description="field.description"
-            :options-map="optionsMapOf(field)"
-            @change="staged.stageChanged"
-          />
+          <template v-if="staged.refs[fieldPath(field.key)]">
+            <YTMDSetting
+              v-if="field.type === 'toggle'"
+              v-model="staged.refs[fieldPath(field.key)].value"
+              type="checkbox"
+              :name="field.label"
+              :description="field.description"
+              @change="staged.stageChanged"
+            />
+            <YTMDSetting
+              v-else-if="field.type === 'text'"
+              v-model="staged.refs[fieldPath(field.key)].value"
+              type="text"
+              :name="field.label"
+              :description="field.description"
+              :placeholder="field.placeholder"
+              :maxlength="field.maxlength"
+              @change="staged.stageChanged"
+            />
+            <YTMDSetting
+              v-else-if="field.type === 'number'"
+              v-model="staged.refs[fieldPath(field.key)].value"
+              type="range"
+              :name="field.label"
+              :description="field.description"
+              :min="field.min"
+              :max="field.max"
+              :step="field.step"
+              @change="numberChanged(field.key)"
+            />
+            <YTMDSetting
+              v-else-if="field.type === 'select'"
+              v-model="staged.refs[fieldPath(field.key)].value"
+              type="select"
+              :name="field.label"
+              :description="field.description"
+              :options-map="optionsMapOf(field)"
+              @change="staged.stageChanged"
+            />
+          </template>
         </template>
       </template>
     </div>

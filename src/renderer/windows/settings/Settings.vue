@@ -104,7 +104,7 @@ function openAddonsFolder() {
   window.ytmd.addons?.openFolder();
 }
 
-memoryStore.onStateChanged(newState => {
+memoryStore.onStateChanged(async newState => {
   discordPresenceConnectionFailed.value = newState.discordPresenceConnectionFailed;
 
   shortcutRegisterFailed.playPause.value = newState.shortcutsPlayPauseRegisterFailed;
@@ -123,6 +123,21 @@ memoryStore.onStateChanged(newState => {
 
   if (newState.addonsRuntime) {
     addons.value = newState.addonsRuntime;
+
+    // An addon can register its settings UI after this window opened; those
+    // keys join the staged set so their fields bind instead of crashing.
+    const missing: string[] = [];
+    for (const addon of newState.addonsRuntime) {
+      for (const section of addon.settingsSections) {
+        for (const field of section.fields) {
+          const key = `addons.settings.${addon.manifest.id}.${field.key}`;
+          if (!(key in staged.refs)) missing.push(key);
+        }
+      }
+    }
+    if (missing.length > 0) {
+      staged.addKeys(missing, { addons: await store.get("addons") });
+    }
   }
 });
 
