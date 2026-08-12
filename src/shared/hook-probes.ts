@@ -12,6 +12,10 @@
 export const HOOK_POLL_INTERVAL = 250;
 export const HOOK_POLL_MAX_ATTEMPTS = 120; // 30 seconds per stage
 
+// Canonical player bar selector; raw ytmview scripts must use it verbatim
+// (enforced by tests/player-bar-selector.test.ts).
+export const PLAYER_BAR_SELECTOR = "ytmusic-app-layout>ytmusic-player-bar";
+
 export type PlayerBarProbeSnapshot = {
   playerBarPresent: boolean;
   playerApiPresent: boolean;
@@ -28,7 +32,7 @@ export const storeHookProbeSource = `
 // Stage 2: the player bar element and its player API.
 export const playerBarProbeSource = `
   (function() {
-    const playerBar = document.querySelector("ytmusic-app-layout>ytmusic-player-bar");
+    const playerBar = document.querySelector("${PLAYER_BAR_SELECTOR}");
     const playerApi = playerBar ? playerBar.playerApi : null;
     let ready = false;
     try {
