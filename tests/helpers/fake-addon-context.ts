@@ -10,6 +10,8 @@ import {
   type AddonTitlebarBadge,
   type AddonWindowHandle,
   type CueResult,
+  type PlayerEventMap,
+  type PlayerEventName,
   type PlayerState,
   type RemoteTrackActivity,
   type VideoDetails
@@ -82,6 +84,7 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
     invocations: [] as { name: string; arg: unknown }[],
     loadedCallbacks: [] as (() => void)[],
     stateListeners: [] as ((state: PlayerState) => void)[],
+    eventListeners: {} as Record<string, ((payload: unknown) => void)[]>,
     settingsListeners: {} as Record<string, (next?: unknown, prev?: unknown) => void>,
     sections: [] as AddonSettingsSection[],
     remoteProviders: [] as (() => RemoteTrackActivity | undefined)[],
@@ -177,7 +180,11 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       onStateChanged: vi.fn((callback: (state: PlayerState) => void) => {
         captured.stateListeners.push(callback);
         return unsubscribe;
-      })
+      }),
+      on: vi.fn((event: PlayerEventName, callback: (payload: unknown) => void) => {
+        (captured.eventListeners[event] ??= []).push(callback);
+        return unsubscribe;
+      }) as BundledAddonContext["player"]["on"]
     },
     playback: {
       play: vi.fn(() => true),
@@ -262,6 +269,9 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
     },
     emitPlayerState(state: PlayerState) {
       for (const listener of captured.stateListeners) listener(state);
+    },
+    emitPlayerEvent<K extends PlayerEventName>(event: K, payload: PlayerEventMap[K]) {
+      for (const listener of captured.eventListeners[event] ?? []) listener(payload);
     }
   };
 }

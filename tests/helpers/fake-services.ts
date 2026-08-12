@@ -1,6 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { EventEmitter } from "events";
 import { vi } from "vitest";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import type { AddonHostServices, AddonHostWindow } from "../../src/main/addons/context";
@@ -19,6 +20,7 @@ export function fakeServices(persistedStates: Record<string, { enabled: boolean 
   const ipcListeners = new Map<string, (event: unknown, ...args: unknown[]) => void>();
   const registeredScripts: Record<string, Record<string, string>> = {};
   const windows: AddonHostWindow[] = [];
+  const playerEvents = new EventEmitter();
   let appSender = true;
 
   function fakeWindow(): AddonHostWindow {
@@ -78,7 +80,15 @@ export function fakeServices(persistedStates: Record<string, { enabled: boolean 
       getQueue: () => null,
       getPlaylistId: () => null,
       addEventListener: vi.fn(),
-      removeEventListener: vi.fn()
+      removeEventListener: vi.fn(),
+      events: {
+        on: (event, listener) => {
+          playerEvents.on(event, listener);
+        },
+        off: (event, listener) => {
+          playerEvents.off(event, listener);
+        }
+      }
     },
     playback: {
       cueTrack: vi.fn(async (): Promise<CueResult> => "no-view"),
@@ -124,6 +134,7 @@ export function fakeServices(persistedStates: Record<string, { enabled: boolean 
     ipcListeners,
     registeredScripts,
     windows,
+    playerEvents,
     setAppSender: (value: boolean) => {
       appSender = value;
     }

@@ -11,6 +11,8 @@ import {
   type VideoDetails
 } from "~shared/addons/sdk";
 
+import { createPlayerEventDeriver } from "./derived-events";
+
 export { LikeStatus, RepeatMode, VideoState, VideoType };
 export type { PlayerQueue, PlayerQueueItem, PlayerState, Thumbnail, VideoDetails };
 
@@ -351,4 +353,15 @@ class PlayerStateStore {
   }
 }
 
-export default new PlayerStateStore();
+const playerStateStore = new PlayerStateStore();
+
+/** Granular events derived once from the snapshot stream; every consumer
+ *  shares this one subscription. Event names and payloads: PlayerEventMap. */
+export const playerEvents = new EventEmitter();
+playerEvents.setMaxListeners(100);
+{
+  const deriver = createPlayerEventDeriver((event, payload) => playerEvents.emit(event, payload));
+  playerStateStore.addEventListener(state => deriver.next(state));
+}
+
+export default playerStateStore;

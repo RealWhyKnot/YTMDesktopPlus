@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AddonManager, BundledAddonDefinition } from "../src/main/addons/manager";
 import { validateManifest, versionAtLeast } from "../src/main/addons/validate-manifest";
 import type { BundledAddonContext } from "../src/main/addons/context";
-import type { AddonManifest } from "../src/shared/addons/types";
+import type { AddonManifest, PlayerEventMap } from "../src/shared/addons/types";
 import { makeManifest as manifest } from "./helpers/fake-addon-context";
 import { fakeServices } from "./helpers/fake-services";
 
@@ -245,6 +245,23 @@ describe("AddonContext", () => {
     const registered = (fixture.services.player.addEventListener as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(() => registered({})).not.toThrow();
     expect(manager.descriptors()[0].lastError).toContain("state handler down");
+  });
+
+  it("delivers typed player events and contains a throwing event callback", async () => {
+    const fixture = fakeServices();
+    const { manager, ctx } = await bootWithContext(fixture);
+    const seen: unknown[] = [];
+    ctx.player.on("trackChanged", payload => seen.push(payload));
+    ctx.player.on("volumeChanged", () => {
+      throw new Error("volume handler down");
+    });
+
+    const payload: PlayerEventMap["trackChanged"] = { current: null, previous: null, playlistId: null };
+    fixture.playerEvents.emit("trackChanged", payload);
+    expect(seen).toEqual([payload]);
+
+    expect(() => fixture.playerEvents.emit("volumeChanged", { volume: 1, muted: false })).not.toThrow();
+    expect(manager.descriptors()[0].lastError).toContain("volume handler down");
   });
 
   it("contains a throwing ipc listener and rethrows from handle for the renderer", async () => {

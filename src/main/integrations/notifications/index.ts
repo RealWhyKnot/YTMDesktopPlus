@@ -1,5 +1,5 @@
 import { Notification, NotificationConstructorOptions, nativeImage } from "electron";
-import playerStateStore, { PlayerState, Thumbnail, VideoDetails, VideoState } from "../../player-state-store";
+import playerStateStore, { playerEvents, Thumbnail, VideoDetails, VideoState } from "../../player-state-store";
 import IIntegration from "../integration";
 import https from "https";
 
@@ -72,13 +72,15 @@ function getUrlContents(url: string) {
 export default class NowPlayingNotifications implements IIntegration {
   private isEnabled = false;
   private lastDetails: VideoDetails = null;
-  private playerStateFunction: (state: PlayerState) => void;
 
-  private async updateVideoDetails(state: PlayerState): Promise<void> {
+  // Derived events fire only on track or play-state transitions, so this runs
+  // a handful of times per song instead of on every progress tick.
+  private evaluate = (): void => {
     if (!this.isEnabled) {
       return;
     }
 
+    const state = playerStateStore.getState();
     if (state.videoDetails && state.trackState === VideoState.Playing) {
       if (this.lastDetails && this.lastDetails.id === state.videoDetails.id) {
         return;
@@ -98,7 +100,7 @@ export default class NowPlayingNotifications implements IIntegration {
         displayNotification(state.videoDetails, null);
       }
     }
-  }
+  };
 
   public provide(): void {
     throw new Error("Method not implemented.");
@@ -106,14 +108,15 @@ export default class NowPlayingNotifications implements IIntegration {
 
   public enable(): void {
     if (!this.isEnabled) {
-      this.playerStateFunction = (state: PlayerState) => this.updateVideoDetails(state);
-      playerStateStore.addEventListener(this.playerStateFunction);
+      playerEvents.on("trackChanged", this.evaluate);
+      playerEvents.on("playStateChanged", this.evaluate);
       this.isEnabled = true;
     }
   }
   public disable(): void {
     if (this.isEnabled) {
-      playerStateStore.removeEventListener(this.playerStateFunction);
+      playerEvents.off("trackChanged", this.evaluate);
+      playerEvents.off("playStateChanged", this.evaluate);
       this.isEnabled = false;
     }
   }

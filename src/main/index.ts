@@ -31,7 +31,7 @@ import { AddonManager } from "./addons/manager";
 import { scanExternalAddons } from "./addons/external-loader";
 import { migrateCustomCssSetting } from "./addons/migrate-custom-css";
 import { BUNDLED_ADDONS } from "../addons/bundled";
-import playerStateStore, { PlayerState, VideoState } from "./player-state-store";
+import playerStateStore, { playerEvents, PlayerState, VideoState } from "./player-state-store";
 import { setLogOutputEnabled, setupLogging } from "./logging";
 import { MemoryStoreSchema, StoreSchema, TrayIconStyle, UpdateChannel } from "../shared/store/schema";
 
@@ -594,7 +594,17 @@ const addonManager: AddonManager = new AddonManager({
       ipcMain.once(channel, listener);
       view.webContents.send("ytmView:invokeScript", namespace, name, requestId, arg);
     }),
-  player: playerStateStore,
+  player: {
+    getState: () => playerStateStore.getState(),
+    getQueue: () => playerStateStore.getQueue(),
+    getPlaylistId: () => playerStateStore.getPlaylistId(),
+    addEventListener: listener => playerStateStore.addEventListener(listener),
+    removeEventListener: listener => playerStateStore.removeEventListener(listener),
+    events: {
+      on: (event, listener) => playerEvents.on(event, listener),
+      off: (event, listener) => playerEvents.off(event, listener)
+    }
+  },
   playback: {
     cueTrack,
     sendPlaybackCommand,

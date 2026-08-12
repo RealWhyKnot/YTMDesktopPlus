@@ -10,6 +10,7 @@ import type {
   AddonWindowOptions,
   CueRequest,
   CueResult,
+  PlayerEventName,
   PlayerQueue,
   PlayerState,
   RemoteCommandName,
@@ -53,6 +54,10 @@ export type AddonHostServices = {
     getPlaylistId(): string | null;
     addEventListener(listener: (state: PlayerState) => void): void;
     removeEventListener(listener: (state: PlayerState) => void): void;
+    events: {
+      on(event: PlayerEventName, listener: (payload: unknown) => void): void;
+      off(event: PlayerEventName, listener: (payload: unknown) => void): void;
+    };
   };
   playback: {
     cueTrack(request: CueRequest): Promise<CueResult>;
@@ -242,6 +247,13 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
         const guarded = guard("player.onStateChanged", callback);
         services.player.addEventListener(guarded);
         const unsubscribe = () => services.player.removeEventListener(guarded);
+        bridge.addCleanup(unsubscribe);
+        return unsubscribe;
+      },
+      on(event, callback) {
+        const guarded = guard(`player.on(${event})`, callback);
+        services.player.events.on(event, guarded);
+        const unsubscribe = () => services.player.events.off(event, guarded);
         bridge.addCleanup(unsubscribe);
         return unsubscribe;
       }

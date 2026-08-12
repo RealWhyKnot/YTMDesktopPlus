@@ -166,6 +166,44 @@ export type PlayerState = {
     adPlaying: boolean;
     hasFullMetadata: boolean;
 };
+/** Granular changes derived centrally from the player snapshot stream. */
+export type PlayerEventMap = {
+    /** A different video became current, or the track cleared */
+    trackChanged: {
+        current: VideoDetails | null;
+        previous: VideoDetails | null;
+        playlistId: string | null;
+    };
+    playStateChanged: {
+        playing: boolean;
+        trackState: VideoState;
+    };
+    volumeChanged: {
+        volume: number;
+        muted: boolean;
+    };
+    /** The position jumped instead of progressing naturally */
+    seeked: {
+        fromSeconds: number;
+        toSeconds: number;
+    };
+    adStateChanged: {
+        adPlaying: boolean;
+    };
+    /** Queue contents, selection or repeat mode changed */
+    queueChanged: {
+        queue: PlayerQueue | null;
+    };
+    /** Like status flipped on the current track */
+    likeChanged: {
+        likeStatus: LikeStatus;
+        videoId: string | null;
+    };
+    repeatModeChanged: {
+        repeatMode: RepeatMode;
+    };
+};
+export type PlayerEventName = keyof PlayerEventMap;
 /** Repeat mode as the page names it. */
 export type YTMRepeatMode = "NONE" | "ALL" | "ONE";
 /** The complete remote-control vocabulary the player page understands. */
@@ -321,7 +359,10 @@ export interface AddonContext {
         getState(): PlayerState;
         getQueue(): PlayerQueue | null;
         getPlaylistId(): string | null;
+        /** The full snapshot stream; prefer on(event, ...) to react to one kind of change */
         onStateChanged(callback: (state: PlayerState) => void): Unsubscribe;
+        /** Granular, centrally derived events with typed payloads */
+        on<K extends PlayerEventName>(event: K, callback: (payload: PlayerEventMap[K]) => void): Unsubscribe;
     };
     /** Every method returns false when the player page is not available. */
     playback: {
