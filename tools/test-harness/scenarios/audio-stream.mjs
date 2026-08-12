@@ -6,26 +6,11 @@
 // Local use, not suited to CI runners: production relay plus live YTM.
 
 import WebSocket from "ws";
+import { hooksReadyStep, playbackFixture, roomIntegrationsFixture } from "./lib.mjs";
 
 export const fixture = {
-  playback: {
-    continueWhereYouLeftOff: false,
-    continueWhereYouLeftOffPaused: false,
-    enableSpeakerFill: false,
-    progressInTaskbar: false,
-    ratioVolume: false
-  },
-  integrations: {
-    companionServerEnabled: false,
-    companionServerAuthTokens: null,
-    companionServerCORSWildcardEnabled: false,
-    discordPresenceEnabled: false,
-    lastFMEnabled: false,
-    listenAlongEnabled: false,
-    listenAlongHost: null,
-    listenAlongHostPort: 9863,
-    listenAlongToken: null
-  },
+  playback: playbackFixture(),
+  integrations: roomIntegrationsFixture(),
   addons: {
     states: { rooms: { enabled: true } },
     settings: { rooms: { displayName: "Harness Host", audioStreamEnabled: true } }
@@ -40,7 +25,7 @@ export default async function audioStream(ctx) {
   const bot = { socket: null, frames: [], batches: [] };
 
   try {
-    await ctx.step("hooks ready", () => ctx.waitYtm("!!window.__YTMD_HOOK__", hooked => hooked === true, 90000), 95000);
+    await hooksReadyStep(ctx);
 
     await ctx.step(
       "a track is playing",

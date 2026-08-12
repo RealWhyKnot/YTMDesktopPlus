@@ -19,14 +19,10 @@
 // and re-dumps it at the end. Off by default: cast discovery announces this
 // client to the account's device list, which the default probe must not do.
 
+import { hooksReadyStep, playbackFixture } from "./lib.mjs";
+
 export const fixture = {
-  playback: {
-    continueWhereYouLeftOff: false,
-    continueWhereYouLeftOffPaused: false,
-    enableSpeakerFill: false,
-    progressInTaskbar: false,
-    ratioVolume: false
-  },
+  playback: playbackFixture(),
   // A seeded (real, signed-in) profile carries live integrations. The probe
   // must not compete with an installed instance for the companion port, show a
   // second Discord presence, or auto-open a room, so they are forced off.
@@ -128,7 +124,7 @@ const DUMP_SLICES = `(() => {
 })()`;
 
 export default async function remoteDeviceProbe(ctx) {
-  await ctx.step("hooks ready", () => ctx.waitYtm("!!window.__YTMD_HOOK__", hooked => hooked === true, 90000), 95000);
+  await hooksReadyStep(ctx);
 
   await ctx.step("store slices enumerated", async () => {
     const keys = await ctx.evalYtm(`JSON.stringify(Object.keys(window.__YTMD_HOOK__.ytmStore.getState() ?? {}))`);

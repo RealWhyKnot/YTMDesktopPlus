@@ -1,20 +1,15 @@
+import { hooksReadyStep, playbackFixture } from "./lib.mjs";
 // Confirms the YTM view can encode live audio with WebCodecs: AudioEncoder,
 // MediaStreamTrackProcessor and Opus support, then a full oscillator ->
 // MediaStreamAudioDestinationNode -> track processor -> encoder smoke run.
 // Local diagnostic, reaches live YouTube Music.
 
 export const fixture = {
-  playback: {
-    continueWhereYouLeftOff: false,
-    continueWhereYouLeftOffPaused: false,
-    enableSpeakerFill: false,
-    progressInTaskbar: false,
-    ratioVolume: false
-  }
+  playback: playbackFixture()
 };
 
 export default async function audioCapsProbe(ctx) {
-  await ctx.step("hooks ready", () => ctx.waitYtm("!!window.__YTMD_HOOK__", hooked => hooked === true, 90000), 95000);
+  await hooksReadyStep(ctx);
 
   await ctx.step("webcodecs api surface", async () => {
     const surface = JSON.parse(

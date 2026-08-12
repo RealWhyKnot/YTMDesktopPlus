@@ -41,3 +41,34 @@ export async function obtainCompanionToken(ctx) {
   }
   return tokenResponse.body.token;
 }
+
+// Baseline settings fixtures shared by scenarios; override per scenario.
+export function playbackFixture(overrides = {}) {
+  return {
+    continueWhereYouLeftOff: false,
+    continueWhereYouLeftOffPaused: false,
+    enableSpeakerFill: false,
+    progressInTaskbar: false,
+    ratioVolume: false,
+    ...overrides
+  };
+}
+
+export function roomIntegrationsFixture(overrides = {}) {
+  return {
+    companionServerEnabled: false,
+    companionServerAuthTokens: null,
+    companionServerCORSWildcardEnabled: false,
+    discordPresenceEnabled: false,
+    lastFMEnabled: false,
+    listenAlongEnabled: false,
+    listenAlongHost: null,
+    listenAlongHostPort: 9863,
+    listenAlongToken: null,
+    ...overrides
+  };
+}
+
+export function hooksReadyStep(ctx) {
+  return ctx.step("hooks ready", () => ctx.waitYtm("!!window.__YTMD_HOOK__", hooked => hooked === true, 90000), 95000);
+}

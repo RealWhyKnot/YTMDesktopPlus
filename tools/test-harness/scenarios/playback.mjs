@@ -2,7 +2,7 @@
 // CI runners: it depends on signed-out playback being available, and ads can
 // front-run the requested track (adPlaying counts as progress evidence).
 
-import { obtainCompanionToken } from "./lib.mjs";
+import { hooksReadyStep, obtainCompanionToken } from "./lib.mjs";
 
 export const needsCompanion = true;
 export const fixture = {
@@ -40,7 +40,7 @@ export default async function playback(ctx) {
     90000
   );
 
-  await ctx.step("hooks ready", () => ctx.waitYtm("!!window.__YTMD_HOOK__", hooked => hooked === true, 90000), 95000);
+  await hooksReadyStep(ctx);
 
   await ctx.step("changeVideo accepted", async () => {
     const res = await ctx.companion.request("/api/v1/command", { method: "POST", token, body: { command: "changeVideo", data: { videoId: VIDEO_ID } } });

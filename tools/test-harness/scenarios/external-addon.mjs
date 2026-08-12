@@ -6,6 +6,7 @@
 import { appendFileSync, cpSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { hooksReadyStep } from "./lib.mjs";
 
 const templateDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../examples/addon-template");
 
@@ -50,7 +51,7 @@ export default async function externalAddon(ctx) {
     25000
   );
 
-  await ctx.step("hooks ready", () => ctx.waitYtm("!!window.__YTMD_HOOK__", hooked => hooked === true, 90000), 95000);
+  await hooksReadyStep(ctx);
 
   await ctx.step(
     "styles live-reload into the page",
