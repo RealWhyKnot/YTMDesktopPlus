@@ -119,22 +119,7 @@ export type AddonHostBridge = {
   reportError(source: string, error: unknown): void;
 };
 
-/** Internal superset handed to bundled addons; absent from the published SDK.
- *  Rooms owns memory keys its renderer reads and reacts to integration
- *  toggles that live outside the addon namespace. External addons use
- *  ctx.settings and ctx.memory instead. */
-export interface BundledAddonContext extends AddonContext {
-  coreSettings: {
-    get<T = unknown>(dottedKey: string): T;
-    onDidChange(section: "integrations", callback: (next: StoreSchema["integrations"], prev: StoreSchema["integrations"]) => void): Unsubscribe;
-  };
-  coreMemory: {
-    get<T = unknown>(key: keyof MemoryStoreSchema & string): T;
-    set(key: keyof MemoryStoreSchema & string, value: unknown): void;
-  };
-}
-
-export function createAddonContext(manifest: AddonManifest, services: AddonHostServices, bridge: AddonHostBridge, addonDir?: string): BundledAddonContext {
+export function createAddonContext(manifest: AddonManifest, services: AddonHostServices, bridge: AddonHostBridge, addonDir?: string): AddonContext {
   const id = manifest.id;
   const scopedLog = log.scope(`addon:${id}`);
   const scriptNamespace = `addon:${id}`;
@@ -463,33 +448,6 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
     tray: {
       setMenuItems(items) {
         bridge.setTrayMenuItems(items);
-      }
-    },
-
-    coreSettings: {
-      get<T>(dottedKey: string) {
-        let current: unknown = services.store.store;
-        for (const part of dottedKey.split(".")) {
-          if (current === null || typeof current !== "object") return undefined as T;
-          current = (current as Record<string, unknown>)[part];
-        }
-        return current as T;
-      },
-      onDidChange(section, callback) {
-        const unsubscribe = services.store.onDidChange(section, (newValue, oldValue) => {
-          if (newValue && oldValue) callback(newValue, oldValue);
-        });
-        bridge.addCleanup(unsubscribe);
-        return unsubscribe;
-      }
-    },
-
-    coreMemory: {
-      get<T>(key: keyof MemoryStoreSchema & string) {
-        return services.memoryStore.get(key) as T;
-      },
-      set(key, value) {
-        services.memoryStore.set(key, value);
       }
     }
   };

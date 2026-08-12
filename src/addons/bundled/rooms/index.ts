@@ -1,6 +1,6 @@
 import { isRoomId, isRoomLive, otherListenerCount, type RoomSnapshot } from "~shared/room-protocol";
 import type { BundledAddonDefinition } from "../../../main/addons/manager";
-import type { AddonWindowHandle } from "../../../main/addons/context";
+import type { AddonWindowHandle } from "~shared/addons/sdk";
 import AudioStreamCapture, { cleanAudioPackets } from "./audio-capture";
 import { AudioPublisher, AudioRelayClient, type AudioCaptureStatus } from "../../../main/integrations/listen-along/audio-publisher";
 import { AutoRoom } from "../../../main/integrations/listen-along/auto-room";

@@ -1,14 +1,14 @@
 import log from "electron-log";
 import type { AddonDescriptor, AddonManifest, AddonOrigin, AddonSettingsSection, AddonTitlebarBadge, AddonTrayMenuItem } from "~shared/addons/types";
 import { manifestSatisfiesApp, SUPPORTED_ADDON_API_VERSION } from "./validate-manifest";
-import { AddonHostServices, AddonHostWindow, AddonInstance, BundledAddonContext, createAddonContext, HOST_SCRIPT_NAMESPACE } from "./context";
+import { AddonContext, AddonHostServices, AddonHostWindow, AddonInstance, createAddonContext, HOST_SCRIPT_NAMESPACE } from "./context";
 import innertubeRequestScript from "./scripts/innertube-request.script?raw";
 import type { AddonCssHandle } from "./css";
 import { buildExternalDefinition, bustAddonRequireCache, scanAddonFolder, type ExternalAddonScan } from "./external-loader";
 
 export type BundledAddonDefinition = {
   manifest: AddonManifest;
-  activate(ctx: BundledAddonContext): AddonInstance | void | Promise<AddonInstance | void>;
+  activate(ctx: AddonContext): AddonInstance | void | Promise<AddonInstance | void>;
 };
 
 type ManagedAddon = {
@@ -16,7 +16,7 @@ type ManagedAddon = {
   origin: AddonOrigin;
   descriptor: AddonDescriptor;
   instance: AddonInstance | null;
-  context: BundledAddonContext | null;
+  context: AddonContext | null;
   loadedCallbacks: (() => void)[];
   cssHandles: AddonCssHandle[];
   cleanups: (() => void)[];

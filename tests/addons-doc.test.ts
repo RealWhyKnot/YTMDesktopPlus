@@ -16,10 +16,6 @@ describe("docs/addons.md", () => {
     }
   });
 
-  it("marks the bundled-only namespaces as such", () => {
-    expect(doc).toContain("bundled addons only");
-  });
-
   it("documents every settings field type", () => {
     for (const type of ADDON_SETTINGS_FIELD_TYPES) {
       expect(doc, `field type ${type} is missing from the doc`).toContain(`\`${type}\``);

@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { BundledAddonContext } from "../../src/main/addons/context";
+import type { AddonContext } from "../../src/main/addons/context";
 import {
   VideoState,
   VideoType,
@@ -65,8 +65,8 @@ export type FakeAddonContextOptions = {
   manifest?: AddonManifest;
   /** Initial addon settings served by ctx.settings.get */
   settings?: Record<string, unknown>;
-  /** Dotted core settings served by ctx.coreSettings.get; missing keys read false */
-  coreSettings?: Record<string, unknown>;
+  /** What ctx.discord.isEnabled() reports; off by default */
+  discordEnabled?: boolean;
   /** Resolves invokeScript calls; defaults to resolving true */
   invokeScript?: (name: string, arg?: unknown) => Promise<unknown>;
   /** Resolves innertube requests; defaults to resolving an empty object */
@@ -105,7 +105,6 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
   };
 
   const memoryBag: Record<string, unknown> = {};
-  const coreMemoryBag: Record<string, unknown> = {};
 
   function cssHandle(): AddonCssHandle {
     return {
@@ -129,7 +128,7 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
     };
   }
 
-  const ctx: BundledAddonContext = {
+  const ctx: AddonContext = {
     manifest,
     log: {
       error: vi.fn(),
@@ -201,7 +200,7 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       on: vi.fn((event: PlayerEventName, callback: (payload: unknown) => void) => {
         (captured.eventListeners[event] ??= []).push(callback);
         return unsubscribe;
-      }) as BundledAddonContext["player"]["on"]
+      }) as AddonContext["player"]["on"]
     },
     playback: {
       play: vi.fn(() => true),
@@ -232,7 +231,7 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       request: vi.fn((endpoint: string, body?: Record<string, unknown>) => {
         captured.innertubeCalls.push({ endpoint, body });
         return innertube(endpoint, body);
-      }) as BundledAddonContext["innertube"]["request"]
+      }) as AddonContext["innertube"]["request"]
     },
 
     notifications: {
@@ -254,7 +253,7 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       })
     },
     discord: {
-      isEnabled: vi.fn(() => (options.coreSettings?.["integrations.discordPresenceEnabled"] ?? false) as boolean),
+      isEnabled: vi.fn(() => options.discordEnabled ?? false),
       onEnabledChanged: vi.fn(() => unsubscribe),
       registerButtonsProvider: vi.fn((provider: (trackShareUrl: string) => { label: string; url: string }[] | undefined) => {
         captured.buttonsProviders.push(provider);
@@ -276,17 +275,6 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       setMenuItems: vi.fn((items: AddonTrayMenuItem[]) => {
         captured.trayItems = items;
       })
-    },
-
-    coreSettings: {
-      get: <T>(dottedKey: string) => (options.coreSettings?.[dottedKey] ?? false) as T,
-      onDidChange: vi.fn(() => unsubscribe)
-    },
-    coreMemory: {
-      get: <T>(key: string) => coreMemoryBag[key] as T,
-      set: vi.fn((key: string, value: unknown) => {
-        coreMemoryBag[key] = value;
-      })
     }
   };
 
@@ -294,7 +282,6 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
     ctx,
     captured,
     settings,
-    coreMemoryBag,
     unsubscribe,
     fireLoaded() {
       for (const callback of captured.loadedCallbacks) callback();

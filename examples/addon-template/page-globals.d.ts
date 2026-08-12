@@ -8,4 +8,9 @@ declare interface Window {
       subscribe(listener: () => void): () => void;
     };
   };
+  /** The app's page bridge; the part meant for addons. */
+  ytmd?: {
+    /** Posts to the addon's main-process half: ctx.ytmview.onMessage(name). */
+    postAddonMessage(addonId: string, name: string, payload?: unknown): void;
+  };
 }

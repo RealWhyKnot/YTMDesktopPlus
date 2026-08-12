@@ -192,9 +192,10 @@ the addon stays active.
   page scripts (registration reaches an already-loaded page immediately),
   `invokeScript(name, arg?)` to run a registered script with one
   structured-clone argument and get its return value back as a promise (30s
-  timeout), `insertCSS`/`watchCSSFile` for styles (both return a handle with
-  `update` and `remove`), `onLoaded` for a hook that fires each time the page
-  finishes loading.
+  timeout), `onMessage(name, callback)` for messages page scripts push up
+  (see the cookbook), `insertCSS`/`watchCSSFile` for styles (both return a
+  handle with `update` and `remove`), `onLoaded` for a hook that fires each
+  time the page finishes loading.
 - `ctx.innertube` - `request(endpoint, body?)` calls YouTube Music's own API
   (`music.youtube.com/youtubei/v1/...`) with the page's signed-in session.
   See the cookbook below.
@@ -205,7 +206,8 @@ the addon stays active.
   windows the addon created.
 - `ctx.deepLinks` - `register(command, handler)` for `ytmdplus://<command>/...`
   links (`play` is reserved).
-- `ctx.discord` - `registerButtonsProvider` to contribute presence buttons
+- `ctx.discord` - `isEnabled`/`onEnabledChanged` for whether the user shares
+  presence at all, `registerButtonsProvider` to contribute presence buttons
   (Discord shows at most two), `registerRemoteActivityProvider` to offer a
   track playing outside this app as a presence stand-in while local playback
   has nothing to show, and `refreshActivity` to re-render after either
@@ -240,6 +242,25 @@ const count = await ctx.ytmview.invokeScript("probe.script", "ytmusic-player-bar
 
 Scripts listed in `manifest.json` under `ytmScripts` are registered for you
 (named after the file without its extension) and run on every page load.
+
+The push direction works too: a page script can post to its addon's
+main-process half at any time, and the payload lands on
+`ctx.ytmview.onMessage`:
+
+```js
+// in the page
+window.ytmd.postAddonMessage("my-addon", "levels", { peak: 0.8 });
+```
+
+```js
+// in index.js
+ctx.ytmview.onMessage("levels", payload => {
+  ctx.log.info("peak", payload);
+});
+```
+
+The bundled Listen Along rooms addon streams its encoded audio batches
+through exactly this channel.
 
 ### Calling YouTube Music's API
 
@@ -335,14 +356,6 @@ Two independent gates decide whether an addon loads:
   break in existing surface would. An addon declaring a newer generation than
   the app serves is listed as incompatible with a clear message instead of
   failing strangely.
-
-## Internal context (bundled addons only)
-
-The bundled rooms addon uses two extra namespaces, `ctx.coreSettings` and
-`ctx.coreMemory`, to reach app settings and memory keys it historically owns.
-They are deliberately absent from `ytmd-addon.d.ts`: external addons use
-`ctx.settings` and `ctx.memory`, which are namespaced and covered by the
-compatibility promise above.
 
 ## Troubleshooting
 

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { scanExternalAddons } from "../src/main/addons/external-loader";
 import { AddonManager, BundledAddonDefinition } from "../src/main/addons/manager";
 import { manifestWarnings, SUPPORTED_ADDON_API_VERSION, validateManifest, versionAtLeast } from "../src/main/addons/validate-manifest";
-import { createAddonContext, type AddonHostBridge, type BundledAddonContext } from "../src/main/addons/context";
+import { createAddonContext, type AddonContext, type AddonHostBridge } from "../src/main/addons/context";
 import type { AddonManifest, PlayerEventMap } from "../src/shared/addons/types";
 import { makeManifest as manifest } from "./helpers/fake-addon-context";
 import { fakeServices } from "./helpers/fake-services";
@@ -172,7 +172,7 @@ describe("AddonManager", () => {
 });
 
 async function bootWithContext(fixture: ReturnType<typeof fakeServices>, id = "sample") {
-  let ctx: BundledAddonContext;
+  let ctx: AddonContext;
   const manager = new AddonManager(fixture.services);
   manager.registerBundled([
     {

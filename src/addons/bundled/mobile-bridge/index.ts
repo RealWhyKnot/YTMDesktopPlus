@@ -1,5 +1,5 @@
 import type { BundledAddonDefinition } from "../../../main/addons/manager";
-import { VideoState } from "../../../main/player-state-store";
+import { VideoState } from "~shared/addons/sdk";
 import { MirrorEngine, type Mirror } from "./mirror-engine";
 import { extractDurationSeconds, extractHistoryHead } from "./history-parse";
 import bannerScript from "./scripts/banner.script?raw";
