@@ -1,6 +1,41 @@
 # Changelog
 
 ## Unreleased
+- refactor: share powershell self-test preamble
+- refactor: move shared scenario fixtures into harness lib
+- test: manage temp dirs with shared helper
+- test: reuse shared player state factories
+- refactor: group window and store ipc into domain modules
+- refactor: route event emitter errors through electron-log
+- refactor: normalize settings store access pattern
+- refactor: make integration script provider optional
+- refactor: extract integration lifecycle table
+- refactor: extract tray and taskbar setup
+- refactor: table driven global shortcut registration
+- refactor: extract deep link routing
+- refactor: unify store change broadcasts
+- refactor: extract config store creation and migrations
+- refactor: extract shared app window factory
+- refactor: consolidate ipc sender guards
+- refactor: share vite config helpers
+- refactor: add canonical player bar selector with drift guard
+- refactor: derive like and dislike from one rating script
+- style: use design tokens in ytm view loading screen
+- refactor: deduplicate renderer entry bootstrap
+- refactor: share window shell component
+- chore: remove stale webpack comments from renderer entries
+- chore: remove vestigial nested tsconfigs
+- chore: remove unused control icon sources
+- chore: remove unused script declaration shims
+- chore: remove unused protocol constants
+- ci: extract shared node setup composite action
+- chore: replace deprecated husky install invocation
+- chore: ignore harness run output in prettier
+- ci: propagate harness exit codes in nightly canary
+- refactor(addons): bundled addons use only the published context
+- feat(addons): page scripts post to their addon; rooms audio drops its private sink
+- refactor(rooms): room window channels ride the addon's namespaced ipc
+- feat(addons): discord enablement api; rooms state lives in its own memory namespace
 - docs(addons): full authoring guide held to the real surface by tests
 - feat(addons): copy an addon's recent log lines from its card
 - feat(logging): scoped labels ride along in the log line format
