@@ -30,19 +30,9 @@ jobs:
       ELECTRON_CACHE: ${{ github.workspace }}/.electron-cache
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/setup-node-deps
         with:
-          node-version: 22
-      - name: Enable corepack
-        run: corepack enable
-      - name: Cache electron binaries
-        uses: actions/cache@v6
-        with:
-          path: ${{ github.workspace }}/.electron-cache
-          key: electron-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
-          restore-keys: electron-${{ runner.os }}-
-      - name: Install dependencies
-        run: yarn install --immutable
+          cache-electron: "true"
       - name: Run boot-hooks scenario
         id: canary
         run: |

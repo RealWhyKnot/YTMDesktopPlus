@@ -1,0 +1,26 @@
+name: Setup node and dependencies
+description: Node 22 with corepack, optional electron binary cache, immutable yarn install
+inputs:
+  cache-electron:
+    description: Cache electron binaries under .electron-cache (job must set ELECTRON_CACHE)
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 22
+    - name: Enable corepack
+      shell: bash
+      run: corepack enable
+    - name: Cache electron binaries
+      if: ${{ inputs.cache-electron == 'true' }}
+      uses: actions/cache@v6
+      with:
+        path: ${{ github.workspace }}/.electron-cache
+        key: electron-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+        restore-keys: electron-${{ runner.os }}-
+    - name: Install dependencies
+      shell: bash
+      run: yarn install --immutable
