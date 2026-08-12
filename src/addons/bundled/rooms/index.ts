@@ -191,7 +191,7 @@ const roomsAddon: BundledAddonDefinition = {
       handleCaptureStatus: status => audioPublisher.handleCaptureStatus(status)
     });
 
-    const unregisterIpc = registerRoomIpc({
+    registerRoomIpc(ctx.ipc, {
       roomWindowContents: () => windowHandle?.webContents() ?? null,
       openWindow: openOrShowWindow,
       closeWindow: () => windowHandle?.close(),
@@ -219,7 +219,6 @@ const roomsAddon: BundledAddonDefinition = {
 
     return {
       destroy() {
-        unregisterIpc();
         setAudioSink(null);
         roomSession.leave();
         windowHandle?.close();

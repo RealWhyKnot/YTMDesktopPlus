@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld("ytmd", {
     ipcRenderer.on("mainWindow:stateChanged", callback),
   requestWindowState: () => ipcRenderer.send("mainWindow:requestWindowState"),
   openSettingsWindow: () => ipcRenderer.send("settingsWindow:open"),
-  openRoomWindow: () => ipcRenderer.send("room:openWindow"),
+  openRoomWindow: () => ipcRenderer.send("addon:rooms:openWindow"),
   addonBadgeClick: (addonId: string) => ipcRenderer.send("addons:badgeClick", addonId),
   switchFocus: (context: string) => ipcRenderer.send("ytmView:switchFocus", context),
   ytmViewNavigateDefault: () => ipcRenderer.send("ytmView:navigateDefault"),

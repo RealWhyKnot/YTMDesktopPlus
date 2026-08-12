@@ -2,10 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import roomsAddon from "../src/addons/bundled/rooms";
 import { fakeAddonContext } from "./helpers/fake-addon-context";
 
-vi.mock("electron", () => ({
-  ipcMain: { on: vi.fn(), handle: vi.fn(), removeListener: vi.fn(), removeHandler: vi.fn() }
-}));
-
 describe("rooms bundled addon", () => {
   it("declares the expected manifest", () => {
     expect(roomsAddon.manifest.id).toBe("rooms");
@@ -31,9 +27,13 @@ describe("rooms bundled addon", () => {
     const setMenuItems = ctx.tray.setMenuItems as ReturnType<typeof vi.fn>;
     expect(setMenuItems).toHaveBeenCalledWith([{ label: "Listen Along", click: expect.any(Function) }]);
 
-    // Presence gating and room state ride the public surface only.
+    // Presence gating, room state and the window channels all ride the
+    // public surface only.
     expect(ctx.discord.onEnabledChanged).toHaveBeenCalledTimes(1);
     expect(ctx.memory.get("room")).not.toBeUndefined();
+    const ipcOn = ctx.ipc.on as ReturnType<typeof vi.fn>;
+    const channels = ipcOn.mock.calls.map(call => call[0]).sort();
+    expect(channels).toEqual(["closeWindow", "control", "grant", "host", "join", "leave", "openWindow", "resume"]);
 
     expect(ctx.ytmview.registerScript).toHaveBeenCalledWith("enable", expect.any(String));
     expect(ctx.ytmview.registerScript).toHaveBeenCalledWith("disable", expect.any(String));

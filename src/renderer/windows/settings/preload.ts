@@ -39,7 +39,7 @@ contextBridge.exposeInMainWorld("ytmd", {
     getRecentLog: async (id: string) => await ipcRenderer.invoke("addons:getRecentLog", id)
   },
   restartApplication: () => ipcRenderer.send("settingsWindow:restartapplication"),
-  openRoomWindow: () => ipcRenderer.send("room:openWindow"),
+  openRoomWindow: () => ipcRenderer.send("addon:rooms:openWindow"),
   restartApplicationForUpdate: () => ipcRenderer.send("app:restartApplicationForUpdate"),
   minimizeWindow: () => ipcRenderer.send("settingsWindow:minimize"),
   maximizeWindow: () => ipcRenderer.send("settingsWindow:maximize"),

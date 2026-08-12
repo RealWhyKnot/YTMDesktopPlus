@@ -17,15 +17,15 @@ contextBridge.exposeInMainWorld("ytmd", {
   store: {
     get: async (key: keyof StoreSchema) => await store.get(key)
   },
-  roomHost: (displayName: string) => ipcRenderer.send("room:host", displayName),
-  roomJoin: (roomId: string, displayName: string) => ipcRenderer.send("room:join", roomId, displayName),
-  roomLeave: () => ipcRenderer.send("room:leave"),
-  roomGrant: (memberId: string, role: number) => ipcRenderer.send("room:grant", memberId, role),
-  roomControl: (action: string, value?: unknown) => ipcRenderer.send("room:control", action, value),
-  roomResume: () => ipcRenderer.send("room:resume"),
+  roomHost: (displayName: string) => ipcRenderer.send("addon:rooms:host", displayName),
+  roomJoin: (roomId: string, displayName: string) => ipcRenderer.send("addon:rooms:join", roomId, displayName),
+  roomLeave: () => ipcRenderer.send("addon:rooms:leave"),
+  roomGrant: (memberId: string, role: number) => ipcRenderer.send("addon:rooms:grant", memberId, role),
+  roomControl: (action: string, value?: unknown) => ipcRenderer.send("addon:rooms:control", action, value),
+  roomResume: () => ipcRenderer.send("addon:rooms:resume"),
   minimizeWindow: () => {},
   maximizeWindow: () => {},
   restoreWindow: () => {},
-  closeWindow: () => ipcRenderer.send("roomWindow:close"),
+  closeWindow: () => ipcRenderer.send("addon:rooms:closeWindow"),
   handleWindowEvents: () => {}
 });
