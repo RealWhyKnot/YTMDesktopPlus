@@ -1,8 +1,4 @@
-import "material-symbols/outlined.css";
-import "~assets/app.css";
+import { mountWindow } from "../bootstrap";
+import Index from "./Index.vue";
 
-import { createApp } from "vue";
-import App from "./Index.vue";
-
-const app = createApp(App);
-app.mount("#app");
+mountWindow(Index);
