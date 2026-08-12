@@ -9,14 +9,12 @@ import {
   ipcMain,
   Menu,
   MenuItemConstructorOptions,
-  nativeImage,
   nativeTheme,
   Notification,
   safeStorage,
   screen,
   session,
-  shell,
-  Tray
+  shell
 } from "electron";
 import log from "electron-log";
 import path from "path";
@@ -31,9 +29,9 @@ import { watchExternalAddonsForDev } from "./addons/dev-reload";
 import { filterLogTailForAddon } from "./addons/log-tail";
 import { migrateCustomCssSetting } from "./addons/migrate-custom-css";
 import { BUNDLED_ADDONS } from "../addons/bundled";
-import playerStateStore, { playerEvents, PlayerState, VideoState } from "./player-state-store";
+import playerStateStore, { playerEvents } from "./player-state-store";
 import { setLogOutputEnabled, setupLogging } from "./logging";
-import { MemoryStoreSchema, StoreSchema, TrayIconStyle } from "../shared/store/schema";
+import { MemoryStoreSchema, StoreSchema } from "../shared/store/schema";
 
 import CompanionServer from "./integrations/companion-server";
 import DiscordPresence from "./integrations/discord-presence";
@@ -53,6 +51,8 @@ import { createAppStore } from "./store/create-store";
 import { createStoreBroadcaster } from "./windows/broadcast";
 import { createDeepLinkRouter, findProtocolUrl } from "./deep-links";
 import { anyShortcutChanged, createShortcutRegistrar } from "./shortcuts";
+import { createTrayController } from "./tray";
+import { setupTaskbarFeatures } from "./taskbar";
 import { buildUpdateFeedUrl, isNewerVersion } from "../shared/update-feed";
 
 // Injected by Forge's Vite plugin; empty in packaged builds.
@@ -182,7 +182,6 @@ const ytmViewIntegrationScripts: { [name: string]: { [name: string]: string } } 
 let mainWindow: BrowserWindow = null;
 let settingsWindow: BrowserWindow = null;
 let ytmView: BrowserView = null;
-let tray: Tray = null;
 
 // These variables tend to be changed often so we store it in memory and write on close (less disk usage)
 let lastUrl = "";
@@ -412,7 +411,7 @@ const addonManager: AddonManager = new AddonManager({
     }
   },
   refreshTrayMenu: () => {
-    if (tray) tray.setContextMenu(Menu.buildFromTemplate(buildTrayContextMenu()));
+    trayController.refreshTrayMenu();
   },
   isAppSender: sender =>
     Boolean(
@@ -530,7 +529,7 @@ store.onDidAnyChange(async (newState, oldState) => {
   }
 
   // Appearance
-  if (oldState.appearance.trayIconStyle !== newState.appearance.trayIconStyle) setTrayIcon();
+  if (oldState.appearance.trayIconStyle !== newState.appearance.trayIconStyle) trayController.setTrayIcon();
 
   // Playback
   if (newState.playback.ratioVolume) {
@@ -668,206 +667,19 @@ stateSaverInterval = setInterval(
   5 * 60 * 1000
 );
 
-function setupTaskbarFeatures() {
-  // Setup Taskbar Icons
-  if (mainWindow && mainWindow.isVisible() && process.platform === "win32") {
-    mainWindow.setThumbarButtons([
-      {
-        tooltip: "Previous",
-        icon: nativeImage.createFromPath(getControlsIconPath("play-previous-button.png")),
-        flags: ["disabled"],
-        click() {
-          if (ytmView) {
-            ytmView.webContents.send("remoteControl:execute", "previous");
-          }
-        }
-      },
-      {
-        tooltip: "Play/Pause",
-        icon: nativeImage.createFromPath(getControlsIconPath("play-button.png")),
-        flags: ["disabled"],
-        click() {
-          if (ytmView) {
-            ytmView.webContents.send("remoteControl:execute", "playPause");
-          }
-        }
-      },
-      {
-        tooltip: "Next",
-        icon: nativeImage.createFromPath(getControlsIconPath("play-next-button.png")),
-        flags: ["disabled"],
-        click() {
-          if (ytmView) {
-            ytmView.webContents.send("remoteControl:execute", "next");
-          }
-        }
-      }
-    ]);
+const sendRemoteCommand = (command: string) => {
+  if (ytmView) {
+    ytmView.webContents.send("remoteControl:execute", command);
   }
-  playerStateStore.addEventListener((state: PlayerState) => {
-    const hasVideo = !!state.videoDetails;
-    const isPlaying = state.trackState === VideoState.Playing;
+};
 
-    if (process.platform == "win32") {
-      const taskbarFlags = [];
-      if (!hasVideo) {
-        taskbarFlags.push("disabled");
-      }
+const registerShortcuts = createShortcutRegistrar({ store, memoryStore, sendRemoteCommand });
 
-      if (mainWindow && mainWindow.isVisible()) {
-        mainWindow.setThumbarButtons([
-          {
-            tooltip: "Previous",
-            icon: nativeImage.createFromPath(getControlsIconPath("play-previous-button.png")),
-            flags: taskbarFlags,
-            click() {
-              if (ytmView) {
-                ytmView.webContents.send("remoteControl:execute", "previous");
-              }
-            }
-          },
-          {
-            tooltip: "Play/Pause",
-            icon: isPlaying
-              ? nativeImage.createFromPath(getControlsIconPath("pause-button.png"))
-              : nativeImage.createFromPath(getControlsIconPath("play-button.png")),
-            flags: taskbarFlags,
-            click() {
-              if (ytmView) {
-                ytmView.webContents.send("remoteControl:execute", "playPause");
-              }
-            }
-          },
-          {
-            tooltip: "Next",
-            icon: nativeImage.createFromPath(getControlsIconPath("play-next-button.png")),
-            flags: taskbarFlags,
-            click() {
-              if (ytmView) {
-                ytmView.webContents.send("remoteControl:execute", "next");
-              }
-            }
-          }
-        ]);
-      }
-    }
-
-    if (mainWindow && store.get("playback.progressInTaskbar")) {
-      mainWindow.setProgressBar(hasVideo ? state.videoProgress / state.videoDetails.durationSeconds : -1, {
-        mode: isPlaying ? "normal" : "paused"
-      });
-    }
-  });
-
-  store.onDidChange("playback", (newValue, oldValue) => {
-    if (mainWindow && newValue.progressInTaskbar !== oldValue.progressInTaskbar && !newValue.progressInTaskbar) {
-      mainWindow.setProgressBar(-1);
-    }
-  });
-}
-
-// The static menu plus whatever tray items addons registered; rebuilt through
-// refreshTrayMenu whenever those change.
-function buildTrayContextMenu(): Electron.MenuItemConstructorOptions[] {
-  const template: Electron.MenuItemConstructorOptions[] = [
-    {
-      label: "YouTube Music Desktop",
-      type: "normal",
-      enabled: false
-    },
-    {
-      type: "separator"
-    },
-    {
-      label: "Show/Hide Window",
-      type: "normal",
-      click: () => {
-        if (mainWindow) {
-          if (mainWindow.isVisible()) {
-            mainWindow.hide();
-          } else {
-            mainWindow.show();
-          }
-        }
-      }
-    },
-    {
-      label: "Play/Pause",
-      type: "normal",
-      click: () => {
-        ytmView.webContents.send("remoteControl:execute", "playPause");
-      }
-    },
-    {
-      label: "Previous",
-      type: "normal",
-      click: () => {
-        ytmView.webContents.send("remoteControl:execute", "previous");
-      }
-    },
-    {
-      label: "Next",
-      type: "normal",
-      click: () => {
-        ytmView.webContents.send("remoteControl:execute", "next");
-      }
-    }
-  ];
-
-  const addonItems = addonManager.trayMenuItems();
-  if (addonItems.length > 0) {
-    template.push({ type: "separator" });
-    for (const item of addonItems) {
-      template.push({ label: item.label, type: "normal", enabled: item.enabled, click: item.click });
-    }
-  }
-
-  template.push(
-    { type: "separator" },
-    {
-      label: "Quit",
-      type: "normal",
-      click: () => {
-        app.quit();
-      }
-    }
-  );
-  return template;
-}
-
-function trayIconFileName(style: TrayIconStyle) {
-  if (process.platform === "win32") return "tray.ico";
-  if (process.platform === "darwin") return "trayTemplate.png";
-
-  let color: "white" | "black";
-  if (style === TrayIconStyle.White) {
-    color = "white";
-  } else if (style === TrayIconStyle.Black) {
-    color = "black";
-  } else {
-    color = nativeTheme.shouldUseDarkColors ? "white" : "black";
-  }
-  return `ytmd_${color}.png`;
-}
-
-function getTrayIconPath() {
-  const style = store.get("appearance").trayIconStyle;
-  const iconsDir = process.env.NODE_ENV === "development" ? path.join(app.getAppPath(), "src/assets/icons") : process.resourcesPath;
-  return path.join(iconsDir, trayIconFileName(style));
-}
-
-function setTrayIcon() {
-  tray.setImage(getTrayIconPath());
-}
-
-const registerShortcuts = createShortcutRegistrar({
+const trayController = createTrayController({
   store,
-  memoryStore,
-  sendRemoteCommand: command => {
-    if (ytmView) {
-      ytmView.webContents.send("remoteControl:execute", command);
-    }
-  }
+  getMainWindow: () => mainWindow,
+  sendRemoteCommand,
+  addonTrayItems: () => addonManager.trayMenuItems()
 });
 
 // Functions which call to mainWindow renderer
@@ -1947,18 +1759,7 @@ app.on("ready", async () => {
   registerShortcuts();
 
   // Create the tray
-  tray = new Tray(getTrayIconPath());
-  tray.setToolTip("YouTube Music Desktop");
-  tray.setContextMenu(Menu.buildFromTemplate(buildTrayContextMenu()));
-  tray.on("click", () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) {
-        mainWindow.restore();
-      } else {
-        mainWindow.show();
-      }
-    }
-  });
+  trayController.createTray();
 
   log.info("Created tray icon");
 
@@ -2073,7 +1874,7 @@ app.on("ready", async () => {
   log.info("Created YTM view");
 
   // Setup taskbar features
-  setupTaskbarFeatures();
+  setupTaskbarFeatures({ store, getMainWindow: () => mainWindow, sendRemoteCommand, getControlsIconPath });
   log.info("Setup taskbar features");
 
   if (store.get("appearance").zoom) {
@@ -2132,7 +1933,7 @@ app.on("ready", async () => {
     log.info("Integration enabled: Listen along");
   }
 
-  nativeTheme.on("updated", setTrayIcon);
+  nativeTheme.on("updated", trayController.setTrayIcon);
 });
 
 // Addon destroy() work is async; quit is held back until it settles, capped
