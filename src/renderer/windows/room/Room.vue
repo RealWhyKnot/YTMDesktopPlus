@@ -5,8 +5,13 @@ import type { RoomSnapshot } from "~shared/room-protocol";
 const memoryStore = window.ytmd.memoryStore;
 const store = window.ytmd.store;
 
-const snapshot = ref<RoomSnapshot | null>(await memoryStore.get("listenAlongRoom"));
-const joinPrompt = ref<string | null>(await memoryStore.get("listenAlongRoomJoinPrompt"));
+// Room state lives in the rooms addon's own memory namespace, read the same
+// way any addon window reads its addon's state.
+const roomsMemory = (all: { rooms?: Record<string, unknown> } | undefined) => all?.rooms ?? {};
+const initialMemory = roomsMemory(await memoryStore.get("addonMemory"));
+
+const snapshot = ref<RoomSnapshot | null>((initialMemory.room as RoomSnapshot | null | undefined) ?? null);
+const joinPrompt = ref<string | null>((initialMemory.joinPrompt as string | null | undefined) ?? null);
 
 const savedName = ((await store.get("addons"))?.settings?.rooms?.displayName as string | null | undefined) ?? null;
 const displayName = ref<string>(savedName ?? "");
@@ -16,10 +21,12 @@ const seekInput = ref<string>("");
 const copied = ref(false);
 
 memoryStore.onStateChanged(newState => {
-  snapshot.value = newState.listenAlongRoom ?? snapshot.value;
-  if (newState.listenAlongRoomJoinPrompt && newState.listenAlongRoomJoinPrompt !== joinPrompt.value) {
-    joinPrompt.value = newState.listenAlongRoomJoinPrompt;
-    joinInput.value = newState.listenAlongRoomJoinPrompt;
+  const memory = roomsMemory(newState.addonMemory);
+  snapshot.value = (memory.room as RoomSnapshot | null | undefined) ?? snapshot.value;
+  const prompt = memory.joinPrompt as string | null | undefined;
+  if (prompt && prompt !== joinPrompt.value) {
+    joinPrompt.value = prompt;
+    joinInput.value = prompt;
   }
 });
 

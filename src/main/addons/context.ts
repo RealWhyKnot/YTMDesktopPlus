@@ -83,6 +83,8 @@ export type AddonHostServices = {
    *  owns containment validation before it gets here. */
   createWindow(options: AddonWindowOptions & { addonId: string; filePath?: string }): AddonHostWindow;
   discord: {
+    isEnabled(): boolean;
+    onEnabledChanged(callback: (enabled: boolean) => void): () => void;
     registerButtonsProvider(provider: (trackShareUrl: string) => { label: string; url: string }[] | undefined): () => void;
     registerRemoteActivityProvider(provider: () => RemoteTrackActivity | undefined): () => void;
     refreshActivity(): void;
@@ -408,6 +410,14 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
     },
 
     discord: {
+      isEnabled() {
+        return services.discord.isEnabled();
+      },
+      onEnabledChanged(callback) {
+        const unsubscribe = services.discord.onEnabledChanged(guard("discord.onEnabledChanged", callback));
+        bridge.addCleanup(unsubscribe);
+        return unsubscribe;
+      },
       registerButtonsProvider(provider) {
         const unsubscribe = services.discord.registerButtonsProvider(trackShareUrl => {
           try {

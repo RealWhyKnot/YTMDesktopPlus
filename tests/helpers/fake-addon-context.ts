@@ -249,6 +249,8 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       })
     },
     discord: {
+      isEnabled: vi.fn(() => (options.coreSettings?.["integrations.discordPresenceEnabled"] ?? false) as boolean),
+      onEnabledChanged: vi.fn(() => unsubscribe),
       registerButtonsProvider: vi.fn((provider: (trackShareUrl: string) => { label: string; url: string }[] | undefined) => {
         captured.buttonsProviders.push(provider);
         return unsubscribe;

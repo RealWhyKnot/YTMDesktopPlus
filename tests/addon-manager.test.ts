@@ -292,6 +292,15 @@ describe("AddonContext", () => {
     expect(manager.descriptors()[0].lastError).toContain("state handler down");
   });
 
+  it("serves discord enablement through the services bag", async () => {
+    const fixture = fakeServices();
+    const { ctx } = await bootWithContext(fixture);
+
+    expect(ctx.discord.isEnabled()).toBe(false);
+    ctx.discord.onEnabledChanged(() => {});
+    expect(fixture.services.discord.onEnabledChanged).toHaveBeenCalledOnce();
+  });
+
   it("delivers typed player events and contains a throwing event callback", async () => {
     const fixture = fakeServices();
     const { manager, ctx } = await bootWithContext(fixture);

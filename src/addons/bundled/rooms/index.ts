@@ -96,7 +96,7 @@ const roomsAddon: BundledAddonDefinition = {
       cueTrack: request => ctx.playback.cueTrack(request),
       sendCommand: (command, value) => ctx.playback.sendPlaybackCommand(command, value),
       publish: snapshot => {
-        ctx.coreMemory.set("listenAlongRoom", snapshot);
+        ctx.memory.set("room", snapshot);
         // The Join Room presence button follows the hosting state.
         ctx.discord.refreshActivity();
         syncAudioPublisher();
@@ -107,7 +107,7 @@ const roomsAddon: BundledAddonDefinition = {
       getPlayerState: () => ctx.player.getState(),
       now: () => Date.now()
     });
-    ctx.coreMemory.set("listenAlongRoom", roomSession.snapshot);
+    ctx.memory.set("room", roomSession.snapshot);
 
     // Streams the host's audio to browser listeners while a room is hosted.
     // The capture runs in the YTM page; this owns the socket and send gates.
@@ -130,7 +130,7 @@ const roomsAddon: BundledAddonDefinition = {
     // so the presence link always has somewhere to land.
     let autoRoomNotified = false;
     const autoRoom = new AutoRoom({
-      enabled: () => ctx.coreSettings.get<boolean>("integrations.discordPresenceEnabled") && ctx.settings.get<boolean>("autoRoomEnabled"),
+      enabled: () => ctx.discord.isEnabled() && ctx.settings.get<boolean>("autoRoomEnabled"),
       phase: () => roomSession.snapshot.phase,
       savedDisplayName: () => ctx.settings.get<string | null>("displayName") ?? null,
       host: displayName => {
@@ -159,12 +159,10 @@ const roomsAddon: BundledAddonDefinition = {
       ctx.log.info(`Audio stream ${next ? "enabled" : "disabled"}`);
     });
     ctx.settings.onDidChange("autoRoomEnabled", () => autoRoom.syncToggles());
-    ctx.coreSettings.onDidChange("integrations", (next, prev) => {
-      if (next.discordPresenceEnabled !== prev.discordPresenceEnabled) autoRoom.syncToggles();
-    });
+    ctx.discord.onEnabledChanged(() => autoRoom.syncToggles());
 
     ctx.discord.registerButtonsProvider(trackShareUrl => {
-      const room = ctx.coreMemory.get<RoomSnapshot | null>("listenAlongRoom");
+      const room = ctx.memory.get<RoomSnapshot | null>("room");
       if (!room || room.phase !== "hosting" || !room.shareUrl) return undefined;
       return [
         { label: "Join Room", url: room.shareUrl },
@@ -174,7 +172,7 @@ const roomsAddon: BundledAddonDefinition = {
 
     ctx.deepLinks.register("room", segments => {
       if (segments.length !== 1 || !isRoomId(segments[0])) return;
-      ctx.coreMemory.set("listenAlongRoomJoinPrompt", segments[0]);
+      ctx.memory.set("joinPrompt", segments[0]);
       openOrShowWindow();
     });
 
@@ -204,7 +202,7 @@ const roomsAddon: BundledAddonDefinition = {
       },
       join: (roomId, name) => {
         ctx.settings.set("displayName", name);
-        ctx.coreMemory.set("listenAlongRoomJoinPrompt", null);
+        ctx.memory.set("joinPrompt", null);
         autoRoom.noteManualSession();
         roomSession.join(roomId, name);
       },

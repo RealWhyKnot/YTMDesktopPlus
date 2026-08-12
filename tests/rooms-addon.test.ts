@@ -31,6 +31,10 @@ describe("rooms bundled addon", () => {
     const setMenuItems = ctx.tray.setMenuItems as ReturnType<typeof vi.fn>;
     expect(setMenuItems).toHaveBeenCalledWith([{ label: "Listen Along", click: expect.any(Function) }]);
 
+    // Presence gating and room state ride the public surface only.
+    expect(ctx.discord.onEnabledChanged).toHaveBeenCalledTimes(1);
+    expect(ctx.memory.get("room")).not.toBeUndefined();
+
     expect(ctx.ytmview.registerScript).toHaveBeenCalledWith("enable", expect.any(String));
     expect(ctx.ytmview.registerScript).toHaveBeenCalledWith("disable", expect.any(String));
   });

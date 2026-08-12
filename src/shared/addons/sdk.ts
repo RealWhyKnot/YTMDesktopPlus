@@ -434,6 +434,9 @@ export interface AddonContext {
     register(command: string, handler: (segments: string[], params: URLSearchParams) => void): Unsubscribe;
   };
   discord: {
+    /** Whether the user has Discord presence turned on in Settings */
+    isEnabled(): boolean;
+    onEnabledChanged(callback: (enabled: boolean) => void): Unsubscribe;
     /** Discord shows at most two buttons across all providers */
     registerButtonsProvider(provider: (trackShareUrl: string) => { label: string; url: string }[] | undefined): Unsubscribe;
     /** Offers a track playing outside this app as a presence stand-in while

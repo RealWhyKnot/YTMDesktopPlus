@@ -684,6 +684,13 @@ const addonManager: AddonManager = new AddonManager({
     return addonWindow;
   },
   discord: {
+    isEnabled: () => store.get("integrations").discordPresenceEnabled,
+    onEnabledChanged: callback =>
+      store.onDidChange("integrations", (newValue, oldValue) => {
+        if (newValue && oldValue && newValue.discordPresenceEnabled !== oldValue.discordPresenceEnabled) {
+          callback(newValue.discordPresenceEnabled);
+        }
+      }),
     registerButtonsProvider: provider => discordPresence.registerButtonsProvider(provider),
     registerRemoteActivityProvider: provider => discordPresence.registerRemoteActivityProvider(provider),
     refreshActivity: () => discordPresence.refreshActivity()

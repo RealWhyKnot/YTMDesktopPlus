@@ -1,4 +1,3 @@
-import type { RoomSnapshot } from "../room-protocol";
 import type { AddonDescriptor, AddonTitlebarBadge } from "../addons/types";
 
 export enum TrayIconStyle {
@@ -99,8 +98,6 @@ export type MemoryStoreSchema = {
   listenAlongStatusDetail: string | null;
   listenAlongPairingCode: string | null;
   listenAlongPairingError: string | null;
-  listenAlongRoom: RoomSnapshot | null;
-  listenAlongRoomJoinPrompt: string | null;
   shortcutsPlayPauseRegisterFailed: boolean;
   shortcutsNextRegisterFailed: boolean;
   shortcutsPreviousRegisterFailed: boolean;

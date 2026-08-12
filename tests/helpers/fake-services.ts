@@ -118,6 +118,8 @@ export function fakeServices(persistedStates: Record<string, { enabled: boolean 
       return window;
     }),
     discord: {
+      isEnabled: vi.fn(() => false),
+      onEnabledChanged: vi.fn(() => () => {}),
       registerButtonsProvider: vi.fn(() => () => {}),
       registerRemoteActivityProvider: vi.fn(() => () => {}),
       refreshActivity: vi.fn()
