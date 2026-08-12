@@ -1,15 +1,15 @@
 import fs from "fs";
-import os from "os";
 import path from "path";
 import { describe, expect, it } from "vitest";
 import { buildExternalDefinition, scanExternalAddons } from "../src/main/addons/external-loader";
 import { fakeAddonContext, makeManifest } from "./helpers/fake-addon-context";
 import type { AddonManifest } from "../src/shared/addons/sdk";
+import { makeTempDir } from "./helpers/temp-dir";
 
 // Real folders on disk, loaded through the real createRequire path.
 
 function addonDir(id: string, files: Record<string, string>): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "ytmd-loader-test-"));
+  const root = makeTempDir("ytmd-loader-test-");
   const dir = path.join(root, id);
   fs.mkdirSync(dir, { recursive: true });
   for (const [relative, content] of Object.entries(files)) {
@@ -82,7 +82,7 @@ module.exports.activate = ctx => { ctx.memory.set("sum", helper.two + dep.three)
 
 describe("scanExternalAddons", () => {
   it("carries warnings for loose manifests without failing them", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "ytmd-scan-test-"));
+    const root = makeTempDir("ytmd-scan-test-");
     const dir = path.join(root, "loose");
     fs.mkdirSync(dir);
     fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ ...makeManifest({ id: "loose" }), version: "v2" }));

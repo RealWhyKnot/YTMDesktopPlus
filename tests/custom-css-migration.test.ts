@@ -1,23 +1,12 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { CUSTOM_CSS_ADDON_ID, migrateCustomCssSetting } from "../src/main/addons/migrate-custom-css";
 import { scanExternalAddons } from "../src/main/addons/external-loader";
+import { makeTempDir } from "./helpers/temp-dir";
 
-const tempDirs: string[] = [];
-
-function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ytmd-css-migration-"));
-  tempDirs.push(dir);
-  return dir;
-}
-
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
+const tempDir = () => makeTempDir("ytmd-css-migration-");
 
 describe("migrateCustomCssSetting", () => {
   it("copies the stylesheet into a valid addon folder", () => {

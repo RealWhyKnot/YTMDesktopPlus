@@ -1,9 +1,7 @@
-import fs from "fs";
-import os from "os";
-import path from "path";
 import { EventEmitter } from "events";
 import { vi } from "vitest";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
+import { makeTempDir } from "./temp-dir";
 import type { AddonHostServices, AddonHostWindow } from "../../src/main/addons/context";
 import type { StoreSchema } from "../../src/shared/store/schema";
 import type { CueResult } from "../../src/shared/addons/sdk";
@@ -68,7 +66,7 @@ export function fakeServices(persistedStates: Record<string, { enabled: boolean 
       set: (key: string, value: unknown) => memory.set(key, value)
     },
     appVersion,
-    userDataPath: fs.mkdtempSync(path.join(os.tmpdir(), "ytmd-addon-test-")),
+    userDataPath: makeTempDir("ytmd-addon-test-"),
     getYtmView: () => null,
     registerYtmScript: (namespace: string, name: string, script: string) => {
       if (!registeredScripts[namespace]) registeredScripts[namespace] = {};

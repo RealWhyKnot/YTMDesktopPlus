@@ -1,5 +1,4 @@
 import fs from "fs";
-import os from "os";
 import path from "path";
 import { describe, expect, it, vi } from "vitest";
 import { scanExternalAddons } from "../src/main/addons/external-loader";
@@ -9,6 +8,7 @@ import { createAddonContext, type AddonContext, type AddonHostBridge } from "../
 import type { AddonManifest, PlayerEventMap } from "../src/shared/addons/types";
 import { makeManifest as manifest } from "./helpers/fake-addon-context";
 import { fakeServices } from "./helpers/fake-services";
+import { makeTempDir } from "./helpers/temp-dir";
 
 function nullBridge(): AddonHostBridge {
   return {
@@ -445,7 +445,7 @@ module.exports.activate = ctx => {
 };`;
 
   function externalAddonOnDisk() {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "ytmd-reload-test-"));
+    const root = makeTempDir("ytmd-reload-test-");
     const dir = path.join(root, "reloadable");
     fs.mkdirSync(dir);
     fs.writeFileSync(
