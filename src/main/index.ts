@@ -51,6 +51,7 @@ import { cancelCue, cueTrack, getPlaylists, providePlaybackView, sendPlaybackCom
 import { createLaunchPause } from "./playback/launch-pause";
 import { parseProtocolUrl } from "../shared/protocol-url";
 import { createSenderGuards, senderIsView } from "./ipc/sender-guards";
+import { createAppWindow, loadWindowEntry } from "./windows/window-factory";
 import { buildUpdateFeedUrl, isNewerVersion } from "../shared/update-feed";
 
 // Injected by Forge's Vite plugin; empty in packaged builds.
@@ -639,7 +640,7 @@ const addonManager: AddonManager = new AddonManager({
   },
   createWindow: options => {
     const anchorBounds = mainWindow?.getBounds();
-    const addonWindow = new BrowserWindow({
+    const addonWindow = createAppWindow({
       width: options.width,
       height: options.height,
       x: anchorBounds ? Math.round(anchorBounds.x + (anchorBounds.width / 2 - options.width / 2)) : undefined,
@@ -647,19 +648,10 @@ const addonManager: AddonManager = new AddonManager({
       minimizable: false,
       maximizable: false,
       resizable: options.resizable ?? false,
-      frame: false,
       show: false,
       title: options.title,
       icon: getIconPath("ytmd.png"),
-      titleBarStyle: "hidden",
-      titleBarOverlay: {
-        color: "#000000",
-        symbolColor: "#BBBBBB",
-        height: 36
-      },
       webPreferences: {
-        sandbox: true,
-        contextIsolation: true,
         preload: options.filePath
           ? path.join(__dirname, "../renderer/windows/addon/preload.js")
           : path.join(__dirname, `../renderer/windows/${options.entry}/preload.js`),
@@ -667,16 +659,9 @@ const addonManager: AddonManager = new AddonManager({
         devTools: store.get("developer.enableDevTools")
       }
     });
-    addonWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-    addonWindow.webContents.on("will-navigate", event => {
-      if (process.env.NODE_ENV === "development") if (event.url.startsWith("http://localhost")) return;
-
-      event.preventDefault();
-    });
     addonWindow.on("ready-to-show", () => addonWindow.show());
     if (options.filePath) addonWindow.loadFile(options.filePath);
-    else if (ALL_WINDOWS_VITE_DEV_SERVER_URL) addonWindow.loadURL(`${ALL_WINDOWS_VITE_DEV_SERVER_URL}/windows/${options.entry}/index.html`);
-    else addonWindow.loadFile(path.join(__dirname, `../renderer/windows/${options.entry}/index.html`));
+    else loadWindowEntry(addonWindow, options.entry, ALL_WINDOWS_VITE_DEV_SERVER_URL);
     return addonWindow;
   },
   discord: {
@@ -1327,7 +1312,7 @@ const createOrShowSettingsWindow = (): void => {
   const mainWindowBounds = mainWindow.getBounds();
 
   // Create the browser window.
-  settingsWindow = new BrowserWindow({
+  settingsWindow = createAppWindow({
     width: 800,
     height: 600,
     minWidth: 560,
@@ -1337,20 +1322,12 @@ const createOrShowSettingsWindow = (): void => {
     minimizable: false,
     maximizable: false,
     resizable: true,
-    frame: false,
     show: false,
     icon: getIconPath("ytmd.png"),
     parent: mainWindow,
     modal: !isDarwin,
-    titleBarStyle: "hidden",
-    titleBarOverlay: {
-      color: "#000000",
-      symbolColor: "#BBBBBB",
-      height: 36
-    },
+    openExternalUrls: ["https://github.com/RealWhyKnot/YTMDesktopPlus"],
     webPreferences: {
-      sandbox: true,
-      contextIsolation: true,
       preload: path.join(__dirname, `../renderer/windows/settings/preload.js`),
       devTools: store.get("developer.enableDevTools")
     }
@@ -1366,22 +1343,6 @@ const createOrShowSettingsWindow = (): void => {
     settingsWindow = null;
   });
 
-  settingsWindow.webContents.setWindowOpenHandler(details => {
-    if (details.url === "https://github.com/RealWhyKnot/YTMDesktopPlus") {
-      shell.openExternal(details.url);
-    }
-
-    return {
-      action: "deny"
-    };
-  });
-
-  settingsWindow.webContents.on("will-navigate", event => {
-    if (process.env.NODE_ENV === "development") if (event.url.startsWith("http://localhost")) return;
-
-    event.preventDefault();
-  });
-
   settingsWindow.on("ready-to-show", () => {
     settingsWindow.show();
     // Open the DevTools.
@@ -1393,8 +1354,7 @@ const createOrShowSettingsWindow = (): void => {
   });
 
   // and load the index.html of the app.
-  if (ALL_WINDOWS_VITE_DEV_SERVER_URL) settingsWindow.loadURL(ALL_WINDOWS_VITE_DEV_SERVER_URL + "/windows/settings/index.html");
-  else settingsWindow.loadFile(path.join(__dirname, `../renderer/windows/settings/index.html`));
+  loadWindowEntry(settingsWindow, "settings", ALL_WINDOWS_VITE_DEV_SERVER_URL);
 };
 
 function urlIsGoogleAccountsDomain(url: URL): boolean {
@@ -1620,25 +1580,16 @@ const createMainWindow = (): void => {
   // Create the browser window.
   const scaleFactor = screen.getPrimaryDisplay().scaleFactor;
   const windowBounds = store.get("state").windowBounds;
-  mainWindow = new BrowserWindow({
+  mainWindow = createAppWindow({
     width: windowBounds?.width ?? 1280 / scaleFactor,
     height: windowBounds?.height ?? 720 / scaleFactor,
     x: windowBounds?.x,
     y: windowBounds?.y,
     minWidth: 156,
     minHeight: 180,
-    frame: false,
     show: false,
     icon: getIconPath("ytmd.png"),
-    titleBarStyle: "hidden",
-    titleBarOverlay: {
-      color: "#000000",
-      symbolColor: "#BBBBBB",
-      height: 36
-    },
     webPreferences: {
-      sandbox: true,
-      contextIsolation: true,
       preload: path.join(__dirname, `../renderer/windows/main/preload.js`),
       devTools: store.get("developer.enableDevTools")
     }
@@ -1717,18 +1668,6 @@ const createMainWindow = (): void => {
     mainWindow = null;
   });
 
-  mainWindow.webContents.setWindowOpenHandler(() => {
-    return {
-      action: "deny"
-    };
-  });
-
-  mainWindow.webContents.on("will-navigate", event => {
-    if (process.env.NODE_ENV === "development") if (event.url.startsWith("http://localhost")) return;
-
-    event.preventDefault();
-  });
-
   mainWindow.on("ready-to-show", () => {
     mainWindow.show();
     // Open the DevTools.
@@ -1740,8 +1679,7 @@ const createMainWindow = (): void => {
   });
 
   // and load the index.html of the app.
-  if (ALL_WINDOWS_VITE_DEV_SERVER_URL) mainWindow.loadURL(ALL_WINDOWS_VITE_DEV_SERVER_URL + "/windows/main/index.html");
-  else mainWindow.loadFile(path.join(__dirname, `../renderer/windows/main/index.html`));
+  loadWindowEntry(mainWindow, "main", ALL_WINDOWS_VITE_DEV_SERVER_URL);
 };
 
 // This method will be called when Electron has finished

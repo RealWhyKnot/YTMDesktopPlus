@@ -8,8 +8,9 @@
   src: url("./fonts/WorkSans-VariableFont_wght.ttf") format('truetype');
 }
 
-/* Shared palette and metrics. The titleBarOverlay colors in src/main/index.ts
-   duplicate --bg/--text-muted because the main process cannot read CSS. */
+/* Shared palette and metrics. The titleBarOverlay colors in
+   src/main/windows/window-factory.ts duplicate --bg/--text-muted because the
+   main process cannot read CSS. */
 :root {
   --bg: #000000;
   --bg-raised: #111111;

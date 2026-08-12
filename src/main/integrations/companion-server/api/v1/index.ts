@@ -8,6 +8,7 @@ import { createAuthToken, getIsTemporaryAuthCodeValidAndRemove, getTemporaryAuth
 import fastifyRateLimit from "@fastify/rate-limit";
 import crypto from "crypto";
 import { senderIsView } from "../../../../ipc/sender-guards";
+import { createAppWindow, loadWindowEntry } from "../../../../windows/window-factory";
 import {
   APIV1CommandRequestBody,
   APIV1CommandRequestBodyType,
@@ -311,42 +312,20 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
       let authorizationWindowClosed = false;
 
       // Create the authorization browser window.
-      const authorizationWindow = new BrowserWindow({
+      const authorizationWindow = createAppWindow({
         width: 640,
         height: 480,
         minimizable: false,
         maximizable: false,
         resizable: false,
-        frame: false,
-        titleBarStyle: "hidden",
-        titleBarOverlay: {
-          color: "#000000",
-          symbolColor: "#BBBBBB",
-          height: 36
-        },
         webPreferences: {
-          sandbox: true,
-          contextIsolation: true,
           preload: path.join(__dirname, `../renderer/windows/authorize-companion/preload.js`),
           additionalArguments: [requestId, authData.appName, request.body.code]
         }
       });
-      if (ALL_WINDOWS_VITE_DEV_SERVER_URL) authorizationWindow.loadURL(ALL_WINDOWS_VITE_DEV_SERVER_URL + "/windows/authorize-companion/index.html");
-      else authorizationWindow.loadFile(path.join(__dirname, `../renderer/windows/authorize-companion/index.html`));
+      loadWindowEntry(authorizationWindow, "authorize-companion", ALL_WINDOWS_VITE_DEV_SERVER_URL);
       authorizationWindow.show();
       authorizationWindow.flashFrame(true);
-
-      authorizationWindow.webContents.setWindowOpenHandler(() => {
-        return {
-          action: "deny"
-        };
-      });
-
-      authorizationWindow.webContents.on("will-navigate", event => {
-        if (process.env.NODE_ENV === "development") if (event.url.startsWith("http://localhost")) return;
-
-        event.preventDefault();
-      });
 
       authorizationWindows.push(authorizationWindow);
 
