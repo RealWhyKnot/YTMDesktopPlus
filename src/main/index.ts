@@ -52,6 +52,7 @@ import { parseProtocolUrl } from "../shared/protocol-url";
 import { createSenderGuards, senderIsView } from "./ipc/sender-guards";
 import { createAppWindow, loadWindowEntry } from "./windows/window-factory";
 import { createAppStore } from "./store/create-store";
+import { createStoreBroadcaster } from "./windows/broadcast";
 import { buildUpdateFeedUrl, isNewerVersion } from "../shared/update-feed";
 
 // Injected by Forge's Vite plugin; empty in packaged builds.
@@ -288,24 +289,15 @@ if (!isTestRun()) {
 // flag keeps this broadcast from touching it before it exists.
 let addonManagerCreated = false;
 const memoryStore = new MemoryStore<MemoryStoreSchema>();
+const broadcastToWindows = createStoreBroadcaster({
+  getMainWindow: () => mainWindow,
+  getSettingsWindow: () => settingsWindow,
+  getYtmView: () => ytmView,
+  addonWebContents: () => (addonManagerCreated ? addonManager.windowWebContents() : [])
+});
+
 memoryStore.onStateChanged((newState, oldState) => {
-  if (mainWindow !== null) {
-    mainWindow.webContents.send("memoryStore:stateChanged", newState, oldState);
-  }
-
-  if (settingsWindow !== null) {
-    settingsWindow.webContents.send("memoryStore:stateChanged", newState, oldState);
-  }
-
-  if (ytmView !== null) {
-    ytmView.webContents.send("memoryStore:stateChanged", newState, oldState);
-  }
-
-  if (addonManagerCreated) {
-    for (const contents of addonManager.windowWebContents()) {
-      contents.send("memoryStore:stateChanged", newState, oldState);
-    }
-  }
+  broadcastToWindows("memoryStore:stateChanged", { includeMainWindow: true }, newState, oldState);
 });
 log.info("Created memory store");
 
@@ -553,17 +545,7 @@ if (updatesSupported()) {
 }
 
 store.onDidAnyChange(async (newState, oldState) => {
-  if (settingsWindow !== null) {
-    settingsWindow.webContents.send("settings:stateChanged", newState, oldState);
-  }
-
-  if (ytmView !== null) {
-    ytmView.webContents.send("settings:stateChanged", newState, oldState);
-  }
-
-  for (const contents of addonManager.windowWebContents()) {
-    contents.send("settings:stateChanged", newState, oldState);
-  }
+  broadcastToWindows("settings:stateChanged", { includeMainWindow: false }, newState, oldState);
 
   // Setting start on boot in development tends to cause a blank electron executable to start on boot so let's never set that
   if (process.env.NODE_ENV !== "development") {
