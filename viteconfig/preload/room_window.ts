@@ -1,14 +1,5 @@
-import path from "node:path";
 import { defineConfig } from "vite";
+import { preloadConfig } from "../lib";
 
 // https://vitejs.dev/config
-export default defineConfig({
-  resolve: {
-    alias: {
-      "~shared": path.resolve(__dirname, "../../src/shared")
-    }
-  },
-  build: {
-    outDir: ".vite/renderer/windows/room"
-  }
-});
+export default defineConfig(preloadConfig("room"));
