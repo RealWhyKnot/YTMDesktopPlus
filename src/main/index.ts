@@ -50,6 +50,7 @@ import { migrateLegacyProfile } from "./profile-migration";
 import { cancelCue, cueTrack, getPlaylists, providePlaybackView, sendPlaybackCommand } from "./playback";
 import { createLaunchPause } from "./playback/launch-pause";
 import { parseProtocolUrl } from "../shared/protocol-url";
+import { createSenderGuards, senderIsView } from "./ipc/sender-guards";
 import { buildUpdateFeedUrl, isNewerVersion } from "../shared/update-feed";
 
 // Injected by Forge's Vite plugin; empty in packaged builds.
@@ -583,7 +584,7 @@ const addonManager: AddonManager = new AddonManager({
       const requestId = randomUUID();
       const channel = `ytmView:invokeScript:response:${requestId}`;
       const listener = (event: Electron.IpcMainEvent, result: { ok: boolean; value?: unknown; error?: string }) => {
-        if (event.sender !== view.webContents) return;
+        if (!senderIsView(view, event.sender)) return;
         clearTimeout(timeout);
         if (result?.ok) resolve(result.value);
         else reject(new Error(result?.error ?? `script ${namespace}/${name} failed`));
@@ -1896,10 +1897,17 @@ app.on("ready", async () => {
     memoryStore.set("safeStorageAvailable", true);
   }
 
+  const { isMainWindowSender, isSettingsSender, isYtmViewSender, isMemoryStoreSender } = createSenderGuards({
+    getMainWindow: () => mainWindow,
+    getSettingsWindow: () => settingsWindow,
+    getYtmView: () => ytmView,
+    ownsAddonContents: sender => addonManager.ownsWebContents(sender)
+  });
+
   // Handle main window ipc
   ipcMain.on("mainWindow:minimize", event => {
     if (mainWindow !== null) {
-      if (event.sender !== mainWindow.webContents) return;
+      if (!isMainWindowSender(event.sender)) return;
 
       mainWindow.minimize();
     }
@@ -1907,7 +1915,7 @@ app.on("ready", async () => {
 
   ipcMain.on("mainWindow:maximize", event => {
     if (mainWindow !== null) {
-      if (event.sender !== mainWindow.webContents) return;
+      if (!isMainWindowSender(event.sender)) return;
 
       mainWindow.maximize();
     }
@@ -1915,7 +1923,7 @@ app.on("ready", async () => {
 
   ipcMain.on("mainWindow:restore", event => {
     if (mainWindow !== null) {
-      if (event.sender !== mainWindow.webContents) return;
+      if (!isMainWindowSender(event.sender)) return;
 
       mainWindow.restore();
     }
@@ -1923,7 +1931,7 @@ app.on("ready", async () => {
 
   ipcMain.on("mainWindow:close", event => {
     if (mainWindow !== null) {
-      if (event.sender !== mainWindow.webContents) return;
+      if (!isMainWindowSender(event.sender)) return;
 
       if (store.get("general").hideToTrayOnClose || isDarwin) {
         mainWindow.hide();
@@ -1934,21 +1942,21 @@ app.on("ready", async () => {
   });
 
   ipcMain.on("mainWindow:requestWindowState", event => {
-    if (event.sender !== mainWindow.webContents) return;
+    if (!isMainWindowSender(event.sender)) return;
 
     sendMainWindowStateIpc();
   });
 
   // Handle settings window ipc
   ipcMain.on("settingsWindow:open", event => {
-    if (event.sender !== mainWindow.webContents) return;
+    if (!isMainWindowSender(event.sender)) return;
 
     createOrShowSettingsWindow();
   });
 
   ipcMain.on("settingsWindow:minimize", event => {
     if (settingsWindow !== null) {
-      if (event.sender !== settingsWindow.webContents) return;
+      if (!isSettingsSender(event.sender)) return;
 
       settingsWindow.minimize();
     }
@@ -1956,7 +1964,7 @@ app.on("ready", async () => {
 
   ipcMain.on("settingsWindow:maximize", event => {
     if (settingsWindow !== null) {
-      if (event.sender !== settingsWindow.webContents) return;
+      if (!isSettingsSender(event.sender)) return;
 
       settingsWindow.maximize();
     }
@@ -1964,7 +1972,7 @@ app.on("ready", async () => {
 
   ipcMain.on("settingsWindow:restore", event => {
     if (settingsWindow !== null) {
-      if (event.sender !== settingsWindow.webContents) return;
+      if (!isSettingsSender(event.sender)) return;
 
       settingsWindow.restore();
     }
@@ -1972,14 +1980,14 @@ app.on("ready", async () => {
 
   ipcMain.on("settingsWindow:close", event => {
     if (settingsWindow !== null) {
-      if (event.sender !== settingsWindow.webContents) return;
+      if (!isSettingsSender(event.sender)) return;
 
       settingsWindow.close();
     }
   });
 
   ipcMain.on("settingsWindow:restartapplication", event => {
-    if (event.sender !== settingsWindow.webContents) return;
+    if (!isSettingsSender(event.sender)) return;
 
     app.relaunch();
     app.quit();
@@ -1988,7 +1996,7 @@ app.on("ready", async () => {
   // Handle ytm view ipc
   ipcMain.on("ytmView:loaded", event => {
     if (ytmView !== null && mainWindow !== null) {
-      if (event.sender !== ytmView.webContents) return;
+      if (!isYtmViewSender(event.sender)) return;
 
       memoryStore.set("ytmViewLoading", false);
       clearTimeout(ytmViewLoadTimeout);
@@ -2022,10 +2030,10 @@ app.on("ready", async () => {
   if (YTMD_DEV_TOOLS) {
     const probeLogPath = path.join(app.getPath("userData"), "logs", "remote-probe.jsonl");
     ipcMain.on("ytmView:devProbeEnabled", event => {
-      event.returnValue = remoteProbeActive && ytmView !== null && event.sender === ytmView.webContents;
+      event.returnValue = remoteProbeActive && isYtmViewSender(event.sender);
     });
     ipcMain.on("ytmView:devProbe", async (event, batch: unknown[]) => {
-      if (!remoteProbeActive || ytmView === null || event.sender !== ytmView.webContents) return;
+      if (!remoteProbeActive || !isYtmViewSender(event.sender)) return;
       if (!Array.isArray(batch) || batch.length === 0) return;
       try {
         await fs.mkdir(path.dirname(probeLogPath), { recursive: true });
@@ -2037,7 +2045,7 @@ app.on("ready", async () => {
   }
 
   ipcMain.on("ytmView:hookFailed", (event, stage, detail) => {
-    if (ytmView === null || event.sender !== ytmView.webContents) return;
+    if (!isYtmViewSender(event.sender)) return;
 
     clearTimeout(ytmViewLoadTimeout);
     log.error(`YTM view hook failed at stage '${stage}'`, detail);
@@ -2048,19 +2056,19 @@ app.on("ready", async () => {
   // Optional setup modules degrade alone; the failure is recorded here so a
   // "feature X stopped working" report has the module name in the log.
   ipcMain.on("ytmView:optionalModuleFailed", (event, name, detail) => {
-    if (ytmView === null || event.sender !== ytmView.webContents) return;
+    if (!isYtmViewSender(event.sender)) return;
 
     log.warn(`YTM view optional module '${name}' failed`, detail);
   });
 
   ipcMain.on("ytmView:videoProgressChanged", (event, progress) => {
-    if (event.sender !== ytmView.webContents) return;
+    if (!isYtmViewSender(event.sender)) return;
 
     playerStateStore.updateVideoProgress(progress);
   });
 
   ipcMain.on("ytmView:videoStateChanged", (event, state) => {
-    if (event.sender !== ytmView.webContents) return;
+    if (!isYtmViewSender(event.sender)) return;
 
     // ytm state mapping definitions
     // -1 -> Unstarted
@@ -2081,7 +2089,7 @@ app.on("ready", async () => {
   });
 
   ipcMain.on("ytmView:videoDataChanged", (event, videoDetails, playlistId, album, likeStatus, hasFullMetadata) => {
-    if (event.sender !== ytmView.webContents) return;
+    if (!isYtmViewSender(event.sender)) return;
 
     lastVideoId = videoDetails.videoId;
     lastPlaylistId = playlistId;
@@ -2090,7 +2098,7 @@ app.on("ready", async () => {
   });
 
   ipcMain.on("ytmView:storeStateChanged", (event, queue, likeStatus, volume, muted, adPlaying) => {
-    if (event.sender !== ytmView.webContents) return;
+    if (!isYtmViewSender(event.sender)) return;
 
     playerStateStore.updateFromStore(queue, likeStatus, volume, muted, adPlaying);
   });
@@ -2103,7 +2111,7 @@ app.on("ready", async () => {
   });
 
   ipcMain.on("ytmView:launchPauseArmed", (event, videoId: string, wasMuted: boolean) => {
-    if (event.sender !== ytmView.webContents) return;
+    if (!isYtmViewSender(event.sender)) return;
     if (typeof videoId !== "string" || videoId.length === 0) return;
 
     launchPause.arm(videoId, wasMuted === true).then(result => {
@@ -2112,7 +2120,7 @@ app.on("ready", async () => {
   });
 
   ipcMain.on("ytmView:switchFocus", (event, context) => {
-    if (event.sender !== ytmView.webContents && event.sender !== mainWindow.webContents) return;
+    if (!isYtmViewSender(event.sender) && !isMainWindowSender(event.sender)) return;
 
     if (context === "main") {
       if (mainWindow && ytmView.webContents.isFocused()) {
@@ -2127,14 +2135,14 @@ app.on("ready", async () => {
 
   ipcMain.on("ytmView:navigateDefault", event => {
     if (ytmView) {
-      if (event.sender !== mainWindow.webContents) return;
+      if (!isMainWindowSender(event.sender)) return;
 
       ytmView.webContents.loadURL("https://music.youtube.com/");
     }
   });
 
   ipcMain.on("ytmView:recreate", event => {
-    if (event.sender !== mainWindow.webContents) return;
+    if (!isMainWindowSender(event.sender)) return;
 
     if (ytmView) {
       if (mainWindow) {
@@ -2150,7 +2158,7 @@ app.on("ready", async () => {
   });
 
   ipcMain.handle("ytmView:getIntegrationScripts", event => {
-    if (event.sender !== ytmView.webContents) return;
+    if (!isYtmViewSender(event.sender)) return;
 
     return ytmViewIntegrationScripts;
   });
@@ -2158,33 +2166,25 @@ app.on("ready", async () => {
   // Handle listen along ipc. Pairing runs entirely in the main process so the
   // host token never reaches a renderer.
   ipcMain.handle("listenAlong:pair", (event, host: string, port: number) => {
-    if (!settingsWindow || event.sender !== settingsWindow.webContents) return false;
+    if (!isSettingsSender(event.sender)) return false;
 
     listenAlong.provide(store, memoryStore);
     return listenAlong.startPairing(host, port);
   });
 
   ipcMain.on("listenAlong:unpair", event => {
-    if (!settingsWindow || event.sender !== settingsWindow.webContents) return;
+    if (!isSettingsSender(event.sender)) return;
 
     listenAlong.unpair();
   });
 
   ipcMain.on("listenAlong:resume", event => {
-    if (!settingsWindow || event.sender !== settingsWindow.webContents) return;
+    if (!isSettingsSender(event.sender)) return;
 
     listenAlong.resume();
   });
 
-  // Sender guards. Each one is false while its window does not exist, so a
-  // channel is never open just because its window is closed.
-  const isSettingsSender = (sender: Electron.WebContents) => settingsWindow !== null && sender === settingsWindow.webContents;
-  const isMainWindowSender = (sender: Electron.WebContents) => mainWindow !== null && sender === mainWindow.webContents;
-  const isYtmViewSender = (sender: Electron.WebContents) => ytmView !== null && sender === ytmView.webContents;
-
   // Handle memory store ipc
-  const isMemoryStoreSender = (sender: Electron.WebContents) => isMainWindowSender(sender) || isSettingsSender(sender) || addonManager.ownsWebContents(sender);
-
   ipcMain.on("memoryStore:set", (event, key: string, value?: unknown) => {
     if (!isMemoryStoreSender(event.sender)) return;
 

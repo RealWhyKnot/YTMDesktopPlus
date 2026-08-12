@@ -7,6 +7,7 @@ import playerStateStore, { PlayerState, RepeatMode } from "../../../../player-st
 import { createAuthToken, getIsTemporaryAuthCodeValidAndRemove, getTemporaryAuthCode, isAuthValid, isAuthValidMiddleware } from "../../api-shared/auth";
 import fastifyRateLimit from "@fastify/rate-limit";
 import crypto from "crypto";
+import { senderIsView } from "../../../../ipc/sender-guards";
 import {
   APIV1CommandRequestBody,
   APIV1CommandRequestBodyType,
@@ -361,14 +362,14 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
         let promiseInterval: string | number | NodeJS.Timeout;
 
         const resultListener = (event: Electron.IpcMainEvent, authorized: boolean) => {
-          if (event.sender !== authorizationWindow.webContents) return;
+          if (!senderIsView(authorizationWindow, event.sender)) return;
 
           clearInterval(promiseInterval);
           promiseResolve(authorized);
         };
 
         const closeListener = (event: Electron.IpcMainEvent) => {
-          if (event && event.sender !== authorizationWindow.webContents) return;
+          if (event && !senderIsView(authorizationWindow, event.sender)) return;
 
           clearInterval(promiseInterval);
           promiseResolve(false);
