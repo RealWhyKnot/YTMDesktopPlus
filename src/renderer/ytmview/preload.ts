@@ -12,6 +12,7 @@ import { contextBridge, ipcRenderer, webFrame } from "electron";
 import Store from "../store-ipc/store";
 import { StoreSchema } from "~shared/store/schema";
 import { HOOK_POLL_INTERVAL, HOOK_POLL_MAX_ATTEMPTS, PlayerBarProbeSnapshot, playerBarProbeSource, pollUntil, storeHookProbeSource } from "~shared/hook-probes";
+import { mergeScript, type ScriptTable } from "./script-table";
 
 import playerBarControlsScript from "./scripts/playerbarcontrols.script?raw";
 import hookPlayerApiEventsScript from "./scripts/hookplayerapievents.script?raw";
@@ -349,7 +350,17 @@ const startHooking = async () => {
   await hookPlayerApiEvents();
   await optionalModule("history-button-display", () => overrideHistoryButtonDisplay());
 
-  const integrationScripts: { [integrationName: string]: { [scriptName: string]: string } } = await ipcRenderer.invoke("ytmView:getIntegrationScripts");
+  const integrationScripts: ScriptTable = {};
+  // Scripts registered after this page load arrive as pushes. The listener
+  // attaches before the snapshot so a registration in flight is never lost;
+  // merging the same script twice is idempotent.
+  ipcRenderer.on("ytmView:scriptRegistered", (_event, namespace: string, name: string, script: string) => {
+    mergeScript(integrationScripts, namespace, name, script);
+  });
+  const scriptSnapshot: ScriptTable = await ipcRenderer.invoke("ytmView:getIntegrationScripts");
+  for (const [namespace, scripts] of Object.entries(scriptSnapshot)) {
+    for (const [name, script] of Object.entries(scripts)) mergeScript(integrationScripts, namespace, name, script);
+  }
 
   await optionalModule("continue-where-you-left-off", async () => {
     const state = await store.get("state");

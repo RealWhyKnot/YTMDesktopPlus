@@ -570,6 +570,11 @@ const addonManager: AddonManager = new AddonManager({
   registerYtmScript: (namespace, name, script) => {
     if (!ytmViewIntegrationScripts[namespace]) ytmViewIntegrationScripts[namespace] = {};
     ytmViewIntegrationScripts[namespace][name] = script;
+    // Live push for a page that is already up; before the page attaches its
+    // listener this is a no-op and the load-time snapshot covers it.
+    if (ytmView && !ytmView.webContents.isDestroyed()) {
+      ytmView.webContents.send("ytmView:scriptRegistered", namespace, name, script);
+    }
   },
   invokeYtmScript: (namespace, name, arg) =>
     new Promise((resolve, reject) => {
