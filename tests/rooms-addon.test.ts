@@ -28,6 +28,9 @@ describe("rooms bundled addon", () => {
     const registerDeepLink = ctx.deepLinks.register as ReturnType<typeof vi.fn>;
     expect(registerDeepLink).toHaveBeenCalledWith("room", expect.any(Function));
 
+    const setMenuItems = ctx.tray.setMenuItems as ReturnType<typeof vi.fn>;
+    expect(setMenuItems).toHaveBeenCalledWith([{ label: "Listen Along", click: expect.any(Function) }]);
+
     expect(ctx.ytmview.registerScript).toHaveBeenCalledWith("enable", expect.any(String));
     expect(ctx.ytmview.registerScript).toHaveBeenCalledWith("disable", expect.any(String));
   });

@@ -15,6 +15,7 @@ function nullBridge(): AddonHostBridge {
     addCleanup: () => {},
     setTitlebarBadge: () => {},
     addBadgeClickCallback: () => () => {},
+    setTrayMenuItems: () => {},
     addWindow: () => {},
     reportError: () => {}
   };
@@ -383,6 +384,46 @@ describe("AddonContext", () => {
     ctx.memory.set("status", "hosting");
     expect(ctx.memory.get("status")).toBe("hosting");
     expect((fixture.memory.get("addonMemory") as Record<string, unknown>)["sample"]).toEqual({ status: "hosting" });
+  });
+});
+
+describe("tray items", () => {
+  it("stores, replaces and clears per-addon items and rebuilds the menu", async () => {
+    const fixture = fakeServices();
+    const { manager, ctx } = await bootWithContext(fixture);
+
+    ctx.tray.setMenuItems([{ label: "Open", click: () => {} }]);
+    expect(manager.trayMenuItems().map(item => item.label)).toEqual(["Open"]);
+
+    ctx.tray.setMenuItems([
+      { label: "First", click: () => {} },
+      { label: "Second", enabled: false, click: () => {} }
+    ]);
+    const items = manager.trayMenuItems();
+    expect(items.map(item => [item.label, item.enabled])).toEqual([
+      ["First", true],
+      ["Second", false]
+    ]);
+
+    ctx.tray.setMenuItems([]);
+    expect(manager.trayMenuItems()).toEqual([]);
+    expect(fixture.services.refreshTrayMenu).toHaveBeenCalledTimes(3);
+  });
+
+  it("contains a throwing click and records it", async () => {
+    const fixture = fakeServices();
+    const { manager, ctx } = await bootWithContext(fixture);
+    ctx.tray.setMenuItems([
+      {
+        label: "Broken",
+        click: () => {
+          throw new Error("tray boom");
+        }
+      }
+    ]);
+
+    expect(() => manager.trayMenuItems()[0].click()).not.toThrow();
+    expect(manager.descriptors()[0].lastError).toContain("tray boom");
   });
 });
 

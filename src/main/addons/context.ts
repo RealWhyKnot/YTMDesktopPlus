@@ -7,6 +7,7 @@ import type {
   AddonManifest,
   AddonSettingsSection,
   AddonTitlebarBadge,
+  AddonTrayMenuItem,
   AddonWindowOptions,
   CueRequest,
   CueResult,
@@ -76,6 +77,8 @@ export type AddonHostServices = {
   };
   isAppSender(sender: Electron.WebContents): boolean;
   notify(options: { title: string; body?: string; onClick?: () => void }): void;
+  /** Rebuilds the tray menu from its template plus every addon's items. */
+  refreshTrayMenu(): void;
   /** filePath is the pre-resolved absolute path for file windows; the context
    *  owns containment validation before it gets here. */
   createWindow(options: AddonWindowOptions & { addonId: string; filePath?: string }): AddonHostWindow;
@@ -106,6 +109,7 @@ export type AddonHostBridge = {
   addCleanup(cleanup: () => void): void;
   setTitlebarBadge(badge: Omit<AddonTitlebarBadge, "addonId"> | null): void;
   addBadgeClickCallback(callback: () => void): Unsubscribe;
+  setTrayMenuItems(items: AddonTrayMenuItem[]): void;
   addWindow(window: AddonHostWindow): void;
   /** Records a runtime failure on the descriptor so the settings card shows it. */
   reportError(source: string, error: unknown): void;
@@ -435,6 +439,12 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       },
       onBadgeClick(callback) {
         return bridge.addBadgeClickCallback(callback);
+      }
+    },
+
+    tray: {
+      setMenuItems(items) {
+        bridge.setTrayMenuItems(items);
       }
     },
 

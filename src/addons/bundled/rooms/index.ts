@@ -179,6 +179,7 @@ const roomsAddon: BundledAddonDefinition = {
     });
 
     ctx.titlebar.onBadgeClick(() => openOrShowWindow());
+    ctx.tray.setMenuItems([{ label: "Listen Along", click: () => openOrShowWindow() }]);
 
     ctx.ytmview.onLoaded(() => {
       audioStreamCapture.ytmViewLoaded();

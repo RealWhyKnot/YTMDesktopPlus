@@ -183,7 +183,6 @@ let mainWindow: BrowserWindow = null;
 let settingsWindow: BrowserWindow = null;
 let ytmView: BrowserView = null;
 let tray: Tray = null;
-let trayContextMenu = null;
 
 // These variables tend to be changed often so we store it in memory and write on close (less disk usage)
 let lastUrl = "";
@@ -620,6 +619,9 @@ const addonManager: AddonManager = new AddonManager({
       ipcMain.removeListener(channel, listener);
     }
   },
+  refreshTrayMenu: () => {
+    if (tray) tray.setContextMenu(Menu.buildFromTemplate(buildTrayContextMenu()));
+  },
   isAppSender: sender =>
     Boolean(
       (mainWindow && sender === mainWindow.webContents) ||
@@ -989,6 +991,75 @@ function setupTaskbarFeatures() {
       mainWindow.setProgressBar(-1);
     }
   });
+}
+
+// The static menu plus whatever tray items addons registered; rebuilt through
+// refreshTrayMenu whenever those change.
+function buildTrayContextMenu(): Electron.MenuItemConstructorOptions[] {
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: "YouTube Music Desktop",
+      type: "normal",
+      enabled: false
+    },
+    {
+      type: "separator"
+    },
+    {
+      label: "Show/Hide Window",
+      type: "normal",
+      click: () => {
+        if (mainWindow) {
+          if (mainWindow.isVisible()) {
+            mainWindow.hide();
+          } else {
+            mainWindow.show();
+          }
+        }
+      }
+    },
+    {
+      label: "Play/Pause",
+      type: "normal",
+      click: () => {
+        ytmView.webContents.send("remoteControl:execute", "playPause");
+      }
+    },
+    {
+      label: "Previous",
+      type: "normal",
+      click: () => {
+        ytmView.webContents.send("remoteControl:execute", "previous");
+      }
+    },
+    {
+      label: "Next",
+      type: "normal",
+      click: () => {
+        ytmView.webContents.send("remoteControl:execute", "next");
+      }
+    }
+  ];
+
+  const addonItems = addonManager.trayMenuItems();
+  if (addonItems.length > 0) {
+    template.push({ type: "separator" });
+    for (const item of addonItems) {
+      template.push({ label: item.label, type: "normal", enabled: item.enabled, click: item.click });
+    }
+  }
+
+  template.push(
+    { type: "separator" },
+    {
+      label: "Quit",
+      type: "normal",
+      click: () => {
+        app.quit();
+      }
+    }
+  );
+  return template;
 }
 
 function trayIconFileName(style: TrayIconStyle) {
@@ -2301,74 +2372,8 @@ app.on("ready", async () => {
 
   // Create the tray
   tray = new Tray(getTrayIconPath());
-  trayContextMenu = Menu.buildFromTemplate([
-    {
-      label: "YouTube Music Desktop",
-      type: "normal",
-      enabled: false
-    },
-    {
-      type: "separator"
-    },
-    {
-      label: "Show/Hide Window",
-      type: "normal",
-      click: () => {
-        if (mainWindow) {
-          if (mainWindow.isVisible()) {
-            mainWindow.hide();
-          } else {
-            mainWindow.show();
-          }
-        }
-      }
-    },
-    {
-      label: "Play/Pause",
-      type: "normal",
-      click: () => {
-        ytmView.webContents.send("remoteControl:execute", "playPause");
-      }
-    },
-    {
-      label: "Previous",
-      type: "normal",
-      click: () => {
-        ytmView.webContents.send("remoteControl:execute", "previous");
-      }
-    },
-    {
-      label: "Next",
-      type: "normal",
-      click: () => {
-        ytmView.webContents.send("remoteControl:execute", "next");
-      }
-    },
-    {
-      type: "separator"
-    },
-    {
-      label: "Listen Along",
-      type: "normal",
-      click: () => {
-        // Routed like a title bar badge click; a no-op while the rooms addon
-        // is disabled.
-        addonManager.handleBadgeClick("rooms");
-      }
-    },
-    {
-      type: "separator"
-    },
-    {
-      label: "Quit",
-      type: "normal",
-      click: () => {
-        app.quit();
-      }
-    }
-  ]);
   tray.setToolTip("YouTube Music Desktop");
-  tray.setContextMenu(trayContextMenu);
+  tray.setContextMenu(Menu.buildFromTemplate(buildTrayContextMenu()));
   tray.on("click", () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) {

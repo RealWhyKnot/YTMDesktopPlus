@@ -71,6 +71,11 @@ export type AddonSettingsSection = {
     title?: string;
     fields: AddonSettingsField[];
 };
+export type AddonTrayMenuItem = {
+    label: string;
+    enabled?: boolean;
+    click(): void;
+};
 export type AddonTitlebarBadge = {
     addonId: string;
     /** Material Symbols ligature name, like "headphones" */
@@ -465,5 +470,9 @@ export interface AddonContext {
     titlebar: {
         setBadge(badge: Omit<AddonTitlebarBadge, "addonId"> | null): void;
         onBadgeClick(callback: () => void): Unsubscribe;
+    };
+    tray: {
+        /** Replaces this addon's tray menu section; an empty list removes it */
+        setMenuItems(items: AddonTrayMenuItem[]): void;
     };
 }

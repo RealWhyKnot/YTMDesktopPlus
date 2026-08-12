@@ -8,6 +8,7 @@ import {
   type AddonManifest,
   type AddonSettingsSection,
   type AddonTitlebarBadge,
+  type AddonTrayMenuItem,
   type AddonWindowHandle,
   type CueResult,
   type PlayerEventMap,
@@ -95,6 +96,7 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
     badges: [] as (Omit<AddonTitlebarBadge, "addonId"> | null)[],
     deepLinks: {} as Record<string, (segments: string[], params: URLSearchParams) => void>,
     innertubeCalls: [] as { endpoint: string; body?: Record<string, unknown> }[],
+    trayItems: [] as AddonTrayMenuItem[],
     windows: [] as AddonWindowHandle[],
     notificationsShown: [] as { title: string; body?: string }[],
     cssRemoved: 0
@@ -258,6 +260,12 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       }),
       onBadgeClick: vi.fn(() => unsubscribe)
     },
+    tray: {
+      setMenuItems: vi.fn((items: AddonTrayMenuItem[]) => {
+        captured.trayItems = items;
+      })
+    },
+
     coreSettings: {
       get: <T>(dottedKey: string) => (options.coreSettings?.[dottedKey] ?? false) as T,
       onDidChange: vi.fn(() => unsubscribe)

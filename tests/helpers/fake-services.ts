@@ -111,6 +111,7 @@ export function fakeServices(persistedStates: Record<string, { enabled: boolean 
     },
     isAppSender: () => appSender,
     notify: vi.fn(),
+    refreshTrayMenu: vi.fn(),
     createWindow: vi.fn(() => {
       const window = fakeWindow();
       windows.push(window);

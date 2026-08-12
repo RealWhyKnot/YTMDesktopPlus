@@ -1,5 +1,5 @@
 import log from "electron-log";
-import type { AddonDescriptor, AddonManifest, AddonOrigin, AddonSettingsSection, AddonTitlebarBadge } from "~shared/addons/types";
+import type { AddonDescriptor, AddonManifest, AddonOrigin, AddonSettingsSection, AddonTitlebarBadge, AddonTrayMenuItem } from "~shared/addons/types";
 import { manifestSatisfiesApp } from "./validate-manifest";
 import { AddonHostServices, AddonHostWindow, AddonInstance, BundledAddonContext, createAddonContext, HOST_SCRIPT_NAMESPACE } from "./context";
 import innertubeRequestScript from "./scripts/innertube-request.script?raw";
@@ -31,6 +31,7 @@ export class AddonManager {
   private booted = false;
   private shutdownStarted = false;
   private titlebarBadges = new Map<string, AddonTitlebarBadge>();
+  private trayItems = new Map<string, AddonTrayMenuItem[]>();
   private windows = new Set<AddonHostWindow>();
 
   constructor(private services: AddonHostServices) {}
@@ -132,6 +133,7 @@ export class AddonManager {
               this.windows.add(window);
               window.once("closed", () => this.windows.delete(window));
             },
+            setTrayMenuItems: items => this.setTrayItems(manifest.id, items),
             reportError: (source, error) => this.reportRuntimeError(manifest.id, source, error)
           },
           addon.dir
@@ -213,6 +215,38 @@ export class AddonManager {
     if (badge === null) this.titlebarBadges.delete(id);
     else this.titlebarBadges.set(id, { ...badge, addonId: id });
     this.services.memoryStore.set("addonTitlebarBadges", [...this.titlebarBadges.values()]);
+  }
+
+  /** Replaces one addon's tray section and rebuilds the menu. */
+  public setTrayItems(id: string, items: AddonTrayMenuItem[]) {
+    if (items.length === 0) this.trayItems.delete(id);
+    else this.trayItems.set(id, items);
+    this.services.refreshTrayMenu();
+  }
+
+  /** Every addon's tray items in registration order, clicks contained. */
+  public trayMenuItems(): { label: string; enabled: boolean; click: () => void }[] {
+    const entries: { label: string; enabled: boolean; click: () => void }[] = [];
+    for (const addon of this.addons) {
+      const id = addon.definition.manifest.id;
+      const items = this.trayItems.get(id);
+      if (!items) continue;
+      for (const item of items) {
+        entries.push({
+          label: item.label,
+          enabled: item.enabled ?? true,
+          click: () => {
+            try {
+              item.click();
+            } catch (error) {
+              log.error(`Addon tray item failed: ${id}`, error);
+              this.reportRuntimeError(id, "tray.item", error);
+            }
+          }
+        });
+      }
+    }
+    return entries;
   }
 
   /** External addons run unsandboxed; the first enable asks the user once. */
