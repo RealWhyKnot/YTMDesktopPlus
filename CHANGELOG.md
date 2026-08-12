@@ -1,6 +1,28 @@
 # Changelog
 
 ## Unreleased
+- docs(addons): full authoring guide held to the real surface by tests
+- feat(addons): copy an addon's recent log lines from its card
+- feat(logging): scoped labels ride along in the log line format
+- feat(addons): live reload of external addons behind YTMD_ADDON_DEV
+- feat(addons): copyable template addon loaded through the real external pipeline
+- feat(addons): manifest homepage and api generation with warn-only checks
+- feat(addons): richer settings fields with string selects, number inputs and action buttons
+- feat(addons): page scripts registered after load reach the view live
+- feat(addons): tray menu items per addon, listen along entry moves to rooms
+- feat(addons): windows loading addon html through a namespaced preload bridge
+- feat(addons): innertube requests through one host page script
+- feat(addons): granular player events derived once from the snapshot stream
+- feat(addons): typed playback commands, named methods, queue and playlist access
+- fix(settings): addon settings registered after the window opens bind cleanly
+- fix(addons): removed stylesheets stop riding view reloads
+- fix(addons): callbacks are contained and recent runtime errors show on the card
+- fix(addons): quit waits for addon destroy work, capped at three seconds
+- fix(ipc): sender guards fail closed while their window is absent
+- fix(addons): addon windows count as app senders for their own ipc
+- style(tools): prettier over the harness scripts
+- test(addons): shared compiler-checked fakes and typecheck over tests and tools
+- feat(addons): self-contained sdk types emitted as ytmd-addon.d.ts
 - fix(logging): drive the renderer console spy ourselves and filter Chromium's noise
 - docs(readme): list ad blocking, phone playback and the boost, and drop the moved custom CSS line
 - docs(readme): swap the removed normalization line for the volume boost
