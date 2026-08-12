@@ -38,3 +38,10 @@ html, body, #app {
   font-family: 'Work Sans', sans-serif;
   overflow: hidden;
 }
+
+/* Root element of a window's body inside WindowShell. */
+.window-content {
+  border-top: 1px solid var(--border);
+  background-color: var(--bg);
+  height: calc(100% - var(--titlebar-height));
+}
