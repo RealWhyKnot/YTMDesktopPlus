@@ -189,6 +189,19 @@ describe("AddonContext", () => {
     expect(fixture.registeredScripts["addon:sample"]["enable"]).toBe("() => {}");
   });
 
+  it("serves innertube requests through the host page script", async () => {
+    const fixture = fakeServices();
+    const { ctx } = await bootWithContext(fixture);
+
+    expect(fixture.registeredScripts["addon-host"]["innertubeRequest"]).toContain("/youtubei/v1/");
+
+    await ctx.innertube.request("browse", { browseId: "FEmusic_history" });
+    expect(fixture.services.invokeYtmScript).toHaveBeenCalledWith("addon-host", "innertubeRequest", {
+      endpoint: "browse",
+      body: { browseId: "FEmusic_history" }
+    });
+  });
+
   it("runs loaded callbacks and contains one that throws", async () => {
     const fixture = fakeServices();
     const survivor = vi.fn();

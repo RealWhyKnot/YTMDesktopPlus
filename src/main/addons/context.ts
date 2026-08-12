@@ -23,6 +23,10 @@ import { AddonCssHandle, cssHandleFromFile } from "./css";
 
 export type { AddonContext, AddonInstance, AddonWindowHandle, AddonWindowOptions, Unsubscribe } from "~shared/addons/sdk";
 
+/** Namespace for page scripts the host registers itself; addon namespaces are
+ *  always addon:<id>, so this can never collide. */
+export const HOST_SCRIPT_NAMESPACE = "addon-host";
+
 /** The slice of the settings store the addon system needs. The real conf
  *  instance satisfies it; tests satisfy it with a plain object. */
 export interface AddonStore {
@@ -317,6 +321,12 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
         const unsubscribe = () => services.ipc.removeListener(fullChannel, guarded);
         bridge.addCleanup(unsubscribe);
         return unsubscribe;
+      }
+    },
+
+    innertube: {
+      request<T>(endpoint: string, body?: Record<string, unknown>) {
+        return services.invokeYtmScript(HOST_SCRIPT_NAMESPACE, "innertubeRequest", { endpoint, body }) as Promise<T>;
       }
     },
 

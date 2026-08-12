@@ -1,8 +1,7 @@
 import type { BundledAddonDefinition } from "../../../main/addons/manager";
 import { VideoState } from "../../../main/player-state-store";
-import { MirrorEngine, type Mirror, type RemoteTrack } from "./mirror-engine";
-import getHistoryScript from "./scripts/gethistory.script?raw";
-import getDurationScript from "./scripts/getduration.script?raw";
+import { MirrorEngine, type Mirror } from "./mirror-engine";
+import { extractDurationSeconds, extractHistoryHead } from "./history-parse";
 import bannerScript from "./scripts/banner.script?raw";
 
 const BANNER_CSS = `
@@ -79,8 +78,6 @@ const mobileBridgeAddon: BundledAddonDefinition = {
       }
     ]);
 
-    ctx.ytmview.registerScript("gethistory", getHistoryScript);
-    ctx.ytmview.registerScript("getduration", getDurationScript);
     ctx.ytmview.registerScript("banner", bannerScript);
     ctx.ytmview.insertCSS(BANNER_CSS);
 
@@ -115,14 +112,11 @@ const mobileBridgeAddon: BundledAddonDefinition = {
     });
 
     const engine = new MirrorEngine({
-      fetchHead: async () => {
-        const head = await ctx.ytmview.invokeScript("gethistory");
-        return Array.isArray(head) ? (head as RemoteTrack[]) : [];
-      },
-      fetchDuration: async videoId => {
-        const seconds = await ctx.ytmview.invokeScript("getduration", videoId);
-        return typeof seconds === "number" && seconds > 0 ? seconds : null;
-      },
+      // A track playing on any device on the account reaches the history head
+      // within seconds of starting (measured 2026-08-11). Read-only: it never
+      // joins, claims or controls a session.
+      fetchHead: async () => extractHistoryHead(await ctx.innertube.request("browse", { browseId: "FEmusic_history" })),
+      fetchDuration: async videoId => extractDurationSeconds(await ctx.innertube.request("player", { videoId })),
       onChange: next => {
         mirror = next;
         if (next) ctx.log.info(`Mirroring phone playback: ${next.track.title}`);

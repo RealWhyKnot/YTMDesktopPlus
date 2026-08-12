@@ -20,7 +20,7 @@ const bundledAddonScriptDirectories = readdirSync("src/addons/bundled", { withFi
   .map(entry => join("src/addons/bundled", entry.name, "scripts"))
   .filter(directory => existsSync(directory));
 
-const scriptDirectories = ["src/renderer/ytmview/scripts", ...integrationScriptDirectories, ...bundledAddonScriptDirectories];
+const scriptDirectories = ["src/renderer/ytmview/scripts", "src/main/addons/scripts", ...integrationScriptDirectories, ...bundledAddonScriptDirectories];
 
 const scripts = scriptDirectories.flatMap(directory =>
   readdirSync(directory)

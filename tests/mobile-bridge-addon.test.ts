@@ -4,15 +4,37 @@ import mobileBridgeAddon from "../src/addons/bundled/mobile-bridge";
 import { VideoState } from "../src/main/player-state-store";
 import { fakeAddonContext, makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
 
-function fakeContext(overrides: { settings?: Record<string, unknown>; history?: unknown } = {}) {
+const phoneTrack = {
+  videoId: "phone1",
+  title: "Phone Song",
+  author: "Phone Artist",
+  thumbnailUrl: "https://example.invalid/a.jpg",
+  durationSeconds: null as number | null
+};
+
+// The raw browse-response shape extractHistoryHead reads back into rows.
+function browseResponse(tracks: (typeof phoneTrack)[]) {
+  return {
+    contents: tracks.map(track => ({
+      musicResponsiveListItemRenderer: {
+        playlistItemData: { videoId: track.videoId },
+        flexColumns: [
+          { musicResponsiveListItemFlexColumnRenderer: { text: { runs: [{ text: track.title }] } } },
+          { musicResponsiveListItemFlexColumnRenderer: { text: { runs: [{ text: track.author }] } } }
+        ],
+        thumbnail: { musicThumbnailRenderer: { thumbnail: { thumbnails: [{ url: track.thumbnailUrl }] } } }
+      }
+    }))
+  };
+}
+
+function fakeContext(overrides: { settings?: Record<string, unknown>; history?: (typeof phoneTrack)[] } = {}) {
   return fakeAddonContext({
     manifest: mobileBridgeAddon.manifest,
     settings: { discordMirrorEnabled: true, ...overrides.settings },
-    invokeScript: name => (name === "gethistory" ? Promise.resolve(overrides.history ?? []) : Promise.resolve(true))
+    innertube: endpoint => (endpoint === "browse" ? Promise.resolve(browseResponse(overrides.history ?? [])) : Promise.resolve({}))
   });
 }
-
-const phoneTrack = { videoId: "phone1", title: "Phone Song", author: "Phone Artist", thumbnailUrl: "https://example.invalid/a.jpg" };
 
 describe("mobile-bridge bundled addon", () => {
   afterEach(() => {
@@ -30,7 +52,6 @@ describe("mobile-bridge bundled addon", () => {
     const instance = (await mobileBridgeAddon.activate(ctx)) as AddonInstance | undefined;
 
     expect(ctx.settings.registerDefaults).toHaveBeenCalledWith({ discordMirrorEnabled: true });
-    expect(ctx.ytmview.registerScript).toHaveBeenCalledWith("gethistory", expect.any(String));
     expect(ctx.ytmview.registerScript).toHaveBeenCalledWith("banner", expect.any(String));
     expect(ctx.ytmview.insertCSS).toHaveBeenCalledTimes(1);
     expect(ctx.discord.registerRemoteActivityProvider).toHaveBeenCalledTimes(1);

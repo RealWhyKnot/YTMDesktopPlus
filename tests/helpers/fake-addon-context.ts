@@ -68,6 +68,8 @@ export type FakeAddonContextOptions = {
   coreSettings?: Record<string, unknown>;
   /** Resolves invokeScript calls; defaults to resolving true */
   invokeScript?: (name: string, arg?: unknown) => Promise<unknown>;
+  /** Resolves innertube requests; defaults to resolving an empty object */
+  innertube?: (endpoint: string, body?: Record<string, unknown>) => Promise<unknown>;
 };
 
 /** A complete, compiler-checked context double. The object literal is typed
@@ -78,6 +80,7 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
   const settings: Record<string, unknown> = { ...options.settings };
   const unsubscribe = vi.fn();
   const invoke = options.invokeScript ?? (async () => true);
+  const innertube = options.innertube ?? (async () => ({}));
 
   const captured = {
     scripts: {} as Record<string, string>,
@@ -91,6 +94,7 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
     buttonsProviders: [] as ((trackShareUrl: string) => { label: string; url: string }[] | undefined)[],
     badges: [] as (Omit<AddonTitlebarBadge, "addonId"> | null)[],
     deepLinks: {} as Record<string, (segments: string[], params: URLSearchParams) => void>,
+    innertubeCalls: [] as { endpoint: string; body?: Record<string, unknown> }[],
     windows: [] as AddonWindowHandle[],
     notificationsShown: [] as { title: string; body?: string }[],
     cssRemoved: 0
@@ -211,6 +215,13 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       handle: vi.fn(() => unsubscribe),
       on: vi.fn(() => unsubscribe)
     },
+    innertube: {
+      request: vi.fn((endpoint: string, body?: Record<string, unknown>) => {
+        captured.innertubeCalls.push({ endpoint, body });
+        return innertube(endpoint, body);
+      }) as BundledAddonContext["innertube"]["request"]
+    },
+
     notifications: {
       show: vi.fn((options: { title: string; body?: string }) => {
         captured.notificationsShown.push(options);

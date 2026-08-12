@@ -1,7 +1,8 @@
 import log from "electron-log";
 import type { AddonDescriptor, AddonManifest, AddonOrigin, AddonSettingsSection, AddonTitlebarBadge } from "~shared/addons/types";
 import { manifestSatisfiesApp } from "./validate-manifest";
-import { AddonHostServices, AddonHostWindow, AddonInstance, BundledAddonContext, createAddonContext } from "./context";
+import { AddonHostServices, AddonHostWindow, AddonInstance, BundledAddonContext, createAddonContext, HOST_SCRIPT_NAMESPACE } from "./context";
+import innertubeRequestScript from "./scripts/innertube-request.script?raw";
 import type { AddonCssHandle } from "./css";
 import { buildExternalDefinition, type ExternalAddonScan } from "./external-loader";
 
@@ -85,6 +86,8 @@ export class AddonManager {
    *  its descriptor and never interrupts boot or its neighbours. */
   public async boot() {
     this.booted = true;
+    // Host-side page scripts every addon shares, in place before any activate.
+    this.services.registerYtmScript(HOST_SCRIPT_NAMESPACE, "innertubeRequest", innertubeRequestScript);
     for (const addon of this.addons) {
       const { manifest } = addon.definition;
       if (addon.scanError) {

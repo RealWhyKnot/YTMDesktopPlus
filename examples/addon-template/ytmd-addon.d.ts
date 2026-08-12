@@ -397,6 +397,13 @@ export interface AddonContext {
             title: string;
         }[]>;
     };
+    /** InnerTube (music.youtube.com/youtubei/v1) with the page's own signed-in
+     *  session. Unofficial API: response shapes can change at any time. Common
+     *  endpoints: "browse", "player", "search", "next". Requires a signed-in
+     *  page; rides the page-script pipeline with its 30s timeout. */
+    innertube: {
+        request<T = unknown>(endpoint: string, body?: Record<string, unknown>): Promise<T>;
+    };
     /** Channels are namespaced per addon: a renderer reaches this addon at
      *  addon:<id>:<channel>. */
     ipc: {
