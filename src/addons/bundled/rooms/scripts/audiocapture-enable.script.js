@@ -42,7 +42,7 @@
     }
   });
 
-  const onVolumeChange = () => window.ytmd.sendAudioCaptureStatus({ muted: video.muted });
+  const onVolumeChange = () => window.ytmd.postAddonMessage("rooms", "captureStatus", { muted: video.muted });
   video.addEventListener("volumechange", onVolumeChange);
 
   // The shared context runs at the device rate, which Opus may not accept, so
@@ -78,7 +78,7 @@
       state.pending.push({ t: chunk.timestamp, d: data });
     },
     error: err => {
-      window.ytmd.sendAudioCaptureStatus({ error: String(err) });
+      window.ytmd.postAddonMessage("rooms", "captureStatus", { error: String(err) });
     }
   });
   state.encoder.configure({ codec: "opus", sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 });
@@ -106,9 +106,9 @@
     const packets = state.pending;
     state.pending = [];
     state.batchesSent += 1;
-    window.ytmd.sendAudioChunks(packets);
+    window.ytmd.postAddonMessage("rooms", "audioChunks", packets);
   }, 250);
 
-  window.ytmd.sendAudioCaptureStatus({ cfg: { sr: 48000, ch: 2, br: 128000 }, muted: video.muted });
+  window.ytmd.postAddonMessage("rooms", "captureStatus", { cfg: { sr: 48000, ch: 2, br: 128000 }, muted: video.muted });
   return "";
 })

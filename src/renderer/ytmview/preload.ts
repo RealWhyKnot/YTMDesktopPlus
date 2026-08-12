@@ -44,9 +44,9 @@ contextBridge.exposeInMainWorld("ytmd", {
     ipcRenderer.send("ytmView:storeStateChanged", queueState, likeStatus, volume, muted, adPlaying),
   sendCreatePlaylistObservation: (playlist: unknown) => ipcRenderer.send("ytmView:createPlaylistObserved", playlist),
   sendDeletePlaylistObservation: (playlistId: string) => ipcRenderer.send("ytmView:deletePlaylistObserved", playlistId),
-  sendAudioChunks: (packets: { t: number; d: ArrayBuffer }[]) => ipcRenderer.send("ytmView:audioChunks", packets),
-  sendAudioCaptureStatus: (status: { cfg?: { sr: number; ch: number; br: number }; muted?: boolean; error?: string }) =>
-    ipcRenderer.send("ytmView:audioCaptureStatus", status),
+  // Page scripts push to their addon's main-process half; delivery lands on
+  // the addon's ctx.ytmview.onMessage(name) callbacks.
+  postAddonMessage: (addonId: string, name: string, payload?: unknown) => ipcRenderer.send("ytmView:addonMessage", addonId, name, payload),
   ...(YTMD_DEV_TOOLS ? { sendDevProbe: (batch: unknown[]) => ipcRenderer.send("ytmView:devProbe", batch) } : {})
 });
 

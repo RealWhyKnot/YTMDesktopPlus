@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import roomsAddon from "../src/addons/bundled/rooms";
+import { cleanAudioPackets } from "../src/addons/bundled/rooms/audio-capture";
 import { fakeAddonContext } from "./helpers/fake-addon-context";
 
 describe("rooms bundled addon", () => {
@@ -37,5 +38,28 @@ describe("rooms bundled addon", () => {
 
     expect(ctx.ytmview.registerScript).toHaveBeenCalledWith("enable", expect.any(String));
     expect(ctx.ytmview.registerScript).toHaveBeenCalledWith("disable", expect.any(String));
+  });
+
+  it("listens for the capture traffic its page script posts", async () => {
+    const { ctx, captured } = fakeAddonContext({ manifest: roomsAddon.manifest });
+    await roomsAddon.activate(ctx);
+
+    expect(Object.keys(captured.messageCallbacks).sort()).toEqual(["audioChunks", "captureStatus"]);
+    // Malformed payloads never reach the publisher.
+    expect(() => captured.messageCallbacks["audioChunks"][0]("not packets")).not.toThrow();
+    expect(() => captured.messageCallbacks["captureStatus"][0](null)).not.toThrow();
+  });
+});
+
+describe("cleanAudioPackets", () => {
+  it("keeps well formed packets and drops the rest", () => {
+    const good = { t: 12, d: new ArrayBuffer(4) };
+    const cleaned = cleanAudioPackets([good, { t: "x", d: new ArrayBuffer(1) }, { t: 1 }, null]);
+    expect(cleaned).toHaveLength(1);
+    expect(cleaned[0].timestampUs).toBe(12);
+    expect(cleaned[0].payload).toBeInstanceOf(Uint8Array);
+
+    expect(cleanAudioPackets("nope")).toEqual([]);
+    expect(cleanAudioPackets(undefined)).toEqual([]);
   });
 });

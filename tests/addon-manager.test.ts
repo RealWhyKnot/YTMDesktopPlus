@@ -19,6 +19,7 @@ function nullBridge(): AddonHostBridge {
     setTitlebarBadge: () => {},
     addBadgeClickCallback: () => () => {},
     addActionCallback: () => () => {},
+    addMessageCallback: () => () => {},
     setTrayMenuItems: () => {},
     addWindow: () => {},
     reportError: () => {}
@@ -290,6 +291,25 @@ describe("AddonContext", () => {
     const registered = (fixture.services.player.addEventListener as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(() => registered({})).not.toThrow();
     expect(manager.descriptors()[0].lastError).toContain("state handler down");
+  });
+
+  it("routes page messages to the addon and contains a throwing handler", async () => {
+    const fixture = fakeServices();
+    const { manager, ctx } = await bootWithContext(fixture);
+    const seen: unknown[] = [];
+    ctx.ytmview.onMessage("ping", payload => seen.push(payload));
+    ctx.ytmview.onMessage("broken", () => {
+      throw new Error("message boom");
+    });
+
+    expect(manager.handleViewMessage("sample", "ping", { value: 1 })).toBe(true);
+    expect(seen).toEqual([{ value: 1 }]);
+
+    expect(manager.handleViewMessage("sample", "silent", null)).toBe(false);
+    expect(manager.handleViewMessage("other", "ping", null)).toBe(false);
+
+    expect(() => manager.handleViewMessage("sample", "broken", null)).not.toThrow();
+    expect(manager.descriptors()[0].lastError).toContain("message boom");
   });
 
   it("serves discord enablement through the services bag", async () => {

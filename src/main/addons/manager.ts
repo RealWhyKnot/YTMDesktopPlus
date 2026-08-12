@@ -22,6 +22,7 @@ type ManagedAddon = {
   cleanups: (() => void)[];
   badgeClickCallbacks: (() => void)[];
   actionCallbacks: Map<string, (() => void)[]>;
+  messageCallbacks: Map<string, ((payload: unknown) => void)[]>;
   windows: AddonHostWindow[];
   /** External addons only: the folder file windows resolve against */
   dir?: string;
@@ -55,6 +56,7 @@ export class AddonManager {
         cleanups: [],
         badgeClickCallbacks: [],
         actionCallbacks: new Map(),
+        messageCallbacks: new Map(),
         windows: []
       });
     }
@@ -88,6 +90,7 @@ export class AddonManager {
         cleanups: [],
         badgeClickCallbacks: [],
         actionCallbacks: new Map(),
+        messageCallbacks: new Map(),
         windows: [],
         dir: scan.dir,
         scanError: conflict ? "id conflicts with an installed addon" : scan.error
@@ -168,6 +171,17 @@ export class AddonManager {
               );
             };
           },
+          addMessageCallback: (name, callback) => {
+            const list = addon.messageCallbacks.get(name) ?? [];
+            list.push(callback);
+            addon.messageCallbacks.set(name, list);
+            return () => {
+              addon.messageCallbacks.set(
+                name,
+                (addon.messageCallbacks.get(name) ?? []).filter(cb => cb !== callback)
+              );
+            };
+          },
           setTrayMenuItems: items => this.setTrayItems(manifest.id, items),
           reportError: (source, error) => this.reportRuntimeError(manifest.id, source, error)
         },
@@ -213,6 +227,7 @@ export class AddonManager {
     addon.loadedCallbacks = [];
     addon.badgeClickCallbacks = [];
     addon.actionCallbacks.clear();
+    addon.messageCallbacks.clear();
     this.setTitlebarBadge(id, null);
     this.setTrayItems(id, []);
     addon.descriptor.settingsSections = [];
@@ -369,6 +384,23 @@ export class AddonManager {
       } catch (error) {
         log.error(`Addon badge click failed: ${id}`, error);
         this.reportRuntimeError(id, "titlebar.onBadgeClick", error);
+      }
+    }
+    return true;
+  }
+
+  /** A page script posted to its addon; returns whether anything listened. */
+  public handleViewMessage(id: string, name: string, payload: unknown): boolean {
+    const addon = this.addons.find(entry => entry.definition.manifest.id === id);
+    if (!addon || addon.descriptor.state !== "active") return false;
+    const callbacks = addon.messageCallbacks.get(name);
+    if (!callbacks || callbacks.length === 0) return false;
+    for (const callback of callbacks) {
+      try {
+        callback(payload);
+      } catch (error) {
+        log.error(`Addon view message failed: ${id}/${name}`, error);
+        this.reportRuntimeError(id, `ytmview.onMessage(${name})`, error);
       }
     }
     return true;

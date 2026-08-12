@@ -45,9 +45,6 @@ import VolumeRatio from "./integrations/volume-ratio";
 import NonStop from "./integrations/nonstop";
 import AdBlocker from "./integrations/ad-blocker";
 import ListenAlong from "./integrations/listen-along";
-import type { AudioCaptureStatus } from "./integrations/listen-along/audio-publisher";
-import { getRoomsAudioSink } from "../addons/bundled/rooms/audio-sink";
-import type { BatchPacket } from "~shared/audio-protocol";
 import { initializeTestSeams, isTestRun } from "./test-seams";
 import { migrateLegacyProfile } from "./profile-migration";
 import { cancelCue, cueTrack, getPlaylists, providePlaybackView, sendPlaybackCommand } from "./playback";
@@ -2100,23 +2097,11 @@ app.on("ready", async () => {
     playerStateStore.updateFromStore(queue, likeStatus, volume, muted, adPlaying);
   });
 
-  ipcMain.on("ytmView:audioChunks", (event, packets: { t: number; d: ArrayBuffer }[]) => {
-    if (event.sender !== ytmView.webContents) return;
-    if (!Array.isArray(packets)) return;
+  ipcMain.on("ytmView:addonMessage", (event, addonId: string, name: string, payload: unknown) => {
+    if (!isYtmViewSender(event.sender)) return;
+    if (typeof addonId !== "string" || typeof name !== "string") return;
 
-    const cleaned: BatchPacket[] = [];
-    for (const packet of packets) {
-      if (typeof packet?.t !== "number" || !(packet.d instanceof ArrayBuffer)) continue;
-      cleaned.push({ timestampUs: packet.t, payload: new Uint8Array(packet.d) });
-    }
-    if (cleaned.length > 0) getRoomsAudioSink()?.handleChunks(cleaned);
-  });
-
-  ipcMain.on("ytmView:audioCaptureStatus", (event, status: AudioCaptureStatus) => {
-    if (event.sender !== ytmView.webContents) return;
-    if (typeof status !== "object" || status === null) return;
-
-    getRoomsAudioSink()?.handleCaptureStatus(status);
+    addonManager.handleViewMessage(addonId, name, payload);
   });
 
   ipcMain.on("ytmView:launchPauseArmed", (event, videoId: string, wasMuted: boolean) => {

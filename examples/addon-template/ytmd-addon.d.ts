@@ -400,6 +400,9 @@ export interface AddonContext {
          *  missing view, or a 30s timeout. */
         invokeScript(name: string, arg?: unknown): Promise<unknown>;
         onLoaded(callback: () => void): Unsubscribe;
+        /** Delivery for messages page scripts post through
+         *  window.ytmd.postAddonMessage(addonId, name, payload). */
+        onMessage(name: string, callback: (payload: unknown) => void): Unsubscribe;
         insertCSS(css: string): AddonCssHandle;
         watchCSSFile(filePath: string): AddonCssHandle;
     };

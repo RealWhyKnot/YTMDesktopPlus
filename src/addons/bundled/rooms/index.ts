@@ -1,13 +1,12 @@
 import { isRoomId, isRoomLive, otherListenerCount, type RoomSnapshot } from "~shared/room-protocol";
 import type { BundledAddonDefinition } from "../../../main/addons/manager";
 import type { AddonWindowHandle } from "../../../main/addons/context";
-import AudioStreamCapture from "./audio-capture";
-import { AudioPublisher, AudioRelayClient } from "../../../main/integrations/listen-along/audio-publisher";
+import AudioStreamCapture, { cleanAudioPackets } from "./audio-capture";
+import { AudioPublisher, AudioRelayClient, type AudioCaptureStatus } from "../../../main/integrations/listen-along/audio-publisher";
 import { AutoRoom } from "../../../main/integrations/listen-along/auto-room";
 import { RelayClient } from "../../../main/integrations/listen-along/relay-client";
 import { RoomSession } from "../../../main/integrations/listen-along/room-session";
 import { registerRoomIpc } from "./ipc";
-import { setAudioSink } from "./audio-sink";
 
 // Listen Along rooms as a bundled addon: hosting and joining relay rooms, the
 // audio stream to browser listeners, the automatic room that follows Discord
@@ -186,9 +185,14 @@ const roomsAddon: BundledAddonDefinition = {
       autoRoom.evaluate();
     });
 
-    setAudioSink({
-      handleChunks: packets => audioPublisher.handleChunks(packets),
-      handleCaptureStatus: status => audioPublisher.handleCaptureStatus(status)
+    // Encoded capture traffic the page script posts to this addon.
+    ctx.ytmview.onMessage("audioChunks", payload => {
+      const cleaned = cleanAudioPackets(payload);
+      if (cleaned.length > 0) audioPublisher.handleChunks(cleaned);
+    });
+    ctx.ytmview.onMessage("captureStatus", status => {
+      if (typeof status !== "object" || status === null) return;
+      audioPublisher.handleCaptureStatus(status as AudioCaptureStatus);
     });
 
     registerRoomIpc(ctx.ipc, {
@@ -219,7 +223,6 @@ const roomsAddon: BundledAddonDefinition = {
 
     return {
       destroy() {
-        setAudioSink(null);
         roomSession.leave();
         windowHandle?.close();
       }

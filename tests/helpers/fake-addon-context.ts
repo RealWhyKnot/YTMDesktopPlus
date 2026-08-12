@@ -87,6 +87,7 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
     scripts: {} as Record<string, string>,
     invocations: [] as { name: string; arg: unknown }[],
     loadedCallbacks: [] as (() => void)[],
+    messageCallbacks: {} as Record<string, ((payload: unknown) => void)[]>,
     stateListeners: [] as ((state: PlayerState) => void)[],
     eventListeners: {} as Record<string, ((payload: unknown) => void)[]>,
     settingsListeners: {} as Record<string, (next?: unknown, prev?: unknown) => void>,
@@ -180,6 +181,10 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       }),
       onLoaded: vi.fn((callback: () => void) => {
         captured.loadedCallbacks.push(callback);
+        return unsubscribe;
+      }),
+      onMessage: vi.fn((name: string, callback: (payload: unknown) => void) => {
+        (captured.messageCallbacks[name] ??= []).push(callback);
         return unsubscribe;
       }),
       insertCSS: vi.fn(() => cssHandle()),
@@ -299,6 +304,9 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
     },
     emitPlayerEvent<K extends PlayerEventName>(event: K, payload: PlayerEventMap[K]) {
       for (const listener of captured.eventListeners[event] ?? []) listener(payload);
+    },
+    emitViewMessage(name: string, payload: unknown) {
+      for (const listener of captured.messageCallbacks[name] ?? []) listener(payload);
     }
   };
 }
