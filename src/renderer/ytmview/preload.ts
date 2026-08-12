@@ -17,9 +17,11 @@ import { mergeScript, type ScriptTable } from "./script-table";
 import playerBarControlsScript from "./scripts/playerbarcontrols.script?raw";
 import hookPlayerApiEventsScript from "./scripts/hookplayerapievents.script?raw";
 import getPlaylistsScript from "./scripts/getplaylists.script?raw";
-import toggleLikeScript from "./scripts/togglelike.script?raw";
-import toggleDislikeScript from "./scripts/toggledislike.script?raw";
+import toggleRatingScript from "./scripts/togglerating.script?raw";
 import devProbeScript from "./scripts/devprobe.script?raw";
+
+const toggleLikeScript = toggleRatingScript.replaceAll("__RATING__", "LIKE").replaceAll("__OPPOSITE__", "DISLIKE");
+const toggleDislikeScript = toggleRatingScript.replaceAll("__RATING__", "DISLIKE").replaceAll("__OPPOSITE__", "LIKE");
 
 // Compiled to a literal by Vite: true in development and local sideload builds,
 // false (so the branches below are dropped) in published beta and release

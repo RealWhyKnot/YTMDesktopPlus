@@ -3,13 +3,13 @@
 
   const videoId = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.getPlayerResponse().videoDetails.videoId;
   const likeButtonData = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").querySelector("ytmusic-like-button-renderer").data;
-  
-  let likeServiceEndpoint = null;
+
+  let targetServiceEndpoint = null;
   let indifferentServiceEndpoint = null;
 
   for (const endpoint of likeButtonData.serviceEndpoints) {
-    if (endpoint.likeEndpoint.status === "LIKE") {
-      likeServiceEndpoint = endpoint;
+    if (endpoint.likeEndpoint.status === "__RATING__") {
+      targetServiceEndpoint = endpoint;
     } else if (endpoint.likeEndpoint.status === "INDIFFERENT") {
       indifferentServiceEndpoint = endpoint;
     }
@@ -23,7 +23,7 @@
 
   const likeStatus = storeLikeStatus ? state.likeStatus.videos[videoId] : defaultLikeStatus;
 
-  if (likeStatus === "LIKE") {
+  if (likeStatus === "__RATING__") {
     serviceEvent = {
       bubbles: true,
       cancelable: false,
@@ -38,7 +38,7 @@
         returnValue: []
       }
     };
-  } else if (likeStatus === "DISLIKE" || likeStatus === "INDIFFERENT") {
+  } else if (likeStatus === "__OPPOSITE__" || likeStatus === "INDIFFERENT") {
     serviceEvent = {
       bubbles: true,
       cancelable: false,
@@ -47,7 +47,7 @@
         actionName: "yt-service-request",
         args: [
           document.querySelector("ytmusic-like-button-renderer"),
-          likeServiceEndpoint
+          targetServiceEndpoint
         ],
         optionalAction: false,
         returnValue: []
