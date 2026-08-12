@@ -18,15 +18,8 @@ export const BATCH_HEADER_BYTES = 16;
 export const PACKET_HEADER_BYTES = 6;
 export const MAX_BATCH_BYTES = 32768;
 export const BATCH_FLAG_DISCONTINUITY = 1;
-export const BATCH_MS = 250;
-
-export const AUDIO_SAMPLE_RATE = 48000;
-export const AUDIO_CHANNELS = 2;
-export const AUDIO_BITRATE = 128000;
 
 export const MAX_AUDIO_TEXT_FRAME = 4096;
-export const MAX_META_TEXT_LENGTH = 200;
-export const MAX_COVER_URL_LENGTH = 512;
 
 export type AudioStatus = "live" | "ad" | "muted";
 

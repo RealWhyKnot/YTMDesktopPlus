@@ -7,8 +7,6 @@
 // on the wire. While paused, `a` is the frozen position in milliseconds and
 // `p` says which reading applies.
 
-export const ROOM_PROTOCOL_VERSION = 1;
-
 export const RELAY_URL = "wss://ytmdesktopplus.com/relay";
 export const SHARE_URL_BASE = "https://ytmdesktopplus.com/r/";
 
