@@ -1,0 +1,12 @@
+{
+  "id": "addon-template",
+  "name": "Addon template",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "A working starting point: a badge, settings, a page script and styles. Copy, rename, make it yours.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/addons.md",
+  "apiVersion": 1,
+  "main": "index.js",
+  "styles": ["styles.css"],
+  "ytmScripts": ["page.script.js"]
+}

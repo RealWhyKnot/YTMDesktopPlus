@@ -22,11 +22,23 @@ const bundledAddonScriptDirectories = readdirSync("src/addons/bundled", { withFi
 
 const scriptDirectories = ["src/renderer/ytmview/scripts", "src/main/addons/scripts", ...integrationScriptDirectories, ...bundledAddonScriptDirectories];
 
-const scripts = scriptDirectories.flatMap(directory =>
-  readdirSync(directory)
-    .filter(name => name.endsWith(".js"))
-    .map(name => ({ path: join(directory, name) }))
-);
+// Example addons declare their page scripts in manifest.json; hold them to
+// the same bare-function rule so copied templates start out correct.
+const exampleScripts = readdirSync("examples", { withFileTypes: true })
+  .filter(entry => entry.isDirectory())
+  .flatMap(entry => {
+    const manifest = JSON.parse(readFileSync(join("examples", entry.name, "manifest.json"), "utf8")) as { ytmScripts?: string[] };
+    return (manifest.ytmScripts ?? []).map(script => ({ path: join("examples", entry.name, script) }));
+  });
+
+const scripts = [
+  ...scriptDirectories.flatMap(directory =>
+    readdirSync(directory)
+      .filter(name => name.endsWith(".js"))
+      .map(name => ({ path: join(directory, name) }))
+  ),
+  ...exampleScripts
+];
 
 describe("injected scripts", () => {
   it("finds the scripts to check", () => {
