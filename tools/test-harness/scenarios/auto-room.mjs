@@ -12,7 +12,7 @@ export const fixture = {
     continueWhereYouLeftOffPaused: false,
     enableSpeakerFill: false,
     progressInTaskbar: false,
-    ratioVolume: false,
+    ratioVolume: false
   },
   integrations: {
     companionServerEnabled: false,

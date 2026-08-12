@@ -45,10 +45,7 @@ if (!scenarioName) {
 
 const scenario = await import(`./scenarios/${scenarioName}.mjs`);
 const startedAt = Date.now();
-const stamp = new Date(startedAt)
-  .toISOString()
-  .replaceAll(/[:.]/g, "-")
-  .slice(0, 19);
+const stamp = new Date(startedAt).toISOString().replaceAll(/[:.]/g, "-").slice(0, 19);
 const runDir = path.join(HARNESS_DIR, "runs", `${stamp}-${scenarioName}`);
 const profileDir = path.join(runDir, "profile");
 mkdirSync(profileDir, { recursive: true });
@@ -134,8 +131,7 @@ if (seedProfile) {
   }
   const merged = { ...seededConfig };
   for (const [section, values] of Object.entries(scenario.fixture ?? {})) {
-    merged[section] =
-      values && typeof values === "object" && !Array.isArray(values) ? { ...(seededConfig[section] ?? {}), ...values } : values;
+    merged[section] = values && typeof values === "object" && !Array.isArray(values) ? { ...(seededConfig[section] ?? {}), ...values } : values;
   }
   writeFileSync(configPath, JSON.stringify(merged, null, 2));
   emit("profile-seeded", { from: seedProfile });

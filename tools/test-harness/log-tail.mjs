@@ -52,7 +52,12 @@ export function grepFile(file, pattern) {
     const buffer = Buffer.alloc(size);
     readSync(fd, buffer, 0, size, 0);
     closeSync(fd);
-    return buffer.toString("utf8").split(/\r?\n/).find(line => pattern.test(line)) ?? null;
+    return (
+      buffer
+        .toString("utf8")
+        .split(/\r?\n/)
+        .find(line => pattern.test(line)) ?? null
+    );
   } catch {
     return null;
   }
