@@ -1,4 +1,5 @@
 import { EventEmitter } from "events";
+import log from "electron-log";
 import {
   LikeStatus,
   RepeatMode,
@@ -228,7 +229,7 @@ class PlayerStateStore {
 
   constructor() {
     this.eventEmitter.on("error", error => {
-      console.log("PlayerStateStore EventEmitter threw an error", error);
+      log.error("PlayerStateStore EventEmitter threw an error", error);
     });
   }
 

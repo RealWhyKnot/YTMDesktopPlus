@@ -1,4 +1,5 @@
 import EventEmitter from "events";
+import log from "electron-log";
 
 export default class MemoryStore<T extends Record<string, unknown>> {
   private state: Record<string, unknown>;
@@ -7,7 +8,7 @@ export default class MemoryStore<T extends Record<string, unknown>> {
   constructor() {
     this.state = {};
     this.eventEmitter.on("error", error => {
-      console.log("MemoryStore EventEmitter threw an error", error);
+      log.error("MemoryStore EventEmitter threw an error", error);
     });
   }
 

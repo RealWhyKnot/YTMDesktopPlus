@@ -166,7 +166,7 @@ export default class LastFM implements IIntegration {
           break;
 
         default:
-          console.error(error);
+          log.error(error);
       }
     });
   }
