@@ -86,7 +86,7 @@ export function setupTaskbarFeatures(deps: TaskbarDeps): void {
       }
     }
 
-    if (mainWindow && store.get("playback.progressInTaskbar")) {
+    if (mainWindow && store.get("playback").progressInTaskbar) {
       mainWindow.setProgressBar(hasVideo ? state.videoProgress / state.videoDetails.durationSeconds : -1, {
         mode: isPlaying ? "normal" : "paused"
       });

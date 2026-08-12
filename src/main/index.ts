@@ -444,7 +444,7 @@ const addonManager: AddonManager = new AddonManager({
           ? path.join(__dirname, "../renderer/windows/addon/preload.js")
           : path.join(__dirname, `../renderer/windows/${options.entry}/preload.js`),
         additionalArguments: options.filePath ? [`--ytmd-addon-id=${options.addonId}`] : undefined,
-        devTools: store.get("developer.enableDevTools")
+        devTools: store.get("developer").enableDevTools
       }
     });
     addonWindow.on("ready-to-show", () => addonWindow.show());
@@ -731,7 +731,7 @@ const createOrShowSettingsWindow = (): void => {
     openExternalUrls: ["https://github.com/RealWhyKnot/YTMDesktopPlus"],
     webPreferences: {
       preload: path.join(__dirname, `../renderer/windows/settings/preload.js`),
-      devTools: store.get("developer.enableDevTools")
+      devTools: store.get("developer").enableDevTools
     }
   });
 
@@ -867,7 +867,7 @@ const createYTMView = (): void => {
     }
   });
   ytmView.webContents.on("context-menu", (_event, params) => {
-    if (store.get("developer.enableDevTools")) {
+    if (store.get("developer").enableDevTools) {
       Menu.buildFromTemplate([
         {
           label: "YouTube Music Desktop",
@@ -957,9 +957,9 @@ const createYTMView = (): void => {
 
   let navigateDefault = true;
 
-  const continueWhereYouLeftOff: boolean = store.get("playback.continueWhereYouLeftOff");
+  const continueWhereYouLeftOff: boolean = store.get("playback").continueWhereYouLeftOff;
   if (continueWhereYouLeftOff) {
-    const lastUrl: string = store.get("state.lastUrl");
+    const lastUrl: string = store.get("state").lastUrl;
     if (lastUrl) {
       if (lastUrl.startsWith("https://music.youtube.com/")) {
         ytmView.webContents.loadURL(lastUrl);
@@ -993,7 +993,7 @@ const createMainWindow = (): void => {
     icon: getIconPath("ytmd.png"),
     webPreferences: {
       preload: path.join(__dirname, `../renderer/windows/main/preload.js`),
-      devTools: store.get("developer.enableDevTools")
+      devTools: store.get("developer").enableDevTools
     }
   });
   const windowMaximized = store.get("state").windowMaximized;
