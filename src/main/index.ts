@@ -53,6 +53,7 @@ import { createDeepLinkRouter, findProtocolUrl } from "./deep-links";
 import { anyShortcutChanged, createShortcutRegistrar } from "./shortcuts";
 import { createTrayController } from "./tray";
 import { setupTaskbarFeatures } from "./taskbar";
+import { enableIntegrationsAtBoot, syncIntegrations, type IntegrationRegistration } from "./integrations/lifecycle";
 import { buildUpdateFeedUrl, isNewerVersion } from "../shared/update-feed";
 
 // Injected by Forge's Vite plugin; empty in packaged builds.
@@ -485,6 +486,50 @@ if (updatesSupported()) {
   );
 }
 
+const integrationRegistrations: IntegrationRegistration[] = [
+  {
+    label: "Now playing notifications",
+    isEnabled: state => state.general.showNotificationOnSongChange,
+    integration: nowPlayingNotifications
+  },
+  {
+    label: "Ratio volume",
+    isEnabled: state => state.playback.ratioVolume,
+    integration: ratioVolume,
+    provide: () => ratioVolume.provide(ytmView)
+  },
+  {
+    label: "Prevent idle pause",
+    isEnabled: state => state.playback.preventIdlePause,
+    integration: nonStop,
+    provide: () => nonStop.provide(ytmView)
+  },
+  {
+    label: "Companion server",
+    isEnabled: state => state.integrations.companionServerEnabled,
+    integration: companionServer,
+    provide: () => companionServer.provide(store, memoryStore, ytmView)
+  },
+  {
+    label: "Discord presence",
+    isEnabled: state => state.integrations.discordPresenceEnabled,
+    integration: discordPresence,
+    provide: () => discordPresence.provide(store, memoryStore)
+  },
+  {
+    label: "Last.fm",
+    isEnabled: state => state.integrations.lastFMEnabled,
+    integration: lastFMScrobbler,
+    provide: () => lastFMScrobbler.provide(store, memoryStore)
+  },
+  {
+    label: "Listen along",
+    isEnabled: state => state.integrations.listenAlongEnabled,
+    integration: listenAlong,
+    provide: () => listenAlong.provide(store, memoryStore)
+  }
+];
+
 store.onDidAnyChange(async (newState, oldState) => {
   broadcastToWindows("settings:stateChanged", { includeMainWindow: false }, newState, oldState);
 
@@ -495,14 +540,7 @@ store.onDidAnyChange(async (newState, oldState) => {
     });
   }
 
-  // General
-  if (newState.general.showNotificationOnSongChange && !oldState.general.showNotificationOnSongChange) {
-    nowPlayingNotifications.enable();
-    log.info("Integration enabled: Now playing notifications");
-  } else if (!newState.general.showNotificationOnSongChange && oldState.general.showNotificationOnSongChange) {
-    nowPlayingNotifications.disable();
-    log.info("Integration disabled: Now playing notifications");
-  }
+  syncIntegrations(integrationRegistrations, newState, oldState);
 
   if (newState.developer.debugLogging !== oldState.developer.debugLogging) {
     applyDebugLogging();
@@ -532,28 +570,6 @@ store.onDidAnyChange(async (newState, oldState) => {
   if (oldState.appearance.trayIconStyle !== newState.appearance.trayIconStyle) trayController.setTrayIcon();
 
   // Playback
-  if (newState.playback.ratioVolume) {
-    ratioVolume.provide(ytmView);
-  }
-  if (newState.playback.ratioVolume && !oldState.playback.ratioVolume) {
-    ratioVolume.enable();
-    log.info("Integration enabled: Ratio volume");
-  } else if (!newState.playback.ratioVolume && oldState.playback.ratioVolume) {
-    ratioVolume.disable();
-    log.info("Integration disabled: Ratio volume");
-  }
-
-  if (newState.playback.preventIdlePause) {
-    nonStop.provide(ytmView);
-  }
-  if (newState.playback.preventIdlePause && !oldState.playback.preventIdlePause) {
-    nonStop.enable();
-    log.info("Integration enabled: Prevent idle pause");
-  } else if (!newState.playback.preventIdlePause && oldState.playback.preventIdlePause) {
-    nonStop.disable();
-    log.info("Integration disabled: Prevent idle pause");
-  }
-
   if (newState.playback.adBlockerEnabled && !oldState.playback.adBlockerEnabled) {
     adBlocker.enable();
   } else if (!newState.playback.adBlockerEnabled && oldState.playback.adBlockerEnabled) {
@@ -563,22 +579,11 @@ store.onDidAnyChange(async (newState, oldState) => {
   // Integrations
   let companionServerAuthWindowEnabled = memoryStore.get("companionServerAuthWindowEnabled") ?? false;
 
-  if (newState.integrations.companionServerEnabled) {
-    companionServer.provide(store, memoryStore, ytmView);
-  }
-  if (newState.integrations.companionServerEnabled && !oldState.integrations.companionServerEnabled) {
-    companionServer.enable();
-    log.info("Integration enabled: Companion server");
-  } else if (!newState.integrations.companionServerEnabled && oldState.integrations.companionServerEnabled) {
-    companionServer.disable();
-    log.info("Integration disabled: Companion server");
-
-    if (companionServerAuthWindowEnabled) {
-      memoryStore.set("companionServerAuthWindowEnabled", false);
-      clearInterval(companionAuthWindowEnableTimeout);
-      companionAuthWindowEnableTimeout = null;
-      companionServerAuthWindowEnabled = false;
-    }
+  if (!newState.integrations.companionServerEnabled && oldState.integrations.companionServerEnabled && companionServerAuthWindowEnabled) {
+    memoryStore.set("companionServerAuthWindowEnabled", false);
+    clearInterval(companionAuthWindowEnableTimeout);
+    companionAuthWindowEnableTimeout = null;
+    companionServerAuthWindowEnabled = false;
   }
 
   if (companionServerAuthWindowEnabled) {
@@ -604,41 +609,9 @@ store.onDidAnyChange(async (newState, oldState) => {
     }
   }
 
-  if (newState.integrations.discordPresenceEnabled) {
-    discordPresence.provide(store, memoryStore);
-  }
-  if (newState.integrations.discordPresenceEnabled && !oldState.integrations.discordPresenceEnabled) {
-    discordPresence.enable();
-    log.info("Integration enabled: Discord presence");
-  } else if (!newState.integrations.discordPresenceEnabled && oldState.integrations.discordPresenceEnabled) {
-    discordPresence.disable();
-    log.info("Integration disabled: Discord presence");
-  }
   if (newState.integrations.discordPresenceHideOnPause !== oldState.integrations.discordPresenceHideOnPause) {
     // Takes effect immediately even while paused, not on the next player event
     discordPresence.refreshActivity();
-  }
-
-  if (newState.integrations.lastFMEnabled) {
-    lastFMScrobbler.provide(store, memoryStore);
-  }
-  if (newState.integrations.lastFMEnabled && !oldState.integrations.lastFMEnabled) {
-    lastFMScrobbler.enable();
-    log.info("Integration enabled: Last.fm");
-  } else if (!newState.integrations.lastFMEnabled && oldState.integrations.lastFMEnabled) {
-    lastFMScrobbler.disable();
-    log.info("Integration disabled: Last.fm");
-  }
-
-  if (newState.integrations.listenAlongEnabled) {
-    listenAlong.provide(store, memoryStore);
-  }
-  if (newState.integrations.listenAlongEnabled && !oldState.integrations.listenAlongEnabled) {
-    listenAlong.enable();
-    log.info("Integration enabled: Listen along");
-  } else if (!newState.integrations.listenAlongEnabled && oldState.integrations.listenAlongEnabled) {
-    listenAlong.disable();
-    log.info("Integration disabled: Listen along");
   }
 
   if (anyShortcutChanged(newState, oldState)) registerShortcuts();
@@ -1885,53 +1858,7 @@ app.on("ready", async () => {
   // Integrations setup
   log.info("Starting enabled integrations");
 
-  // NowPlayingNotifications
-  if (store.get("general").showNotificationOnSongChange) {
-    nowPlayingNotifications.enable();
-    log.info("Integration enabled: Now playing notifications");
-  }
-
-  // RatioVolume
-  if (store.get("playback").ratioVolume) {
-    ratioVolume.provide(ytmView);
-    ratioVolume.enable();
-    log.info("Integration enabled: Ratio volume");
-  }
-
-  // NonStop
-  if (store.get("playback").preventIdlePause) {
-    nonStop.provide(ytmView);
-    nonStop.enable();
-    log.info("Integration enabled: Prevent idle pause");
-  }
-
-  // CompanionServer
-  if (store.get("integrations").companionServerEnabled) {
-    companionServer.provide(store, memoryStore, ytmView);
-    companionServer.enable();
-    log.info("Integration enabled: Companion server");
-  }
-
-  // DiscordPresence
-  if (store.get("integrations").discordPresenceEnabled) {
-    discordPresence.provide(store, memoryStore);
-    discordPresence.enable();
-    log.info("Integration enabled: Discord presence");
-  }
-
-  // LastFM
-  if (store.get("integrations").lastFMEnabled) {
-    lastFMScrobbler.provide(store, memoryStore);
-    lastFMScrobbler.enable();
-    log.info("Integration enabled: Last.fm");
-  }
-
-  // Listen along
-  if (store.get("integrations").listenAlongEnabled) {
-    listenAlong.provide(store, memoryStore);
-    listenAlong.enable();
-    log.info("Integration enabled: Listen along");
-  }
+  enableIntegrationsAtBoot(integrationRegistrations, store.store);
 
   nativeTheme.on("updated", trayController.setTrayIcon);
 });
