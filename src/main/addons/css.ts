@@ -54,6 +54,10 @@ export class AddonCssHandle implements AddonCssHandleContract {
     await this.removeInjected();
   }
 
+  public get isRemoved(): boolean {
+    return this.removed;
+  }
+
   public watchFile(): void {
     if (!this.filePath) return;
     this.stopWatching();

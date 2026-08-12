@@ -142,6 +142,7 @@ export class AddonManager {
   public notifyYtmViewLoaded() {
     for (const addon of this.addons) {
       if (addon.descriptor.state !== "active") continue;
+      addon.cssHandles = addon.cssHandles.filter(handle => !handle.isRemoved);
       for (const handle of addon.cssHandles) {
         handle.viewLoaded();
       }

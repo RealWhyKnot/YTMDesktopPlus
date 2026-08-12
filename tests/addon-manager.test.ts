@@ -289,6 +289,34 @@ describe("AddonContext", () => {
     expect(manager.ownsWebContents(contents)).toBe(false);
   });
 
+  it("drops removed stylesheets instead of re-injecting them on view load", async () => {
+    const fixture = fakeServices();
+    const inserted: string[] = [];
+    fixture.services.getYtmView = () => ({
+      webContents: {
+        insertCSS: async (css: string) => {
+          inserted.push(css);
+          return `key-${inserted.length}`;
+        },
+        removeInsertedCSS: async () => {},
+        send: () => {}
+      } as never
+    });
+    const { manager, ctx } = await bootWithContext(fixture);
+
+    const keep = ctx.ytmview.insertCSS("body { opacity: 1 }");
+    const drop = ctx.ytmview.insertCSS("body { opacity: 0 }");
+    await new Promise(resolve => setImmediate(resolve));
+    await drop.remove();
+    void keep;
+
+    inserted.length = 0;
+    manager.notifyYtmViewLoaded();
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(inserted).toEqual(["body { opacity: 1 }"]);
+  });
+
   it("keeps per-addon memory namespaced", async () => {
     const fixture = fakeServices();
     const { ctx } = await bootWithContext(fixture);
