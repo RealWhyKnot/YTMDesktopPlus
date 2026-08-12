@@ -1,6 +1,13 @@
 # Changelog
 
 ## Unreleased
+- fix(logging): drive the renderer console spy ourselves and filter Chromium's noise
+- docs(readme): list ad blocking, phone playback and the boost, and drop the moved custom CSS line
+- docs(readme): swap the removed normalization line for the volume boost
+- feat(addons): volume boost past 100% with the boosted range coloured
+- refactor(rooms): fold the audio capture into the addon that drives it
+- refactor(audio): one shared page audio graph, and drop duplicate loudness normalization
+- fix(ad-blocker): drop cosmetic filtering so the song menu stops breaking
 
 ## [v2026.811.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.811.1-beta) - 2026-08-11
 - feat(addons): duration-aware mirror expiry with a one-shot lookup
