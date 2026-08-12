@@ -107,17 +107,21 @@ function goIdle() {
   vi.advanceTimersByTime(IDLE_MS);
 }
 
+const pageWindow = () => (globalThis as unknown as { window: Record<string, unknown> }).window;
+const pageMediaSession = () =>
+  (globalThis as unknown as { navigator: { mediaSession: { setActionHandler: (action: string, handler: unknown) => void } } }).navigator.mediaSession;
+
 describe("nonstop enable script", () => {
   it("lets a pause this app asked for through even when the view is idle", () => {
     run(enableSource);
     goIdle();
 
-    (globalThis as Record<string, unknown>).window["__ytmdNonStopAllowPause"] = true;
+    pageWindow()["__ytmdNonStopAllowPause"] = true;
     video.pause();
 
     expect(nativePause).toHaveBeenCalledTimes(1);
     // Consumed, so the next inactivity pause is still held back.
-    expect((globalThis as Record<string, unknown>).window["__ytmdNonStopAllowPause"]).toBe(false);
+    expect(pageWindow()["__ytmdNonStopAllowPause"]).toBe(false);
   });
 
   it("lets a pause through right after the user interacts", () => {
@@ -193,10 +197,10 @@ describe("nonstop enable script", () => {
 
   it("stops YTM from taking the pause key back", () => {
     run(enableSource);
-    const ytmHandler = () => undefined;
+    const ytmHandler = (): undefined => undefined;
 
-    (globalThis as Record<string, unknown>).navigator["mediaSession"].setActionHandler("pause", ytmHandler);
-    (globalThis as Record<string, unknown>).navigator["mediaSession"].setActionHandler("play", ytmHandler);
+    pageMediaSession().setActionHandler("pause", ytmHandler);
+    pageMediaSession().setActionHandler("play", ytmHandler);
 
     expect(mediaSessionHandlers.get("pause")).not.toBe(ytmHandler);
     expect(mediaSessionHandlers.get("play")).toBe(ytmHandler);
@@ -220,7 +224,7 @@ describe("nonstop disable script", () => {
     video.pause();
 
     expect(nativePause).toHaveBeenCalledTimes(1);
-    expect((globalThis as Record<string, unknown>).window["__ytmdNonStop"]).toBeUndefined();
+    expect(pageWindow()["__ytmdNonStop"]).toBeUndefined();
     expect(observers.every(observer => observer.disconnect.mock.calls.length > 0)).toBe(true);
   });
 

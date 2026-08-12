@@ -13,7 +13,7 @@ export const fixture = {
     continueWhereYouLeftOffPaused: false,
     enableSpeakerFill: false,
     progressInTaskbar: false,
-    ratioVolume: false,
+    ratioVolume: false
   },
   integrations: {
     companionServerEnabled: false,
@@ -45,9 +45,7 @@ export default async function audioStream(ctx) {
     await ctx.step(
       "a track is playing",
       async () => {
-        await ctx.evalYtm(
-          `document.dispatchEvent(new CustomEvent("yt-navigate", { detail: { endpoint: { watchEndpoint: { videoId: "${VIDEO_ID}" } } } }))`
-        );
+        await ctx.evalYtm(`document.dispatchEvent(new CustomEvent("yt-navigate", { detail: { endpoint: { watchEndpoint: { videoId: "${VIDEO_ID}" } } } }))`);
         await ctx.waitYtm(
           `document.querySelector("ytmusic-app-layout>ytmusic-player-bar")?.playerApi?.getPlayerState?.() ?? null`,
           state => state === 1,
@@ -74,10 +72,7 @@ export default async function audioStream(ctx) {
       "app hosts a room",
       async () => {
         await ctx.waitOnTarget(ROOM_WINDOW, "document.querySelectorAll('input').length", count => Number(count) >= 2, 20000);
-        await ctx.evalOnTarget(
-          ROOM_WINDOW,
-          `[...document.querySelectorAll("button")].find(x => x.textContent.trim() === "Start a room").click()`
-        );
+        await ctx.evalOnTarget(ROOM_WINDOW, `[...document.querySelectorAll("button")].find(x => x.textContent.trim() === "Start a room").click()`);
         await ctx.waitOnTarget(
           ROOM_WINDOW,
           "document.querySelector('.room-code')?.textContent ?? null",
@@ -90,11 +85,7 @@ export default async function audioStream(ctx) {
       60000
     );
 
-    await ctx.step(
-      "capture pipeline is running",
-      () => ctx.waitYtm("window.__ytmdAudioStream?.batchesSent ?? 0", sent => Number(sent) > 0, 30000),
-      35000
-    );
+    await ctx.step("capture pipeline is running", () => ctx.waitYtm("window.__ytmdAudioStream?.batchesSent ?? 0", sent => Number(sent) > 0, 30000), 35000);
 
     await ctx.step(
       "bot receives config, metadata and a monotonic stream",
@@ -121,7 +112,8 @@ export default async function audioStream(ctx) {
           };
           socket.on("message", (data, isBinary) => {
             if (isBinary) {
-              bot.batches.push(new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(4));
+              const chunk = /** @type {Buffer} */ (data);
+              bot.batches.push(new DataView(chunk.buffer, chunk.byteOffset, chunk.byteLength).getUint32(4));
             } else {
               bot.frames.push(JSON.parse(data.toString("utf8")));
             }

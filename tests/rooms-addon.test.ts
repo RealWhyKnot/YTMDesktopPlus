@@ -1,45 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AddonContext } from "../src/main/addons/context";
 import roomsAddon from "../src/addons/bundled/rooms";
+import { fakeAddonContext } from "./helpers/fake-addon-context";
 
 vi.mock("electron", () => ({
   ipcMain: { on: vi.fn(), handle: vi.fn(), removeListener: vi.fn(), removeHandler: vi.fn() }
 }));
-
-function fakeContext() {
-  const unsubscribe = () => {};
-  return {
-    manifest: roomsAddon.manifest,
-    log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-    paths: { data: "" },
-    app: { version: "0.0.0" },
-    settings: {
-      registerDefaults: vi.fn(),
-      get: vi.fn(() => null),
-      set: vi.fn(),
-      onDidChange: vi.fn(() => unsubscribe),
-      registerSettingsUI: vi.fn()
-    },
-    memory: { get: vi.fn(), set: vi.fn() },
-    ytmview: {
-      registerScript: vi.fn(),
-      runScript: vi.fn(),
-      onLoaded: vi.fn(() => unsubscribe),
-      insertCSS: vi.fn(),
-      watchCSSFile: vi.fn()
-    },
-    player: { getState: vi.fn(() => null), onStateChanged: vi.fn(() => unsubscribe) },
-    playback: { cueTrack: vi.fn(), sendPlaybackCommand: vi.fn() },
-    ipc: { handle: vi.fn(() => unsubscribe), on: vi.fn(() => unsubscribe) },
-    notifications: { show: vi.fn() },
-    windows: { create: vi.fn() },
-    deepLinks: { register: vi.fn(() => unsubscribe) },
-    discord: { registerButtonsProvider: vi.fn(() => unsubscribe), refreshActivity: vi.fn() },
-    titlebar: { setBadge: vi.fn(), onBadgeClick: vi.fn(() => unsubscribe) },
-    coreSettings: { get: vi.fn(() => false), onDidChange: vi.fn(() => unsubscribe) },
-    coreMemory: { get: vi.fn(() => null), set: vi.fn() }
-  } as unknown as AddonContext;
-}
 
 describe("rooms bundled addon", () => {
   it("declares the expected manifest", () => {
@@ -49,7 +14,7 @@ describe("rooms bundled addon", () => {
   });
 
   it("registers defaults, settings UI and the room deep link on activate", async () => {
-    const ctx = fakeContext();
+    const { ctx } = fakeAddonContext({ manifest: roomsAddon.manifest });
     await roomsAddon.activate(ctx);
 
     expect(ctx.settings.registerDefaults).toHaveBeenCalledWith({ displayName: null, audioStreamEnabled: true, autoRoomEnabled: true });

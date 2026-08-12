@@ -23,7 +23,7 @@ describe("playerBarProbeSource", () => {
   });
 
   it("does not throw when the player bar is missing", () => {
-    vi.stubGlobal("document", { querySelector: () => null });
+    vi.stubGlobal("document", { querySelector: (): null => null });
     expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)()).toEqual({
       playerBarPresent: false,
       playerApiPresent: false,

@@ -170,6 +170,7 @@ describe("buildListenAlongUrl", () => {
   it("resolves a freshly built link back to the position it encoded", () => {
     const url = buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true });
     const parsed = parseProtocolUrl(asDeepLink(url));
+    if (parsed?.command !== "play") throw new Error("expected a play command");
     expect(resolveStartSeconds(parsed.anchor, now, 200)).toBe(60);
   });
 });

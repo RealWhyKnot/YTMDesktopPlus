@@ -18,6 +18,10 @@ export async function portInUse() {
   }
 }
 
+/**
+ * @param {string} pathname
+ * @param {{ method?: string, token?: string, body?: unknown, timeoutMs?: number }} [options]
+ */
 export async function request(pathname, { method = "GET", token, body, timeoutMs = 10000 } = {}) {
   const headers = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = token;

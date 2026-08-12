@@ -33,7 +33,7 @@ export function generateAddonDts() {
     throw new Error(`sdk.ts does not compile standalone:\n${formatted}`);
   }
 
-  let declarations = null;
+  let declarations = "";
   program.emit(
     undefined,
     (fileName, text) => {
@@ -42,7 +42,7 @@ export function generateAddonDts() {
     undefined,
     true
   );
-  if (declarations === null) throw new Error("No declaration output produced for sdk.ts");
+  if (declarations === "") throw new Error("No declaration output produced for sdk.ts");
 
   return HEADER + declarations.replace(/\r\n/g, "\n");
 }

@@ -100,7 +100,7 @@ function makePresence(settings: Partial<PresenceHarness["settings"]> = {}): Pres
   const activities: ActivityPayload[] = [];
   const resolved = { listenAlongRoomsEnabled: false, discordPresenceHideOnPause: false, ...settings };
   const presence = new DiscordPresence();
-  presence.provide({ get: () => resolved } as never, { get: () => null } as never);
+  presence.provide({ get: () => resolved } as never, { get: (): null => null } as never);
   Object.assign(presence, {
     ready: true,
     discordClient: {
@@ -131,7 +131,7 @@ describe("activity updates", () => {
     vi.useFakeTimers();
     const calls = { set: 0, clear: 0 };
     const presence = new DiscordPresence();
-    presence.provide({ get: () => ({ listenAlongRoomsEnabled: false }) } as never, { get: () => null } as never);
+    presence.provide({ get: () => ({ listenAlongRoomsEnabled: false }) } as never, { get: (): null => null } as never);
     Object.assign(presence, {
       ready: true,
       discordClient: {

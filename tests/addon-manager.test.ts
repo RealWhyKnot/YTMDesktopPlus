@@ -1,83 +1,10 @@
-import fs from "fs";
-import os from "os";
-import path from "path";
 import { describe, expect, it, vi } from "vitest";
 import { AddonManager, BundledAddonDefinition } from "../src/main/addons/manager";
 import { validateManifest, versionAtLeast } from "../src/main/addons/validate-manifest";
-import type { AddonContext } from "../src/main/addons/context";
+import type { BundledAddonContext } from "../src/main/addons/context";
 import type { AddonManifest } from "../src/shared/addons/types";
-
-function manifest(overrides: Partial<AddonManifest> = {}): AddonManifest {
-  return {
-    id: "sample",
-    name: "Sample",
-    version: "1.0.0",
-    author: "someone",
-    description: "a sample addon",
-    ...overrides
-  };
-}
-
-function fakeServices(persistedStates: Record<string, { enabled: boolean }> = {}, appVersion = "2026.811.0") {
-  const stored: Record<string, unknown> = { addons: { states: persistedStates, settings: {} } };
-  const storeListeners: ((newValue: unknown, oldValue: unknown) => void)[] = [];
-  const memory = new Map<string, unknown>();
-  const ipcHandlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
-  const registeredScripts: Record<string, Record<string, string>> = {};
-  let appSender = true;
-
-  const services = {
-    store: {
-      // Like conf, reads hand out copies: mutating a get() result never
-      // changes stored state until it is set() back.
-      get: (key: string) => structuredClone(stored[key]),
-      set: (key: string, value: unknown) => {
-        const old = structuredClone(stored[key]);
-        stored[key] = structuredClone(value);
-        if (key === "addons") for (const listener of storeListeners) listener(stored[key], old);
-      },
-      onDidChange: (_key: string, callback: (newValue: unknown, oldValue: unknown) => void) => {
-        storeListeners.push(callback);
-        return () => storeListeners.splice(storeListeners.indexOf(callback), 1);
-      },
-      get store() {
-        return structuredClone(stored);
-      }
-    },
-    memoryStore: {
-      get: (key: string) => memory.get(key),
-      set: (key: string, value: unknown) => memory.set(key, value)
-    },
-    appVersion,
-    userDataPath: fs.mkdtempSync(path.join(os.tmpdir(), "ytmd-addon-test-")),
-    getYtmView: () => null as never,
-    registerYtmScript: (namespace: string, name: string, script: string) => {
-      if (!registeredScripts[namespace]) registeredScripts[namespace] = {};
-      registeredScripts[namespace][name] = script;
-    },
-    player: { getState: () => ({}) as never, addEventListener: vi.fn(), removeEventListener: vi.fn() },
-    playback: { cueTrack: vi.fn() as never, sendPlaybackCommand: vi.fn() },
-    ipc: {
-      handle: (channel: string, listener: (event: unknown, ...args: unknown[]) => unknown) => ipcHandlers.set(channel, listener),
-      removeHandler: (channel: string) => ipcHandlers.delete(channel),
-      on: vi.fn(),
-      removeListener: vi.fn()
-    },
-    isAppSender: () => appSender,
-    notify: vi.fn()
-  };
-
-  return {
-    services: services as never,
-    stored: stored as { addons: { states: Record<string, { enabled: boolean }>; settings: Record<string, Record<string, unknown>> } },
-    memory,
-    ipcHandlers,
-    registeredScripts,
-    setAppSender: (value: boolean) => {
-      appSender = value;
-    }
-  };
-}
+import { makeManifest as manifest } from "./helpers/fake-addon-context";
+import { fakeServices } from "./helpers/fake-services";
 
 describe("AddonManager", () => {
   it("activates bundled addons that default to enabled and skips the rest", async () => {
@@ -194,7 +121,7 @@ describe("AddonManager", () => {
 });
 
 async function bootWithContext(fixture: ReturnType<typeof fakeServices>, id = "sample") {
-  let ctx: AddonContext;
+  let ctx: BundledAddonContext;
   const manager = new AddonManager(fixture.services);
   manager.registerBundled([
     {

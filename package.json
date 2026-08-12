@@ -22,11 +22,11 @@
     "publish": "electron-forge publish",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.tests.json && tsc -p tsconfig.tools.json",
     "test": "vitest run",
     "sdk:dts": "node tools/generate-addon-dts.mjs",
-    "prettier": "prettier --check \"src/**/*.{ts,tsx,vue}\" \"viteconfig/**/*.ts\" \"*.{ts,mjs}\"",
-    "prettier:fix": "prettier --write \"src/**/*.{ts,tsx,vue}\" \"viteconfig/**/*.ts\" \"*.{ts,mjs}\"",
+    "prettier": "prettier --check \"src/**/*.{ts,tsx,vue}\" \"viteconfig/**/*.ts\" \"tests/**/*.ts\" \"tools/**/*.mjs\" \"*.{ts,mjs}\"",
+    "prettier:fix": "prettier --write \"src/**/*.{ts,tsx,vue}\" \"viteconfig/**/*.ts\" \"tests/**/*.ts\" \"tools/**/*.mjs\" \"*.{ts,mjs}\"",
     "postinstall": "husky install"
   },
   "keywords": [],
@@ -86,6 +86,10 @@
   },
   "lint-staged": {
     "*.{ts,tsx,vue}": [
+      "prettier --write",
+      "eslint --cache --fix"
+    ],
+    "*.mjs": [
       "prettier --write",
       "eslint --cache --fix"
     ]

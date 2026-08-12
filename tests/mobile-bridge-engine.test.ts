@@ -86,7 +86,7 @@ function makeHarness(durations: Record<string, number | null> = {}) {
   };
 }
 
-const idle = { playing: false, videoId: null, hasFullMetadata: false };
+const idle = { playing: false, videoId: null as string | null, hasFullMetadata: false };
 const playingLocal = (videoId: string) => ({ playing: true, videoId, hasFullMetadata: true });
 
 describe("mirror engine", () => {
