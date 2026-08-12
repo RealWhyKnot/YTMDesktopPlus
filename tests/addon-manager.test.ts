@@ -118,6 +118,24 @@ describe("AddonManager", () => {
     await manager.shutdown();
     expect(destroy).toHaveBeenCalledOnce();
   });
+
+  it("waits for async destroy work and never runs it twice", async () => {
+    const { services } = fakeServices();
+    let settled = false;
+    const destroy = vi.fn(async () => {
+      await new Promise(resolve => setTimeout(resolve, 5));
+      settled = true;
+    });
+    const manager = new AddonManager(services);
+    manager.registerBundled([{ manifest: manifest({ id: "sample", defaultEnabled: true }), activate: () => ({ destroy }) }]);
+    await manager.boot();
+
+    await manager.shutdown();
+    expect(settled).toBe(true);
+
+    await manager.shutdown();
+    expect(destroy).toHaveBeenCalledOnce();
+  });
 });
 
 async function bootWithContext(fixture: ReturnType<typeof fakeServices>, id = "sample") {

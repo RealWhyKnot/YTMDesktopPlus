@@ -26,6 +26,7 @@ type ManagedAddon = {
 export class AddonManager {
   private addons: ManagedAddon[] = [];
   private booted = false;
+  private shutdownStarted = false;
   private titlebarBadges = new Map<string, AddonTitlebarBadge>();
   private windows = new Set<AddonHostWindow>();
 
@@ -154,6 +155,8 @@ export class AddonManager {
   }
 
   public async shutdown() {
+    if (this.shutdownStarted) return;
+    this.shutdownStarted = true;
     for (const addon of this.addons) {
       for (const cleanup of addon.cleanups) {
         try {

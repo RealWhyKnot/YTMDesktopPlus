@@ -2529,12 +2529,22 @@ app.on("ready", async () => {
   nativeTheme.on("updated", setTrayIcon);
 });
 
-app.on("before-quit", () => {
+// Addon destroy() work is async; quit is held back until it settles, capped
+// so a hung addon can never wedge the app in limbo.
+let addonShutdownSettled = false;
+app.on("before-quit", event => {
   log.info("Application quitting\n\n");
   applicationQuitting = true;
   cancelCue();
-  addonManager.shutdown();
   saveState();
+  if (!addonShutdownSettled) {
+    event.preventDefault();
+    const finish = () => {
+      addonShutdownSettled = true;
+      app.quit();
+    };
+    Promise.race([addonManager.shutdown(), new Promise(resolve => setTimeout(resolve, 3000))]).then(finish, finish);
+  }
 });
 
 app.on("open-url", (_, url) => {
