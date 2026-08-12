@@ -1,8 +1,9 @@
 import { ipcMain, type IpcMainEvent } from "electron";
 import { CONTROL_ACTIONS, isRoomId, sanitizeDisplayName, type ControlAction, type RoomRole } from "~shared/room-protocol";
+import type { AddonWebContents } from "~shared/addons/sdk";
 
 export type RoomIpcDeps = {
-  roomWindowContents(): Electron.WebContents | null;
+  roomWindowContents(): AddonWebContents | null;
   openWindow(): void;
   closeWindow(): void;
   host(displayName: string): void;

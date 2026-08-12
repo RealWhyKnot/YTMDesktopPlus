@@ -1,5 +1,6 @@
 import { VideoState, type PlayerState } from "../player-state-store";
-import { resolveStartSeconds, type PositionAnchor } from "~shared/protocol-url";
+import { resolveStartSeconds } from "~shared/protocol-url";
+import type { CueRequest, CueResult } from "~shared/addons/sdk";
 
 // Opens a track and lands it at a given position.
 //
@@ -19,13 +20,7 @@ export const VERIFY_MS = 2500;
 export const VERIFY_TOLERANCE_SECONDS = 4;
 export const MAX_SEEK_RETRIES = 1;
 
-export type CueResult = "seeked" | "navigated" | "already-there" | "timeout" | "superseded" | "no-view";
-
-export type CueRequest = {
-  videoId: string;
-  playlistId?: string | null;
-  anchor: PositionAnchor | null;
-};
+export type { CueRequest, CueResult } from "~shared/addons/sdk";
 
 export interface CueDeps {
   getState(): PlayerState | null;

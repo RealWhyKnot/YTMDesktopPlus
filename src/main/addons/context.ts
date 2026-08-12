@@ -1,27 +1,44 @@
-import log, { type LogFunctions } from "electron-log";
+import log from "electron-log";
 import fs from "fs";
 import path from "path";
-import type Conf from "conf";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
-import type { AddonManifest, AddonSettingsSection, AddonTitlebarBadge } from "~shared/addons/types";
+import type {
+  AddonContext,
+  AddonManifest,
+  AddonSettingsSection,
+  AddonTitlebarBadge,
+  AddonWindowOptions,
+  CueRequest,
+  CueResult,
+  PlayerState,
+  RemoteTrackActivity,
+  Unsubscribe
+} from "~shared/addons/sdk";
 import type { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
-import type MemoryStore from "../memory-store";
-import type { PlayerState } from "../player-state-store";
-import type { RemoteTrackActivity } from "../integrations/discord-presence";
-import type { cueTrack } from "../playback";
 import { AddonCssHandle, cssHandleFromFile } from "./css";
 
-export type Unsubscribe = () => void;
+export type { AddonContext, AddonInstance, AddonWindowHandle, AddonWindowOptions, Unsubscribe } from "~shared/addons/sdk";
 
-export interface AddonInstance {
-  destroy?(): void | Promise<void>;
+/** The slice of the settings store the addon system needs. The real conf
+ *  instance satisfies it; tests satisfy it with a plain object. */
+export interface AddonStore {
+  get<K extends keyof StoreSchema>(key: K): StoreSchema[K];
+  set<K extends keyof StoreSchema>(key: K, value: StoreSchema[K]): void;
+  onDidChange<K extends keyof StoreSchema>(key: K, callback: (newValue?: StoreSchema[K], oldValue?: StoreSchema[K]) => void): () => void;
+  readonly store: StoreSchema;
+}
+
+/** The slice of the in-memory store the addon system touches. */
+export interface AddonMemoryStore {
+  get(key: keyof MemoryStoreSchema & string): unknown;
+  set(key: keyof MemoryStoreSchema & string, value: unknown): void;
 }
 
 /** Everything the host hands the addon runtime. Assembled once in the main
  *  entry point; the manager and contexts never reach for globals themselves. */
 export type AddonHostServices = {
-  store: Conf<StoreSchema>;
-  memoryStore: MemoryStore<MemoryStoreSchema>;
+  store: AddonStore;
+  memoryStore: AddonMemoryStore;
   appVersion: string;
   userDataPath: string;
   getYtmView(): { webContents: Electron.WebContents } | null;
@@ -33,7 +50,7 @@ export type AddonHostServices = {
     removeEventListener(listener: (state: PlayerState) => void): void;
   };
   playback: {
-    cueTrack: typeof cueTrack;
+    cueTrack(request: CueRequest): Promise<CueResult>;
     sendPlaybackCommand(command: string, value?: unknown): void;
   };
   ipc: {
@@ -55,14 +72,6 @@ export type AddonHostServices = {
   };
 };
 
-export type AddonWindowOptions = {
-  /** Name of a renderer window folder compiled into the app (like "room") */
-  entry: string;
-  width: number;
-  height: number;
-  resizable?: boolean;
-};
-
 export type AddonHostWindow = {
   show(): void;
   focus(): void;
@@ -70,13 +79,6 @@ export type AddonHostWindow = {
   isDestroyed(): boolean;
   once(event: "closed", callback: () => void): void;
   webContents: Electron.WebContents;
-};
-
-export type AddonWindowHandle = {
-  show(): void;
-  close(): void;
-  isOpen(): boolean;
-  webContents(): Electron.WebContents | null;
 };
 
 /** Per-addon plumbing the manager owns: registries the context writes into. */
@@ -90,68 +92,11 @@ export type AddonHostBridge = {
   addWindow(window: AddonHostWindow): void;
 };
 
-export interface AddonContext {
-  readonly manifest: AddonManifest;
-  readonly log: LogFunctions;
-  readonly paths: { data: string };
-  readonly app: { version: string };
-  settings: {
-    registerDefaults(defaults: Record<string, unknown>): void;
-    get<T = unknown>(key: string): T;
-    set(key: string, value: unknown): void;
-    onDidChange(key: string, callback: (next: unknown, prev: unknown) => void): Unsubscribe;
-    registerSettingsUI(sections: AddonSettingsSection[]): void;
-  };
-  memory: {
-    get<T = unknown>(key: string): T;
-    set(key: string, value: unknown): void;
-  };
-  ytmview: {
-    registerScript(name: string, script: string): void;
-    runScript(name: string): void;
-    /** Runs a registered script and resolves its return value. The script still
-     *  evaluates to a function; it may take one structured-clone argument and
-     *  return (or resolve) structured-clone data. Rejects on script error,
-     *  missing view, or a 30s timeout. */
-    invokeScript(name: string, arg?: unknown): Promise<unknown>;
-    onLoaded(callback: () => void): Unsubscribe;
-    insertCSS(css: string): AddonCssHandle;
-    watchCSSFile(filePath: string): AddonCssHandle;
-  };
-  player: {
-    getState(): PlayerState;
-    onStateChanged(callback: (state: PlayerState) => void): Unsubscribe;
-  };
-  playback: AddonHostServices["playback"];
-  ipc: {
-    handle(channel: string, listener: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown): Unsubscribe;
-    on(channel: string, listener: (event: IpcMainEvent, ...args: unknown[]) => void): Unsubscribe;
-  };
-  notifications: {
-    show(options: { title: string; body?: string; onClick?: () => void }): void;
-  };
-  windows: {
-    create(options: AddonWindowOptions): AddonWindowHandle;
-  };
-  deepLinks: {
-    register(command: string, handler: (segments: string[], params: URLSearchParams) => void): Unsubscribe;
-  };
-  discord: {
-    registerButtonsProvider(provider: (trackShareUrl: string) => { label: string; url: string }[] | undefined): Unsubscribe;
-    /** Offers a track playing outside this app as a presence stand-in while
-     *  local playback has nothing to show. Call refreshActivity after the
-     *  provided value changes. */
-    registerRemoteActivityProvider(provider: () => RemoteTrackActivity | undefined): Unsubscribe;
-    refreshActivity(): void;
-  };
-  titlebar: {
-    setBadge(badge: Omit<AddonTitlebarBadge, "addonId"> | null): void;
-    onBadgeClick(callback: () => void): Unsubscribe;
-  };
-  /** Core store and memory-store access for the bundled rooms addon: it owns
-   *  memory keys the room renderer reads and reacts to integration toggles
-   *  that live outside the addon namespace. External addons should use
-   *  ctx.settings and ctx.memory instead. */
+/** Internal superset handed to bundled addons; absent from the published SDK.
+ *  Rooms owns memory keys its renderer reads and reacts to integration
+ *  toggles that live outside the addon namespace. External addons use
+ *  ctx.settings and ctx.memory instead. */
+export interface BundledAddonContext extends AddonContext {
   coreSettings: {
     get<T = unknown>(dottedKey: string): T;
     onDidChange(section: "integrations", callback: (next: StoreSchema["integrations"], prev: StoreSchema["integrations"]) => void): Unsubscribe;
@@ -162,7 +107,7 @@ export interface AddonContext {
   };
 }
 
-export function createAddonContext(manifest: AddonManifest, services: AddonHostServices, bridge: AddonHostBridge): AddonContext {
+export function createAddonContext(manifest: AddonManifest, services: AddonHostServices, bridge: AddonHostBridge): BundledAddonContext {
   const id = manifest.id;
   const scopedLog = log.scope(`addon:${id}`);
   const scriptNamespace = `addon:${id}`;
@@ -395,7 +340,7 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
     },
 
     coreMemory: {
-      get<T>(key: string) {
+      get<T>(key: keyof MemoryStoreSchema & string) {
         return services.memoryStore.get(key) as T;
       },
       set(key, value) {

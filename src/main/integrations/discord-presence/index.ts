@@ -18,14 +18,9 @@ export type PresenceButtonsProvider = (trackShareUrl: string) => PresenceButton[
 /** A track playing somewhere other than this app, offered as a presence
  *  fallback while local playback has nothing to show. No end timestamp: remote
  *  sources have no position, only (at best) when the track was first seen. */
-export type RemoteTrackActivity = {
-  title: string;
-  author: string;
-  thumbnailUrl?: string;
-  videoId?: string;
-  startedAtEpochMs?: number;
-  smallText?: string;
-};
+import type { RemoteTrackActivity } from "~shared/addons/sdk";
+
+export type { RemoteTrackActivity } from "~shared/addons/sdk";
 export type RemoteActivityProvider = () => RemoteTrackActivity | undefined;
 
 function getHighestResThumbnail(thumbnails: Thumbnail[]): string {

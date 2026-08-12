@@ -17,7 +17,9 @@
 // share page and that page forwards into ytmdplus://play with the same path
 // and query.
 
-export type PositionAnchor = { kind: "absolute"; seconds: number } | { kind: "anchor"; epochMs: number };
+import type { PositionAnchor } from "./addons/sdk";
+
+export type { PositionAnchor } from "./addons/sdk";
 
 export type ProtocolCommand =
   | {

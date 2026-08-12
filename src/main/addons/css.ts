@@ -1,5 +1,6 @@
 import fs from "fs";
 import type { LogFunctions } from "electron-log";
+import type { AddonCssHandle as AddonCssHandleContract } from "~shared/addons/sdk";
 
 type CssTarget = {
   webContents: {
@@ -11,7 +12,7 @@ type CssTarget = {
 /** One injected stylesheet in the YouTube Music view. Survives view reloads:
  *  the manager calls viewLoaded() when the page comes back and the sheet is
  *  re-inserted. Optionally follows a file on disk. */
-export class AddonCssHandle {
+export class AddonCssHandle implements AddonCssHandleContract {
   private key: string | null = null;
   private watcher: fs.FSWatcher | null = null;
   private removed = false;

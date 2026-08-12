@@ -1,13 +1,13 @@
 import log from "electron-log";
 import type { AddonDescriptor, AddonManifest, AddonOrigin, AddonSettingsSection, AddonTitlebarBadge } from "~shared/addons/types";
 import { manifestSatisfiesApp } from "./validate-manifest";
-import { AddonContext, AddonHostServices, AddonHostWindow, AddonInstance, createAddonContext } from "./context";
+import { AddonHostServices, AddonHostWindow, AddonInstance, BundledAddonContext, createAddonContext } from "./context";
 import type { AddonCssHandle } from "./css";
 import { buildExternalDefinition, type ExternalAddonScan } from "./external-loader";
 
 export type BundledAddonDefinition = {
   manifest: AddonManifest;
-  activate(ctx: AddonContext): AddonInstance | void | Promise<AddonInstance | void>;
+  activate(ctx: BundledAddonContext): AddonInstance | void | Promise<AddonInstance | void>;
 };
 
 type ManagedAddon = {
@@ -15,7 +15,7 @@ type ManagedAddon = {
   origin: AddonOrigin;
   descriptor: AddonDescriptor;
   instance: AddonInstance | null;
-  context: AddonContext | null;
+  context: BundledAddonContext | null;
   loadedCallbacks: (() => void)[];
   cssHandles: AddonCssHandle[];
   cleanups: (() => void)[];
