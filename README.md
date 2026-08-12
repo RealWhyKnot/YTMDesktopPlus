@@ -1,6 +1,6 @@
 # YTMDesktop+
 
-A desktop app for YouTube Music. It wraps the real music.youtube.com player, so the interface always matches the current web version, and adds the things a browser tab can't do: media keys and global shortcuts, Discord rich presence, Last.fm scrobbling, native notifications, custom CSS, and a remote control API for companion apps.
+A desktop app for YouTube Music. It wraps the real music.youtube.com player, so the interface always matches the current web version, and adds the things a browser tab can't do: media keys and global shortcuts, Discord rich presence, Last.fm scrobbling, native notifications, volume past 100%, ad blocking, and a remote control API for companion apps.
 
 ![YTMDesktop+](.github/images/readme_main_app.png)
 
@@ -17,7 +17,9 @@ On Windows the app can install updates on launch, like Discord does. It asks onc
 - Global shortcuts and media key support
 - Discord rich presence
 - Last.fm scrobbling
-- Volume boost: takes the volume slider past 100%, with the boosted part of the bar drawn in a warning colour and a limiter holding peaks down
+- Volume boost: takes the volume slider past 100%. The boosted part of the bar turns a warning colour, and a limiter holds the peaks down
+- Ad blocking: filter lists applied to the player's own traffic, off until you turn it on
+- Phone playback: while the desktop is idle, the app shows what the same account is playing on your phone, in the player bar and on your Discord presence
 - Native notifications on song change
 - Addons: drop-in folders of CSS, page scripts or code that extend the app, managed from the settings window (see [docs/addons.md](docs/addons.md)). Custom CSS lives here now, still with live reload; the rooms feature itself ships as one
 - Companion server: a local REST and WebSocket API on port 9863 that remote control apps can use after a one-time authorization

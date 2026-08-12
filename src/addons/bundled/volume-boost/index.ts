@@ -27,7 +27,7 @@ const volumeBoostAddon: BundledAddonDefinition = {
     name: "Volume boost",
     version: "1.0.0",
     author: "WhyKnot",
-    description: "Lets the volume slider go past 100%, colouring the boosted part of the bar. A limiter keeps loud tracks from clipping.",
+    description: "Takes the volume slider past 100%. The boosted part of the bar changes colour, and a limiter keeps loud tracks from clipping.",
     defaultEnabled: false
   },
 
