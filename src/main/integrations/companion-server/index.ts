@@ -126,8 +126,4 @@ export default class CompanionServer implements IIntegration {
       }
     }
   }
-
-  public getYTMScripts(): { name: string; script: string }[] {
-    return [];
-  }
 }

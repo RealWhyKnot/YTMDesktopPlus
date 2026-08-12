@@ -321,8 +321,4 @@ export default class DiscordPresence implements IIntegration {
     this.discordClient.destroy();
     this.discordClient = null;
   }
-
-  public getYTMScripts(): { name: string; script: string }[] {
-    return [];
-  }
 }

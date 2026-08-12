@@ -120,8 +120,4 @@ export default class NowPlayingNotifications implements IIntegration {
       this.isEnabled = false;
     }
   }
-
-  public getYTMScripts(): { name: string; script: string }[] {
-    return [];
-  }
 }

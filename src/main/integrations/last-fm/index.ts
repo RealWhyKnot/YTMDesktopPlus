@@ -208,10 +208,6 @@ export default class LastFM implements IIntegration {
     this.isEnabled = false;
   }
 
-  public getYTMScripts(): { name: string; script: string }[] {
-    return [];
-  }
-
   /**
    * Format the data to be sent to the Last.fm API as a query string
    * @param params data to send

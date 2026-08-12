@@ -53,10 +53,6 @@ export default class AdBlocker implements IIntegration {
     log.info(`Ad blocker stopped after blocking ${this.blockedRequests} requests`);
   }
 
-  public getYTMScripts(): { name: string; script: string }[] {
-    return [];
-  }
-
   private startBlocking(blocker: ElectronBlocker): void {
     if (blocker.isBlockingEnabled(this.session)) return;
 

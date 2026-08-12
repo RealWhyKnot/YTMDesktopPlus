@@ -220,8 +220,4 @@ export default class ListenAlong implements IIntegration {
     this.memoryStore.set("listenAlongPairingCode", null);
     this.memoryStore.set("listenAlongPairingError", null);
   }
-
-  public getYTMScripts(): { name: string; script: string }[] {
-    return [];
-  }
 }
