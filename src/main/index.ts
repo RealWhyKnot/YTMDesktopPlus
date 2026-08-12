@@ -2284,7 +2284,9 @@ app.on("ready", async () => {
   // network and the app has to start without them.
   adBlocker.provide(
     session.fromPartition(app.isPackaged ? "persist:ytmview" : "persist:ytmview-dev"),
-    path.join(app.getPath("userData"), "adblocker-engine.bin")
+    // The engine carries its own config, so a cache written under different
+    // options is restored with those options. The name changes when they do.
+    path.join(app.getPath("userData"), "adblocker-engine-network.bin")
   );
   if (store.get("playback").adBlockerEnabled) {
     adBlocker.enable();

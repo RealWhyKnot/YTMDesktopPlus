@@ -1,11 +1,12 @@
 import type { Session } from "electron";
 import log from "electron-log";
 import fs from "fs/promises";
+import path from "path";
 
 import { ElectronBlocker, adsAndTrackingLists } from "@ghostery/adblocker-electron";
 
 import IIntegration from "../integration";
-import { isCacheStale } from "./cache";
+import { isCacheStale, LEGACY_CACHE_FILES } from "./cache";
 
 export default class AdBlocker implements IIntegration {
   private session: Session | null = null;
@@ -18,6 +19,12 @@ export default class AdBlocker implements IIntegration {
   public provide(session: Session, cachePath: string): void {
     this.session = session;
     this.cachePath = cachePath;
+
+    // Caches written before cosmetic filtering was dropped are several megabytes
+    // and will never be read again.
+    for (const stale of LEGACY_CACHE_FILES) {
+      fs.rm(path.join(path.dirname(cachePath), stale), { force: true }).catch((): void => undefined);
+    }
   }
 
   public enable(): void {
@@ -73,10 +80,17 @@ export default class AdBlocker implements IIntegration {
     }
 
     try {
+      // Network filters only. Cosmetic filtering costs a content script in every
+      // frame, a MutationObserver over the whole document and an IPC round trip
+      // per batch of new classes, and it buys nothing here: every cosmetic rule
+      // the lists carry for this domain targets ytd-* elements from the youtube.com
+      // watch page, while YouTube Music renders ytmusic-* ones. It also broke the
+      // song context menu, whose service item rows overflowed the stack while
+      // Polymer stamped them and rendered as blank gaps.
       const blocker = await ElectronBlocker.fromLists(
         fetch,
         adsAndTrackingLists,
-        { enableCompression: true },
+        { enableCompression: true, loadCosmeticFilters: false },
         {
           path: cachePath,
           read: fs.readFile,
