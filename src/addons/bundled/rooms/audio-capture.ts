@@ -1,13 +1,13 @@
-import enableScript from "./script/enable.script?raw";
-import disableScript from "./script/disable.script?raw";
+import enableScript from "./scripts/audiocapture-enable.script?raw";
+import disableScript from "./scripts/audiocapture-disable.script?raw";
 
 // Captures the YTM page's audio for Listen Along rooms. The page-side script
 // splits the shared audio graph into an ear path and a broadcast tap, moves
 // the local volume onto the ear path so the stream is immune to it, and
 // encodes the tap with WebCodecs. Encoded packets arrive in the main process
-// over ytmView:audioChunks; this class only manages injection. The scripts are
-// registered and run by the rooms addon, so runScript sends under its
-// namespace rather than talking to the view directly.
+// over ytmView:audioChunks; this class only manages injection. Injection is
+// driven by the addon that owns it, which passes runScript in, so this never
+// talks to the view directly.
 export default class AudioStreamCapture {
   private hasInjected = false;
   private isEnabled = false;
