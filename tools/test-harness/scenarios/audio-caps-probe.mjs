@@ -10,7 +10,6 @@ export const fixture = {
     enableSpeakerFill: false,
     progressInTaskbar: false,
     ratioVolume: false,
-    loudnessNormalization: false
   }
 };
 

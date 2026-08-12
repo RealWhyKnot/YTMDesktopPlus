@@ -2,21 +2,9 @@
   const video = document.querySelector("video");
   if (!video || window.__ytmdAudioStream) return "";
 
-  // The element can only be routed into WebAudio once, so the graph base is
-  // shared with loudness normalization and installed here if it is not
-  // already present.
-  let base = window.__ytmdLoudnessNormalization;
-  if (!base) {
-    const context = new AudioContext();
-    const source = context.createMediaElementSource(video);
-    const gain = context.createGain();
-    source.connect(gain);
-    gain.connect(context.destination);
-    base = { context, gain };
-    window.__ytmdLoudnessNormalization = base;
-  }
+  const base = window.__ytmdEnsureAudioGraph?.();
+  if (!base) return "";
   const context = base.context;
-  if (context.state === "suspended") context.resume();
 
   // The element's volume applies before the graph, which would put the local
   // slider on the broadcast. So the element is pinned to full volume and the
@@ -36,10 +24,12 @@
   let virtualVolume = video.volume;
   localGain.gain.value = nativeDesc.get.call(video);
 
-  base.gain.disconnect();
-  base.gain.connect(localGain);
-  localGain.connect(context.destination);
-  base.gain.connect(tap);
+  // Ear path runs through localGain and rejoins the shared output; the tap comes
+  // off ahead of it so the local slider never reaches listeners.
+  base.source.disconnect();
+  base.source.connect(localGain);
+  localGain.connect(base.out);
+  base.source.connect(tap);
   nativeDesc.set.call(video, 1);
 
   const effectiveVolume = () => (ratioActive() ? Math.pow(virtualVolume, EXPONENT) : virtualVolume);

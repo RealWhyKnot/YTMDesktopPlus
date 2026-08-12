@@ -35,7 +35,6 @@ export type StoreSchema = {
     enableSpeakerFill: boolean;
     progressInTaskbar: boolean;
     ratioVolume: boolean;
-    loudnessNormalization: boolean;
     adBlockerEnabled: boolean; // filters requests across the whole YouTube Music session
     preventIdlePause: boolean; // hold back YTM's inactivity pause and dismiss its prompt
   };

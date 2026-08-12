@@ -11,7 +11,6 @@ const continueWhereYouLeftOffPaused = staged.refs["playback.continueWhereYouLeft
 const progressInTaskbar = staged.refs["playback.progressInTaskbar"];
 const enableSpeakerFill = staged.refs["playback.enableSpeakerFill"];
 const ratioVolume = staged.refs["playback.ratioVolume"];
-const loudnessNormalization = staged.refs["playback.loudnessNormalization"];
 const preventIdlePause = staged.refs["playback.preventIdlePause"];
 const adBlockerEnabled = staged.refs["playback.adBlockerEnabled"];
 </script>
@@ -30,13 +29,6 @@ const adBlockerEnabled = staged.refs["playback.adBlockerEnabled"];
     <YTMDSetting v-model="progressInTaskbar" type="checkbox" name="Show track progress on taskbar" @change="stageChanged" />
     <YTMDSetting v-model="enableSpeakerFill" type="checkbox" restart-required name="Enable speaker fill" @change="stageChanged" />
     <YTMDSetting v-model="ratioVolume" type="checkbox" name="Ratio volume" @change="stageChanged" />
-    <YTMDSetting
-      v-model="loudnessNormalization"
-      type="checkbox"
-      name="Loudness normalization"
-      description="Levels tracks against each other using YouTube's measured loudness. Loud tracks come down; quiet tracks are never boosted"
-      @change="stageChanged"
-    />
     <YTMDSetting
       v-model="preventIdlePause"
       type="checkbox"

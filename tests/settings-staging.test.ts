@@ -27,7 +27,6 @@ function stateFixture(overrides: Record<string, unknown> = {}) {
       progressInTaskbar: false,
       enableSpeakerFill: false,
       ratioVolume: false,
-      loudnessNormalization: false,
       adBlockerEnabled: false,
       preventIdlePause: false
     },

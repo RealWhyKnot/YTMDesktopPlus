@@ -1,6 +1,6 @@
 (function () {
   const state = window.__ytmdAudioStream;
-  const base = window.__ytmdLoudnessNormalization;
+  const base = window.__ytmdAudioGraph;
   const video = document.querySelector("video");
   if (!state || !base || !video) return "";
 
@@ -18,9 +18,10 @@
   Reflect.deleteProperty(video, "volume");
   state.nativeDesc.set.call(video, effective);
 
-  // Ear path back to the plain shared graph; the tap goes away with it.
-  base.gain.disconnect();
-  base.gain.connect(base.context.destination);
+  // Ear path back to the plain shared graph; the tap goes away with it. Anything
+  // downstream of `out`, such as the volume boost, is left alone.
+  base.source.disconnect();
+  base.source.connect(base.out);
   state.localGain.disconnect();
 
   delete window.__ytmdAudioStream;

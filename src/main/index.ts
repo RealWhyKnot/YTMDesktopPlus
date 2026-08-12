@@ -40,7 +40,6 @@ import DiscordPresence from "./integrations/discord-presence";
 import LastFM from "./integrations/last-fm";
 import NowPlayingNotifications from "./integrations/notifications";
 import VolumeRatio from "./integrations/volume-ratio";
-import LoudnessNormalization from "./integrations/loudness-normalization";
 import NonStop from "./integrations/nonstop";
 import AdBlocker from "./integrations/ad-blocker";
 import ListenAlong from "./integrations/listen-along";
@@ -175,7 +174,6 @@ const lastFMScrobbler = new LastFM();
 const listenAlong = new ListenAlong();
 const nowPlayingNotifications = new NowPlayingNotifications();
 const ratioVolume = new VolumeRatio();
-const loudnessNormalization = new LoudnessNormalization();
 const nonStop = new NonStop();
 const adBlocker = new AdBlocker();
 
@@ -451,7 +449,6 @@ const store = new Conf<StoreSchema>({
       enableSpeakerFill: false,
       progressInTaskbar: false,
       ratioVolume: false,
-      loudnessNormalization: false,
       adBlockerEnabled: false,
       preventIdlePause: false
     },
@@ -548,6 +545,12 @@ if (store.get("updates") === undefined) {
 }
 if (store.get("playback").adBlockerEnabled === undefined) {
   store.set("playback.adBlockerEnabled", false);
+}
+// YouTube Music applies its own measured-loudness attenuation to the media
+// element, so the setting that did the same thing on a gain node halved the
+// track twice. Removed rather than fixed; the key goes with it.
+if ((store.get("playback") as Record<string, unknown>).loudnessNormalization !== undefined) {
+  store.delete("playback.loudnessNormalization" as keyof StoreSchema);
 }
 if (store.get("playback").preventIdlePause === undefined) {
   store.set("playback.preventIdlePause", false);
@@ -747,17 +750,6 @@ store.onDidAnyChange(async (newState, oldState) => {
   } else if (!newState.playback.ratioVolume && oldState.playback.ratioVolume) {
     ratioVolume.disable();
     log.info("Integration disabled: Ratio volume");
-  }
-
-  if (newState.playback.loudnessNormalization) {
-    loudnessNormalization.provide(ytmView);
-  }
-  if (newState.playback.loudnessNormalization && !oldState.playback.loudnessNormalization) {
-    loudnessNormalization.enable();
-    log.info("Integration enabled: Loudness normalization");
-  } else if (!newState.playback.loudnessNormalization && oldState.playback.loudnessNormalization) {
-    loudnessNormalization.disable();
-    log.info("Integration disabled: Loudness normalization");
   }
 
   if (newState.playback.preventIdlePause) {
@@ -1354,7 +1346,6 @@ const createYTMView = (): void => {
   });
   companionServer.provide(store, memoryStore, ytmView);
   ratioVolume.provide(ytmView);
-  loudnessNormalization.provide(ytmView);
   nonStop.provide(ytmView);
   providePlaybackView(() => ytmView);
 
@@ -1919,7 +1910,6 @@ app.on("ready", async () => {
 
       // TODO: this is just a hack fix for ratio volume to run the enable script
       ratioVolume.ytmViewLoaded();
-      loudnessNormalization.ytmViewLoaded();
       nonStop.ytmViewLoaded();
 
       addonManager.notifyYtmViewLoaded();
@@ -2469,10 +2459,6 @@ app.on("ready", async () => {
     map[obj.name] = obj.script;
     return map;
   }, {});
-  ytmViewIntegrationScripts["loudnessNormalization"] = loudnessNormalization.getYTMScripts().reduce<{ [name: string]: string }>((map, obj) => {
-    map[obj.name] = obj.script;
-    return map;
-  }, {});
   ytmViewIntegrationScripts["nonStop"] = nonStop.getYTMScripts().reduce<{ [name: string]: string }>((map, obj) => {
     map[obj.name] = obj.script;
     return map;
@@ -2505,13 +2491,6 @@ app.on("ready", async () => {
     ratioVolume.provide(ytmView);
     ratioVolume.enable();
     log.info("Integration enabled: Ratio volume");
-  }
-
-  // LoudnessNormalization
-  if (store.get("playback").loudnessNormalization) {
-    loudnessNormalization.provide(ytmView);
-    loudnessNormalization.enable();
-    log.info("Integration enabled: Loudness normalization");
   }
 
   // NonStop

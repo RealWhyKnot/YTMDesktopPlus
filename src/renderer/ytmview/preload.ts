@@ -236,6 +236,44 @@ contextBridge.executeInMainWorld({
   }
 });
 
+// One Web Audio graph for the whole page. createMediaElementSource permanently
+// reroutes the element and may only be called once, so every feature that wants
+// the audio shares this and none of them may build their own.
+//
+//   source -> out -> destination
+//
+// `out` is the junction everything on the ear path terminates into, and nothing
+// but its owner ever disconnects it. Room capture splices its own node in ahead
+// of `out`, so anything hanging off the far side of it, such as the volume
+// boost, survives a room starting or stopping. Page scripts cannot import each
+// other, so the graph is built here rather than copied into each of them.
+contextBridge.executeInMainWorld({
+  func: () => {
+    type AudioGraph = { context: AudioContext; source: MediaElementAudioSourceNode; out: GainNode };
+    const graphWindow = window as typeof window & { __ytmdAudioGraph?: AudioGraph; __ytmdEnsureAudioGraph?: () => AudioGraph | null };
+
+    graphWindow.__ytmdEnsureAudioGraph = () => {
+      let graph = graphWindow.__ytmdAudioGraph;
+      if (!graph) {
+        const video = document.querySelector("video");
+        if (!video) return null;
+
+        const context = new AudioContext();
+        const source = context.createMediaElementSource(video);
+        const out = context.createGain();
+        source.connect(out);
+        out.connect(context.destination);
+
+        graph = { context, source, out };
+        graphWindow.__ytmdAudioGraph = graph;
+      }
+      // Routing an element into a suspended context silences it outright.
+      if (graph.context.state === "suspended") graph.context.resume();
+      return graph;
+    };
+  }
+});
+
 // Hook setup starts at DOMContentLoaded rather than the load event: a watch
 // page with paused media can hold the load event open indefinitely, and the
 // polls below already wait for everything they need.

@@ -16,7 +16,6 @@ export const STAGED_SETTING_KEYS = [
   "playback.progressInTaskbar",
   "playback.enableSpeakerFill",
   "playback.ratioVolume",
-  "playback.loudnessNormalization",
   "playback.adBlockerEnabled",
   "playback.preventIdlePause",
   "integrations.companionServerEnabled",
