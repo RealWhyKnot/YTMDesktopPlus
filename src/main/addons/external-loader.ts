@@ -15,6 +15,27 @@ export type ExternalAddonScan = {
   warnings?: string[];
 };
 
+/** Reads and validates one addon folder. Never throws. */
+export function scanAddonFolder(dir: string): ExternalAddonScan {
+  const folderName = path.basename(dir);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8"));
+  } catch (error) {
+    return { dir, folderName, error: `manifest.json could not be read: ${error}` };
+  }
+  const invalid = validateManifest(parsed);
+  if (invalid) {
+    return { dir, folderName, error: `manifest.json is invalid: ${invalid}` };
+  }
+  const manifest = parsed as AddonManifest;
+  if (manifest.id !== folderName) {
+    return { dir, folderName, manifest, error: "folder name must match the addon id" };
+  }
+  const warnings = manifestWarnings(manifest);
+  return { dir, folderName, manifest, warnings: warnings.length > 0 ? warnings : undefined };
+}
+
 /** Reads every folder in the addons directory and validates its manifest.
  *  Never throws: a broken folder comes back as an entry with an error. */
 export function scanExternalAddons(addonsDir: string): ExternalAddonScan[] {
@@ -25,30 +46,22 @@ export function scanExternalAddons(addonsDir: string): ExternalAddonScan[] {
     return [];
   }
 
-  const results: ExternalAddonScan[] = [];
-  for (const entry of entries.filter(e => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
-    const dir = path.join(addonsDir, entry.name);
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8"));
-    } catch (error) {
-      results.push({ dir, folderName: entry.name, error: `manifest.json could not be read: ${error}` });
-      continue;
+  return entries
+    .filter(entry => entry.isDirectory())
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(entry => scanAddonFolder(path.join(addonsDir, entry.name)));
+}
+
+/** Drops every module the addon's folder ever loaded from the shared
+ *  CommonJS cache, so the next require reads fresh sources. */
+export function bustAddonRequireCache(dir: string): void {
+  const requireFromAddon = createRequire(path.join(dir, "manifest.json"));
+  const prefix = path.normalize(dir + path.sep).toLowerCase();
+  for (const key of Object.keys(requireFromAddon.cache ?? {})) {
+    if (path.normalize(key).toLowerCase().startsWith(prefix)) {
+      delete requireFromAddon.cache[key];
     }
-    const invalid = validateManifest(parsed);
-    if (invalid) {
-      results.push({ dir, folderName: entry.name, error: `manifest.json is invalid: ${invalid}` });
-      continue;
-    }
-    const manifest = parsed as AddonManifest;
-    if (manifest.id !== entry.name) {
-      results.push({ dir, folderName: entry.name, manifest, error: "folder name must match the addon id" });
-      continue;
-    }
-    const warnings = manifestWarnings(manifest);
-    results.push({ dir, folderName: entry.name, manifest, warnings: warnings.length > 0 ? warnings : undefined });
   }
-  return results;
 }
 
 /** Turns a scanned folder into a runnable definition. Styles are injected and

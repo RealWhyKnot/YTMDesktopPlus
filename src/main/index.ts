@@ -29,6 +29,7 @@ import electronSquirrelStartup from "electron-squirrel-startup";
 import MemoryStore from "./memory-store";
 import { AddonManager } from "./addons/manager";
 import { scanExternalAddons } from "./addons/external-loader";
+import { watchExternalAddonsForDev } from "./addons/dev-reload";
 import { migrateCustomCssSetting } from "./addons/migrate-custom-css";
 import { BUNDLED_ADDONS } from "../addons/bundled";
 import playerStateStore, { playerEvents, PlayerState, VideoState } from "./player-state-store";
@@ -2453,10 +2454,19 @@ app.on("ready", async () => {
     store.delete("integrations.listenAlongAutoRoomEnabled" as keyof StoreSchema);
   }
 
-  addonManager.registerExternal(scanExternalAddons(addonsDirPath));
+  const externalAddonScans = scanExternalAddons(addonsDirPath);
+  addonManager.registerExternal(externalAddonScans);
 
   await addonManager.boot();
   log.info("Addons booted");
+
+  // Edit-and-see loop for addon authors: YTMD_ADDON_DEV=1 reloads an external
+  // addon after its files change. Development builds only; the user-facing
+  // enable and disable model stays restart-scoped.
+  if (process.env.YTMD_ADDON_DEV === "1" && !app.isPackaged) {
+    watchExternalAddonsForDev(externalAddonScans, id => addonManager.reloadExternal(id), log);
+    log.info("Addon dev reload is watching the addons directory");
+  }
 
   createMainWindow();
   log.info("Created main window");

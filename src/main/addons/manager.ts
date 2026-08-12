@@ -4,7 +4,7 @@ import { manifestSatisfiesApp, SUPPORTED_ADDON_API_VERSION } from "./validate-ma
 import { AddonHostServices, AddonHostWindow, AddonInstance, BundledAddonContext, createAddonContext, HOST_SCRIPT_NAMESPACE } from "./context";
 import innertubeRequestScript from "./scripts/innertube-request.script?raw";
 import type { AddonCssHandle } from "./css";
-import { buildExternalDefinition, type ExternalAddonScan } from "./external-loader";
+import { buildExternalDefinition, bustAddonRequireCache, scanAddonFolder, type ExternalAddonScan } from "./external-loader";
 
 export type BundledAddonDefinition = {
   manifest: AddonManifest;
@@ -22,6 +22,7 @@ type ManagedAddon = {
   cleanups: (() => void)[];
   badgeClickCallbacks: (() => void)[];
   actionCallbacks: Map<string, (() => void)[]>;
+  windows: AddonHostWindow[];
   /** External addons only: the folder file windows resolve against */
   dir?: string;
   scanError?: string;
@@ -53,7 +54,8 @@ export class AddonManager {
         cssHandles: [],
         cleanups: [],
         badgeClickCallbacks: [],
-        actionCallbacks: new Map()
+        actionCallbacks: new Map(),
+        windows: []
       });
     }
   }
@@ -86,6 +88,7 @@ export class AddonManager {
         cleanups: [],
         badgeClickCallbacks: [],
         actionCallbacks: new Map(),
+        windows: [],
         dir: scan.dir,
         scanError: conflict ? "id conflicts with an installed addon" : scan.error
       });
@@ -99,76 +102,148 @@ export class AddonManager {
     // Host-side page scripts every addon shares, in place before any activate.
     this.services.registerYtmScript(HOST_SCRIPT_NAMESPACE, "innertubeRequest", innertubeRequestScript);
     for (const addon of this.addons) {
-      const { manifest } = addon.definition;
-      if (addon.scanError) {
-        addon.descriptor.state = "error";
-        addon.descriptor.error = addon.scanError;
-        continue;
-      }
-      if (!addon.descriptor.enabled) {
-        addon.descriptor.state = "disabled";
-        continue;
-      }
-      if (!manifestSatisfiesApp(manifest, this.services.appVersion)) {
-        addon.descriptor.state = "incompatible";
-        addon.descriptor.error = `Needs app version ${manifest.minAppVersion} or newer`;
-        continue;
-      }
-      if (manifest.apiVersion !== undefined && manifest.apiVersion > SUPPORTED_ADDON_API_VERSION) {
-        addon.descriptor.state = "incompatible";
-        addon.descriptor.error = `Requires a newer app (addon API v${manifest.apiVersion})`;
-        continue;
-      }
-      try {
-        addon.context = createAddonContext(
-          manifest,
-          this.services,
-          {
-            setSettingsSections: sections => this.setSettingsSections(manifest.id, sections),
-            addLoadedCallback: callback => {
-              addon.loadedCallbacks.push(callback);
-              return () => {
-                addon.loadedCallbacks = addon.loadedCallbacks.filter(cb => cb !== callback);
-              };
-            },
-            addCssHandle: handle => addon.cssHandles.push(handle),
-            addCleanup: cleanup => addon.cleanups.push(cleanup),
-            setTitlebarBadge: badge => this.setTitlebarBadge(manifest.id, badge),
-            addBadgeClickCallback: callback => {
-              addon.badgeClickCallbacks.push(callback);
-              return () => {
-                addon.badgeClickCallbacks = addon.badgeClickCallbacks.filter(cb => cb !== callback);
-              };
-            },
-            addWindow: window => {
-              this.windows.add(window);
-              window.once("closed", () => this.windows.delete(window));
-            },
-            addActionCallback: (key, callback) => {
-              const list = addon.actionCallbacks.get(key) ?? [];
-              list.push(callback);
-              addon.actionCallbacks.set(key, list);
-              return () => {
-                addon.actionCallbacks.set(
-                  key,
-                  (addon.actionCallbacks.get(key) ?? []).filter(cb => cb !== callback)
-                );
-              };
-            },
-            setTrayMenuItems: items => this.setTrayItems(manifest.id, items),
-            reportError: (source, error) => this.reportRuntimeError(manifest.id, source, error)
+      await this.activateOne(addon);
+    }
+    this.publishRuntime();
+  }
+
+  private async activateOne(addon: ManagedAddon) {
+    const { manifest } = addon.definition;
+    if (addon.scanError) {
+      addon.descriptor.state = "error";
+      addon.descriptor.error = addon.scanError;
+      return;
+    }
+    if (!addon.descriptor.enabled) {
+      addon.descriptor.state = "disabled";
+      return;
+    }
+    if (!manifestSatisfiesApp(manifest, this.services.appVersion)) {
+      addon.descriptor.state = "incompatible";
+      addon.descriptor.error = `Needs app version ${manifest.minAppVersion} or newer`;
+      return;
+    }
+    if (manifest.apiVersion !== undefined && manifest.apiVersion > SUPPORTED_ADDON_API_VERSION) {
+      addon.descriptor.state = "incompatible";
+      addon.descriptor.error = `Requires a newer app (addon API v${manifest.apiVersion})`;
+      return;
+    }
+    try {
+      addon.context = createAddonContext(
+        manifest,
+        this.services,
+        {
+          setSettingsSections: sections => this.setSettingsSections(manifest.id, sections),
+          addLoadedCallback: callback => {
+            addon.loadedCallbacks.push(callback);
+            return () => {
+              addon.loadedCallbacks = addon.loadedCallbacks.filter(cb => cb !== callback);
+            };
           },
-          addon.dir
-        );
-        addon.instance = ((await addon.definition.activate(addon.context)) as AddonInstance | undefined) ?? {};
-        addon.descriptor.state = "active";
-        log.info(`Addon active: ${manifest.id} ${manifest.version}`);
-      } catch (error) {
-        addon.descriptor.state = "error";
-        addon.descriptor.error = String(error);
-        log.error(`Addon failed to activate: ${manifest.id}`, error);
+          addCssHandle: handle => addon.cssHandles.push(handle),
+          addCleanup: cleanup => addon.cleanups.push(cleanup),
+          setTitlebarBadge: badge => this.setTitlebarBadge(manifest.id, badge),
+          addBadgeClickCallback: callback => {
+            addon.badgeClickCallbacks.push(callback);
+            return () => {
+              addon.badgeClickCallbacks = addon.badgeClickCallbacks.filter(cb => cb !== callback);
+            };
+          },
+          addWindow: window => {
+            this.windows.add(window);
+            addon.windows.push(window);
+            window.once("closed", () => {
+              this.windows.delete(window);
+              addon.windows = addon.windows.filter(entry => entry !== window);
+            });
+          },
+          addActionCallback: (key, callback) => {
+            const list = addon.actionCallbacks.get(key) ?? [];
+            list.push(callback);
+            addon.actionCallbacks.set(key, list);
+            return () => {
+              addon.actionCallbacks.set(
+                key,
+                (addon.actionCallbacks.get(key) ?? []).filter(cb => cb !== callback)
+              );
+            };
+          },
+          setTrayMenuItems: items => this.setTrayItems(manifest.id, items),
+          reportError: (source, error) => this.reportRuntimeError(manifest.id, source, error)
+        },
+        addon.dir
+      );
+      addon.instance = ((await addon.definition.activate(addon.context)) as AddonInstance | undefined) ?? {};
+      addon.descriptor.state = "active";
+      log.info(`Addon active: ${manifest.id} ${manifest.version}`);
+    } catch (error) {
+      addon.descriptor.state = "error";
+      addon.descriptor.error = String(error);
+      log.error(`Addon failed to activate: ${manifest.id}`, error);
+    }
+  }
+
+  /** Unwinds one addon completely: subscriptions, destroy(), styles, windows
+   *  and every registry entry it owns. The reverse of activateOne. */
+  private async deactivate(addon: ManagedAddon) {
+    const id = addon.definition.manifest.id;
+    for (const cleanup of addon.cleanups) {
+      try {
+        cleanup();
+      } catch {
+        // Teardown noise only hurts the addon being torn down.
       }
     }
+    addon.cleanups = [];
+    if (addon.instance?.destroy) {
+      try {
+        await addon.instance.destroy();
+      } catch (error) {
+        log.error(`Addon failed to shut down cleanly: ${id}`, error);
+      }
+    }
+    addon.instance = null;
+    addon.context = null;
+    for (const handle of addon.cssHandles) handle.remove();
+    addon.cssHandles = [];
+    for (const window of [...addon.windows]) {
+      if (!window.isDestroyed()) window.close();
+    }
+    addon.windows = [];
+    addon.loadedCallbacks = [];
+    addon.badgeClickCallbacks = [];
+    addon.actionCallbacks.clear();
+    this.setTitlebarBadge(id, null);
+    this.setTrayItems(id, []);
+    addon.descriptor.settingsSections = [];
+    addon.descriptor.lastError = undefined;
+    addon.descriptor.error = undefined;
+    addon.descriptor.state = "disabled";
+  }
+
+  /** Development-time reload of one external addon: tear down, re-read the
+   *  folder with a cleared module cache, activate again. The user-facing
+   *  enable and disable stay restart-scoped; this only serves editing. */
+  public async reloadExternal(id: string): Promise<void> {
+    const addon = this.addons.find(entry => entry.definition.manifest.id === id);
+    if (!addon || addon.origin !== "external" || !addon.dir) return;
+
+    await this.deactivate(addon);
+    bustAddonRequireCache(addon.dir);
+
+    const scan = scanAddonFolder(addon.dir);
+    for (const warning of scan.warnings ?? []) {
+      log.warn(`Addon manifest warning (${scan.folderName}): ${warning}`);
+    }
+    addon.scanError = scan.error;
+    if (scan.manifest) {
+      addon.definition = scan.error ? { manifest: scan.manifest, activate: () => {} } : buildExternalDefinition(scan.dir, scan.manifest);
+      addon.descriptor.manifest = scan.manifest;
+    } else {
+      addon.definition = { manifest: addon.definition.manifest, activate: () => {} };
+    }
+
+    await this.activateOne(addon);
     this.publishRuntime();
   }
 

@@ -1,5 +1,8 @@
+import fs from "fs";
+import os from "os";
 import path from "path";
 import { describe, expect, it, vi } from "vitest";
+import { scanExternalAddons } from "../src/main/addons/external-loader";
 import { AddonManager, BundledAddonDefinition } from "../src/main/addons/manager";
 import { manifestWarnings, SUPPORTED_ADDON_API_VERSION, validateManifest, versionAtLeast } from "../src/main/addons/validate-manifest";
 import { createAddonContext, type AddonHostBridge, type BundledAddonContext } from "../src/main/addons/context";
@@ -398,6 +401,76 @@ describe("AddonContext", () => {
     ctx.memory.set("status", "hosting");
     expect(ctx.memory.get("status")).toBe("hosting");
     expect((fixture.memory.get("addonMemory") as Record<string, unknown>)["sample"]).toEqual({ status: "hosting" });
+  });
+});
+
+describe("dev reload", () => {
+  const addonSource = (version: string) => `
+let activations = 0;
+module.exports.activate = ctx => {
+  activations++;
+  ctx.memory.set("version", "${version}");
+  ctx.memory.set("activations", activations);
+  ctx.titlebar.setBadge({ icon: "check" });
+  return { destroy() { ctx.memory.set("sawDestroy", "${version}"); } };
+};`;
+
+  function externalAddonOnDisk() {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "ytmd-reload-test-"));
+    const dir = path.join(root, "reloadable");
+    fs.mkdirSync(dir);
+    fs.writeFileSync(
+      path.join(dir, "manifest.json"),
+      JSON.stringify({ id: "reloadable", name: "Reloadable", version: "1.0.0", author: "someone", description: "reload target", main: "index.js" })
+    );
+    fs.writeFileSync(path.join(dir, "index.js"), addonSource("one"));
+    return { root, dir };
+  }
+
+  it("tears down, busts the module cache and activates fresh sources", async () => {
+    const { root, dir } = externalAddonOnDisk();
+    const fixture = fakeServices({ reloadable: { enabled: true } });
+    const manager = new AddonManager(fixture.services);
+    manager.registerExternal(scanExternalAddons(root));
+    await manager.boot();
+
+    const bag = () => (fixture.memory.get("addonMemory") as Record<string, Record<string, unknown>>)["reloadable"];
+    expect(manager.descriptors()[0].state).toBe("active");
+    expect(bag()).toMatchObject({ version: "one", activations: 1 });
+    expect((fixture.memory.get("addonTitlebarBadges") as unknown[]).length).toBe(1);
+
+    fs.writeFileSync(path.join(dir, "index.js"), addonSource("two"));
+    await manager.reloadExternal("reloadable");
+
+    // destroy() from the old instance ran; the badge was cleared and re-set;
+    // a module-scope counter back at 1 proves the cache was actually busted.
+    expect(bag()).toMatchObject({ version: "two", activations: 1, sawDestroy: "one" });
+    expect(manager.descriptors()[0].state).toBe("active");
+    expect((fixture.memory.get("addonTitlebarBadges") as unknown[]).length).toBe(1);
+  });
+
+  it("reload surfaces a broken edit as an error and recovers on the next one", async () => {
+    const { root, dir } = externalAddonOnDisk();
+    const fixture = fakeServices({ reloadable: { enabled: true } });
+    const manager = new AddonManager(fixture.services);
+    manager.registerExternal(scanExternalAddons(root));
+    await manager.boot();
+
+    fs.writeFileSync(path.join(dir, "index.js"), "module.exports = { broken: true };");
+    await manager.reloadExternal("reloadable");
+    expect(manager.descriptors()[0].state).toBe("error");
+    expect(manager.descriptors()[0].error).toContain("activate");
+
+    fs.writeFileSync(path.join(dir, "index.js"), addonSource("three"));
+    await manager.reloadExternal("reloadable");
+    expect(manager.descriptors()[0].state).toBe("active");
+  });
+
+  it("ignores bundled addons", async () => {
+    const fixture = fakeServices();
+    const { manager } = await bootWithContext(fixture);
+    await manager.reloadExternal("sample");
+    expect(manager.descriptors()[0].state).toBe("active");
   });
 });
 
