@@ -54,6 +54,8 @@ import { anyShortcutChanged, createShortcutRegistrar } from "./shortcuts";
 import { createTrayController } from "./tray";
 import { setupTaskbarFeatures } from "./taskbar";
 import { enableIntegrationsAtBoot, syncIntegrations, type IntegrationRegistration } from "./integrations/lifecycle";
+import { registerWindowControlIpc } from "./ipc/window-controls";
+import { registerStoreBridgeIpc } from "./ipc/store-bridge";
 import { buildUpdateFeedUrl, isNewerVersion } from "../shared/update-feed";
 
 // Injected by Forge's Vite plugin; empty in packaged builds.
@@ -1244,93 +1246,19 @@ app.on("ready", async () => {
     ownsAddonContents: sender => addonManager.ownsWebContents(sender)
   });
 
-  // Handle main window ipc
-  ipcMain.on("mainWindow:minimize", event => {
-    if (mainWindow !== null) {
-      if (!isMainWindowSender(event.sender)) return;
-
-      mainWindow.minimize();
-    }
-  });
-
-  ipcMain.on("mainWindow:maximize", event => {
-    if (mainWindow !== null) {
-      if (!isMainWindowSender(event.sender)) return;
-
-      mainWindow.maximize();
-    }
-  });
-
-  ipcMain.on("mainWindow:restore", event => {
-    if (mainWindow !== null) {
-      if (!isMainWindowSender(event.sender)) return;
-
-      mainWindow.restore();
-    }
-  });
-
-  ipcMain.on("mainWindow:close", event => {
-    if (mainWindow !== null) {
-      if (!isMainWindowSender(event.sender)) return;
-
-      if (store.get("general").hideToTrayOnClose || isDarwin) {
-        mainWindow.hide();
-      } else {
-        app.quit();
-      }
-    }
-  });
-
-  ipcMain.on("mainWindow:requestWindowState", event => {
-    if (!isMainWindowSender(event.sender)) return;
-
-    sendMainWindowStateIpc();
-  });
-
-  // Handle settings window ipc
-  ipcMain.on("settingsWindow:open", event => {
-    if (!isMainWindowSender(event.sender)) return;
-
-    createOrShowSettingsWindow();
-  });
-
-  ipcMain.on("settingsWindow:minimize", event => {
-    if (settingsWindow !== null) {
-      if (!isSettingsSender(event.sender)) return;
-
-      settingsWindow.minimize();
-    }
-  });
-
-  ipcMain.on("settingsWindow:maximize", event => {
-    if (settingsWindow !== null) {
-      if (!isSettingsSender(event.sender)) return;
-
-      settingsWindow.maximize();
-    }
-  });
-
-  ipcMain.on("settingsWindow:restore", event => {
-    if (settingsWindow !== null) {
-      if (!isSettingsSender(event.sender)) return;
-
-      settingsWindow.restore();
-    }
-  });
-
-  ipcMain.on("settingsWindow:close", event => {
-    if (settingsWindow !== null) {
-      if (!isSettingsSender(event.sender)) return;
-
-      settingsWindow.close();
-    }
-  });
-
-  ipcMain.on("settingsWindow:restartapplication", event => {
-    if (!isSettingsSender(event.sender)) return;
-
-    app.relaunch();
-    app.quit();
+  registerWindowControlIpc(ipcMain, {
+    getMainWindow: () => mainWindow,
+    getSettingsWindow: () => settingsWindow,
+    isMainWindowSender,
+    isSettingsSender,
+    hideMainWindowOnClose: () => store.get("general").hideToTrayOnClose || isDarwin,
+    quitApp: () => app.quit(),
+    relaunchApp: () => {
+      app.relaunch();
+      app.quit();
+    },
+    sendMainWindowState: sendMainWindowStateIpc,
+    openSettingsWindow: createOrShowSettingsWindow
   });
 
   // Handle ytm view ipc
@@ -1521,46 +1449,14 @@ app.on("ready", async () => {
   });
 
   // Handle memory store ipc
-  ipcMain.on("memoryStore:set", (event, key: string, value?: unknown) => {
-    if (!isMemoryStoreSender(event.sender)) return;
-
-    memoryStore.set(key, value);
-  });
-
-  ipcMain.handle("memoryStore:get", (event, key: string) => {
-    if (!isMemoryStoreSender(event.sender)) return;
-
-    return memoryStore.get(key);
-  });
-
-  // Handle settings store ipc
-  ipcMain.on("settings:set", (event, key: string, value?: unknown) => {
-    if (!isSettingsSender(event.sender)) return;
-
-    store.set(key, value);
-  });
-
-  ipcMain.on("settings:setMany", (event, entries: Array<[string, unknown]>) => {
-    if (!isSettingsSender(event.sender)) return;
-    if (!Array.isArray(entries)) return;
-
-    for (const entry of entries) {
-      if (!Array.isArray(entry) || typeof entry[0] !== "string") continue;
-      store.set(entry[0], entry[1]);
-    }
-  });
-
-  ipcMain.handle("settings:get", (event, key: string) => {
-    if (!isMainWindowSender(event.sender) && !isSettingsSender(event.sender) && !isYtmViewSender(event.sender) && !addonManager.ownsWebContents(event.sender))
-      return;
-
-    return store.get(key);
-  });
-
-  ipcMain.handle("settings:reset", (event, key: keyof StoreSchema) => {
-    if (!isSettingsSender(event.sender)) return;
-
-    store.reset(key);
+  registerStoreBridgeIpc(ipcMain, {
+    store,
+    memoryStore,
+    isMemoryStoreSender,
+    isSettingsSender,
+    isSettingsReader: sender => isMainWindowSender(sender) || isSettingsSender(sender) || isYtmViewSender(sender) || addonManager.ownsWebContents(sender),
+    decryptString: value => safeStorage.decryptString(Buffer.from(value, "hex")),
+    encryptString: value => safeStorage.encryptString(value).toString("hex")
   });
 
   // Handle addons ipc
@@ -1634,25 +1530,6 @@ app.on("ready", async () => {
     const addonsDir = path.join(app.getPath("userData"), "addons");
     await fs.mkdir(addonsDir, { recursive: true });
     shell.openPath(addonsDir);
-  });
-
-  // Handle safeStorage ipc
-  ipcMain.handle("safeStorage:decryptString", (event, value: string) => {
-    if (!memoryStore.get("safeStorageAvailable")) throw new Error("safeStorage is unavailable");
-    if (!isSettingsSender(event.sender)) return;
-
-    if (value) {
-      return safeStorage.decryptString(Buffer.from(value, "hex"));
-    } else {
-      return null;
-    }
-  });
-
-  ipcMain.handle("safeStorage:encryptString", (event, value: string) => {
-    if (!memoryStore.get("safeStorageAvailable")) throw new Error("safeStorage is unavailable");
-    if (!isSettingsSender(event.sender)) return;
-
-    return safeStorage.encryptString(value).toString("hex");
   });
 
   // Handle app ipc
