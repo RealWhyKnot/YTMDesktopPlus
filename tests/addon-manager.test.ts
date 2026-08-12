@@ -15,6 +15,7 @@ function nullBridge(): AddonHostBridge {
     addCleanup: () => {},
     setTitlebarBadge: () => {},
     addBadgeClickCallback: () => () => {},
+    addActionCallback: () => () => {},
     setTrayMenuItems: () => {},
     addWindow: () => {},
     reportError: () => {}
@@ -384,6 +385,38 @@ describe("AddonContext", () => {
     ctx.memory.set("status", "hosting");
     expect(ctx.memory.get("status")).toBe("hosting");
     expect((fixture.memory.get("addonMemory") as Record<string, unknown>)["sample"]).toEqual({ status: "hosting" });
+  });
+});
+
+describe("settings actions", () => {
+  it("routes button clicks to the addon and contains a throwing callback", async () => {
+    const fixture = fakeServices();
+    const { manager, ctx } = await bootWithContext(fixture);
+    const clicked = vi.fn();
+    ctx.settings.onAction("openPanel", clicked);
+    ctx.settings.onAction("broken", () => {
+      throw new Error("action boom");
+    });
+
+    expect(manager.handleSettingsAction("sample", "openPanel")).toBe(true);
+    expect(clicked).toHaveBeenCalledOnce();
+
+    expect(manager.handleSettingsAction("sample", "missing")).toBe(false);
+    expect(manager.handleSettingsAction("other", "openPanel")).toBe(false);
+
+    expect(() => manager.handleSettingsAction("sample", "broken")).not.toThrow();
+    expect(manager.descriptors()[0].lastError).toContain("action boom");
+  });
+
+  it("stops firing after unsubscribe", async () => {
+    const fixture = fakeServices();
+    const { manager, ctx } = await bootWithContext(fixture);
+    const clicked = vi.fn();
+    const unsubscribe = ctx.settings.onAction("openPanel", clicked);
+
+    unsubscribe();
+    expect(manager.handleSettingsAction("sample", "openPanel")).toBe(false);
+    expect(clicked).not.toHaveBeenCalled();
   });
 });
 

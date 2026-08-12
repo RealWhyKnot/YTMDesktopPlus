@@ -49,6 +49,8 @@ const addonSettingKeys: string[] = [];
 for (const addon of initialAddons) {
   for (const section of addon.settingsSections) {
     for (const field of section.fields) {
+      // Button fields carry no stored value, so they never join the staged set.
+      if (field.type === "button") continue;
       addonSettingKeys.push(`addons.settings.${addon.manifest.id}.${field.key}`);
     }
   }
@@ -130,6 +132,7 @@ memoryStore.onStateChanged(async newState => {
     for (const addon of newState.addonsRuntime) {
       for (const section of addon.settingsSections) {
         for (const field of section.fields) {
+          if (field.type === "button") continue;
           const key = `addons.settings.${addon.manifest.id}.${field.key}`;
           if (!(key in staged.refs)) missing.push(key);
         }

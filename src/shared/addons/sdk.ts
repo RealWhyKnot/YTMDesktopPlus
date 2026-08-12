@@ -47,8 +47,12 @@ export type AddonRuntimeState = "active" | "disabled" | "error" | "incompatible"
 export type AddonSettingsField =
   | { key: string; type: "toggle"; label: string; description?: string }
   | { key: string; type: "text"; label: string; description?: string; placeholder?: string; maxlength?: number }
-  | { key: string; type: "number"; label: string; description?: string; min?: number; max?: number; step?: number }
-  | { key: string; type: "select"; label: string; description?: string; options: { label: string; value: number }[] };
+  | { key: string; type: "number"; label: string; description?: string; min?: number; max?: number; step?: number; display?: "slider" | "input" }
+  | { key: string; type: "select"; label: string; description?: string; options: { label: string; value: string | number }[] }
+  /** A clickable row with no stored value; clicks reach settings.onAction(key) */
+  | { key: string; type: "button"; label: string; buttonText: string; description?: string };
+
+export const ADDON_SETTINGS_FIELD_TYPES = ["toggle", "text", "number", "select", "button"] as const satisfies readonly AddonSettingsField["type"][];
 
 export type AddonSettingsSection = {
   title?: string;
@@ -342,6 +346,8 @@ export interface AddonContext {
     onDidChange(key: string, callback: (next: unknown, prev: unknown) => void): Unsubscribe;
     /** Replaces the addon's settings UI; call once with everything to show */
     registerSettingsUI(sections: AddonSettingsSection[]): void;
+    /** Fires when the user clicks a button field with this key */
+    onAction(key: string, callback: () => void): Unsubscribe;
   };
   /** Volatile per-addon state, gone on quit */
   memory: {

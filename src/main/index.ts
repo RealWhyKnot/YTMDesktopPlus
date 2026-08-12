@@ -2272,6 +2272,13 @@ app.on("ready", async () => {
     addonManager.handleBadgeClick(addonId);
   });
 
+  ipcMain.on("addons:invokeAction", (event, id: string, key: string) => {
+    if (!isSettingsSender(event.sender)) return;
+    if (typeof id !== "string" || typeof key !== "string") return;
+
+    addonManager.handleSettingsAction(id, key);
+  });
+
   ipcMain.on("addons:openFolder", async event => {
     if (!isSettingsSender(event.sender)) return;
 

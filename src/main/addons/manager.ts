@@ -21,6 +21,7 @@ type ManagedAddon = {
   cssHandles: AddonCssHandle[];
   cleanups: (() => void)[];
   badgeClickCallbacks: (() => void)[];
+  actionCallbacks: Map<string, (() => void)[]>;
   /** External addons only: the folder file windows resolve against */
   dir?: string;
   scanError?: string;
@@ -51,7 +52,8 @@ export class AddonManager {
         loadedCallbacks: [],
         cssHandles: [],
         cleanups: [],
-        badgeClickCallbacks: []
+        badgeClickCallbacks: [],
+        actionCallbacks: new Map()
       });
     }
   }
@@ -80,6 +82,7 @@ export class AddonManager {
         cssHandles: [],
         cleanups: [],
         badgeClickCallbacks: [],
+        actionCallbacks: new Map(),
         dir: scan.dir,
         scanError: conflict ? "id conflicts with an installed addon" : scan.error
       });
@@ -132,6 +135,17 @@ export class AddonManager {
             addWindow: window => {
               this.windows.add(window);
               window.once("closed", () => this.windows.delete(window));
+            },
+            addActionCallback: (key, callback) => {
+              const list = addon.actionCallbacks.get(key) ?? [];
+              list.push(callback);
+              addon.actionCallbacks.set(key, list);
+              return () => {
+                addon.actionCallbacks.set(
+                  key,
+                  (addon.actionCallbacks.get(key) ?? []).filter(cb => cb !== callback)
+                );
+              };
             },
             setTrayMenuItems: items => this.setTrayItems(manifest.id, items),
             reportError: (source, error) => this.reportRuntimeError(manifest.id, source, error)
@@ -272,6 +286,22 @@ export class AddonManager {
       } catch (error) {
         log.error(`Addon badge click failed: ${id}`, error);
         this.reportRuntimeError(id, "titlebar.onBadgeClick", error);
+      }
+    }
+    return true;
+  }
+
+  /** A settings button field was clicked; returns whether any addon listened. */
+  public handleSettingsAction(id: string, key: string): boolean {
+    const addon = this.addons.find(entry => entry.definition.manifest.id === id);
+    const callbacks = addon?.actionCallbacks.get(key);
+    if (!addon || !callbacks || callbacks.length === 0) return false;
+    for (const callback of callbacks) {
+      try {
+        callback();
+      } catch (error) {
+        log.error(`Addon settings action failed: ${id}/${key}`, error);
+        this.reportRuntimeError(id, `settings.onAction(${key})`, error);
       }
     }
     return true;

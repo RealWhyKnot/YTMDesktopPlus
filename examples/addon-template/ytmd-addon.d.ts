@@ -57,6 +57,7 @@ export type AddonSettingsField = {
     min?: number;
     max?: number;
     step?: number;
+    display?: "slider" | "input";
 } | {
     key: string;
     type: "select";
@@ -64,9 +65,18 @@ export type AddonSettingsField = {
     description?: string;
     options: {
         label: string;
-        value: number;
+        value: string | number;
     }[];
+}
+/** A clickable row with no stored value; clicks reach settings.onAction(key) */
+ | {
+    key: string;
+    type: "button";
+    label: string;
+    buttonText: string;
+    description?: string;
 };
+export declare const ADDON_SETTINGS_FIELD_TYPES: readonly ["toggle", "text", "number", "select", "button"];
 export type AddonSettingsSection = {
     title?: string;
     fields: AddonSettingsField[];
@@ -368,6 +378,8 @@ export interface AddonContext {
         onDidChange(key: string, callback: (next: unknown, prev: unknown) => void): Unsubscribe;
         /** Replaces the addon's settings UI; call once with everything to show */
         registerSettingsUI(sections: AddonSettingsSection[]): void;
+        /** Fires when the user clicks a button field with this key */
+        onAction(key: string, callback: () => void): Unsubscribe;
     };
     /** Volatile per-addon state, gone on quit */
     memory: {

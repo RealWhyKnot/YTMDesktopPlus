@@ -1,4 +1,4 @@
-<script setup lang="ts" generic="T extends 'checkbox' | 'text' | 'file' | 'range' | 'select' | 'custom'">
+<script setup lang="ts" generic="T extends 'checkbox' | 'text' | 'file' | 'range' | 'number' | 'select' | 'custom'">
 import { computed, ref } from "vue";
 import ToggleSwitch from "./ToggleSwitch.vue";
 
@@ -7,8 +7,9 @@ type ModelValue = {
   text: string;
   file: string;
   range: number;
+  number: number;
   custom: never;
-  select: number;
+  select: number | string;
 };
 
 const props = defineProps<{
@@ -26,7 +27,8 @@ const props = defineProps<{
   disabledMessage?: string;
   flexColumn?: boolean;
   beta?: boolean;
-  optionsMap?: { [key: number]: string }; // This is for the select menu
+  optionsMap?: { [key: string]: string }; // This is for the select menu
+  valueType?: "string" | "number"; // How select option values read back; numbers by default
   maxlength?: number | string; // This is for the text input
   placeholder?: string; // This is for the text input
 }>();
@@ -57,7 +59,8 @@ const checkboxValue = computed({
 });
 
 function selectChanged(event: Event) {
-  value.value = Number.parseInt((event.target as HTMLSelectElement).value) as ModelValue[T];
+  const raw = (event.target as HTMLSelectElement).value;
+  value.value = (props.valueType === "string" ? raw : Number.parseInt(raw)) as ModelValue[T];
   emit("change");
 }
 </script>
@@ -97,6 +100,16 @@ function selectChanged(event: Event) {
       <span class="range-value">{{ value }}</span>
       <input v-model="value" :disabled="disabled" :type="props.type" :max="props.max" :min="props.min" :step="props.step" @change="$emit('change', $event)" />
     </div>
+    <input
+      v-if="type == 'number'"
+      v-model.number="value"
+      :disabled="disabled"
+      type="number"
+      :max="props.max"
+      :min="props.min"
+      :step="props.step"
+      @change="$emit('change', $event)"
+    />
     <div v-if="type == 'file'" class="file-picker">
       <input ref="fileInput" :disabled="disabled" type="file" accept=".css" :data-setting="bindSetting" @change="$emit('file-change', $event)" />
       <div class="file-input-button">
@@ -181,6 +194,21 @@ input[type="text"] {
 }
 
 input[type="text"]:focus {
+  border-color: var(--border-strong);
+}
+
+input[type="number"] {
+  background-color: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--bg-control-hover);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  outline: none;
+  width: 90px;
+  max-width: 100%;
+}
+
+input[type="number"]:focus {
   border-color: var(--border-strong);
 }
 

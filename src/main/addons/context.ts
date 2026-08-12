@@ -109,6 +109,7 @@ export type AddonHostBridge = {
   addCleanup(cleanup: () => void): void;
   setTitlebarBadge(badge: Omit<AddonTitlebarBadge, "addonId"> | null): void;
   addBadgeClickCallback(callback: () => void): Unsubscribe;
+  addActionCallback(key: string, callback: () => void): Unsubscribe;
   setTrayMenuItems(items: AddonTrayMenuItem[]): void;
   addWindow(window: AddonHostWindow): void;
   /** Records a runtime failure on the descriptor so the settings card shows it. */
@@ -201,6 +202,9 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       },
       registerSettingsUI(sections) {
         bridge.setSettingsSections(sections);
+      },
+      onAction(key, callback) {
+        return bridge.addActionCallback(key, callback);
       }
     },
 

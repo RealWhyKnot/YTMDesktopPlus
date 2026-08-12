@@ -41,11 +41,19 @@ function numberChanged(key: string) {
 }
 
 function optionsMapOf(field: AddonSettingsField & { type: "select" }) {
-  const map: Record<number, string> = {};
+  const map: Record<string, string> = {};
   for (const option of field.options) {
-    map[option.value] = option.label;
+    map[String(option.value)] = option.label;
   }
   return map;
+}
+
+function selectValueType(field: AddonSettingsField & { type: "select" }) {
+  return typeof field.options[0]?.value === "string" ? "string" : "number";
+}
+
+function invokeAction(key: string) {
+  window.ytmd.addons?.invokeAction(props.addon.manifest.id, key);
 }
 </script>
 
@@ -73,7 +81,10 @@ function optionsMapOf(field: AddonSettingsField & { type: "select" }) {
       <template v-for="(section, sectionIndex) in addon.settingsSections" :key="sectionIndex">
         <p v-if="section.title" class="section-title">{{ section.title }}</p>
         <template v-for="field in section.fields" :key="field.key">
-          <template v-if="staged.refs[fieldPath(field.key)]">
+          <YTMDSetting v-if="field.type === 'button'" type="custom" :name="field.label" :description="field.description">
+            <button class="action-button" @click="invokeAction(field.key)">{{ field.buttonText }}</button>
+          </YTMDSetting>
+          <template v-else-if="staged.refs[fieldPath(field.key)]">
             <YTMDSetting
               v-if="field.type === 'toggle'"
               v-model="staged.refs[fieldPath(field.key)].value"
@@ -95,7 +106,7 @@ function optionsMapOf(field: AddonSettingsField & { type: "select" }) {
             <YTMDSetting
               v-else-if="field.type === 'number'"
               v-model="staged.refs[fieldPath(field.key)].value"
-              type="range"
+              :type="field.display === 'input' ? 'number' : 'range'"
               :name="field.label"
               :description="field.description"
               :min="field.min"
@@ -110,6 +121,7 @@ function optionsMapOf(field: AddonSettingsField & { type: "select" }) {
               :name="field.label"
               :description="field.description"
               :options-map="optionsMapOf(field)"
+              :value-type="selectValueType(field)"
               @change="staged.stageChanged"
             />
           </template>
@@ -201,6 +213,19 @@ function optionsMapOf(field: AddonSettingsField & { type: "select" }) {
 
 .status.runtime {
   color: var(--text-muted);
+}
+
+.action-button {
+  background-color: var(--bg-control);
+  color: var(--text);
+  border: none;
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.action-button:hover {
+  background-color: var(--bg-control-hover);
 }
 
 .expander {

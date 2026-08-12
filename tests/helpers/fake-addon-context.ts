@@ -90,6 +90,7 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
     stateListeners: [] as ((state: PlayerState) => void)[],
     eventListeners: {} as Record<string, ((payload: unknown) => void)[]>,
     settingsListeners: {} as Record<string, (next?: unknown, prev?: unknown) => void>,
+    actionCallbacks: {} as Record<string, () => void>,
     sections: [] as AddonSettingsSection[],
     remoteProviders: [] as (() => RemoteTrackActivity | undefined)[],
     buttonsProviders: [] as ((trackShareUrl: string) => { label: string; url: string }[] | undefined)[],
@@ -156,6 +157,10 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       }),
       registerSettingsUI: vi.fn((sections: AddonSettingsSection[]) => {
         captured.sections = sections;
+      }),
+      onAction: vi.fn((key: string, callback: () => void) => {
+        captured.actionCallbacks[key] = callback;
+        return unsubscribe;
       })
     },
     memory: {
