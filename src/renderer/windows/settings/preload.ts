@@ -35,7 +35,8 @@ contextBridge.exposeInMainWorld("ytmd", {
     setEnabled: async (id: string, enabled: boolean) => await ipcRenderer.invoke("addons:setEnabled", id, enabled),
     openFolder: () => ipcRenderer.send("addons:openFolder"),
     invokeAction: (id: string, key: string) => ipcRenderer.send("addons:invokeAction", id, key),
-    openHomepage: (id: string) => ipcRenderer.send("addons:openHomepage", id)
+    openHomepage: (id: string) => ipcRenderer.send("addons:openHomepage", id),
+    getRecentLog: async (id: string) => await ipcRenderer.invoke("addons:getRecentLog", id)
   },
   restartApplication: () => ipcRenderer.send("settingsWindow:restartapplication"),
   openRoomWindow: () => ipcRenderer.send("room:openWindow"),

@@ -25,6 +25,7 @@ declare global {
         openFolder(): void;
         invokeAction(id: string, key: string): void;
         openHomepage(id: string): void;
+        getRecentLog(id: string): Promise<string[]>;
       };
       addonBadgeClick?(addonId: string): void;
       restartApplication(): void;

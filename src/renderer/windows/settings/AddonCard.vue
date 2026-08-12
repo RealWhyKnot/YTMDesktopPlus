@@ -61,6 +61,14 @@ const hasHomepage = computed(() => /^https?:\/\//.test(props.addon.manifest.home
 function openHomepage() {
   window.ytmd.addons?.openHomepage(props.addon.manifest.id);
 }
+
+const logCopied = ref(false);
+async function copyRecentLog() {
+  const lines = (await window.ytmd.addons?.getRecentLog(props.addon.manifest.id)) ?? [];
+  await navigator.clipboard.writeText(lines.length > 0 ? lines.join("\n") : "No log lines from this addon yet.");
+  logCopied.value = true;
+  setTimeout(() => (logCopied.value = false), 2000);
+}
 </script>
 
 <template>
@@ -82,10 +90,16 @@ function openHomepage() {
     <p v-if="addon.state === 'active' && addon.lastError" class="status runtime">
       <span class="material-symbols-outlined">warning</span>Recent error: {{ addon.lastError }}
     </p>
-    <button v-if="hasSettings" class="expander" @click="expanded = !expanded">
-      <span class="material-symbols-outlined">{{ expanded ? "expand_less" : "expand_more" }}</span
-      >{{ expanded ? "Hide settings" : "Settings" }}
-    </button>
+    <div class="card-actions">
+      <button v-if="hasSettings" class="expander" @click="expanded = !expanded">
+        <span class="material-symbols-outlined">{{ expanded ? "expand_less" : "expand_more" }}</span
+        >{{ expanded ? "Hide settings" : "Settings" }}
+      </button>
+      <button v-if="addon.state === 'active' || addon.state === 'error'" class="expander" @click="copyRecentLog">
+        <span class="material-symbols-outlined">{{ logCopied ? "check" : "content_copy" }}</span
+        >{{ logCopied ? "Copied" : "Copy recent log" }}
+      </button>
+    </div>
     <div v-if="expanded && hasSettings" class="addon-settings">
       <template v-for="(section, sectionIndex) in addon.settingsSections" :key="sectionIndex">
         <p v-if="section.title" class="section-title">{{ section.title }}</p>
@@ -252,6 +266,11 @@ function openHomepage() {
 
 .action-button:hover {
   background-color: var(--bg-control-hover);
+}
+
+.card-actions {
+  display: flex;
+  gap: var(--space-md);
 }
 
 .expander {

@@ -30,6 +30,7 @@ import MemoryStore from "./memory-store";
 import { AddonManager } from "./addons/manager";
 import { scanExternalAddons } from "./addons/external-loader";
 import { watchExternalAddonsForDev } from "./addons/dev-reload";
+import { filterLogTailForAddon } from "./addons/log-tail";
 import { migrateCustomCssSetting } from "./addons/migrate-custom-css";
 import { BUNDLED_ADDONS } from "../addons/bundled";
 import playerStateStore, { playerEvents, PlayerState, VideoState } from "./player-state-store";
@@ -2271,6 +2272,18 @@ app.on("ready", async () => {
     if (typeof addonId !== "string") return;
 
     addonManager.handleBadgeClick(addonId);
+  });
+
+  ipcMain.handle("addons:getRecentLog", async (event, id: string) => {
+    if (!isSettingsSender(event.sender)) return [];
+    if (typeof id !== "string") return [];
+
+    try {
+      const content = await fs.readFile(log.transports.file.getFile().path, "utf8");
+      return filterLogTailForAddon(content, id).slice(-200);
+    } catch {
+      return [];
+    }
   });
 
   ipcMain.on("addons:openHomepage", (event, id: string) => {
