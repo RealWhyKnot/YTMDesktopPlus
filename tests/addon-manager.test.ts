@@ -1,10 +1,24 @@
+import path from "path";
 import { describe, expect, it, vi } from "vitest";
 import { AddonManager, BundledAddonDefinition } from "../src/main/addons/manager";
 import { validateManifest, versionAtLeast } from "../src/main/addons/validate-manifest";
-import type { BundledAddonContext } from "../src/main/addons/context";
+import { createAddonContext, type AddonHostBridge, type BundledAddonContext } from "../src/main/addons/context";
 import type { AddonManifest, PlayerEventMap } from "../src/shared/addons/types";
 import { makeManifest as manifest } from "./helpers/fake-addon-context";
 import { fakeServices } from "./helpers/fake-services";
+
+function nullBridge(): AddonHostBridge {
+  return {
+    setSettingsSections: () => {},
+    addLoadedCallback: () => () => {},
+    addCssHandle: () => {},
+    addCleanup: () => {},
+    setTitlebarBadge: () => {},
+    addBadgeClickCallback: () => () => {},
+    addWindow: () => {},
+    reportError: () => {}
+  };
+}
 
 describe("AddonManager", () => {
   it("activates bundled addons that default to enabled and skips the rest", async () => {
@@ -369,6 +383,43 @@ describe("AddonContext", () => {
     ctx.memory.set("status", "hosting");
     expect(ctx.memory.get("status")).toBe("hosting");
     expect((fixture.memory.get("addonMemory") as Record<string, unknown>)["sample"]).toEqual({ status: "hosting" });
+  });
+});
+
+describe("addon windows", () => {
+  it("validates the options and resolves file windows inside the addon folder", () => {
+    const fixture = fakeServices();
+    const dir = path.join(fixture.services.userDataPath, "addons", "sample");
+    const ctx = createAddonContext(manifest(), fixture.services, nullBridge(), dir);
+
+    expect(() => ctx.windows.create({ width: 1, height: 1 })).toThrow(/exactly one/);
+    expect(() => ctx.windows.create({ entry: "room", file: "a.html", width: 1, height: 1 })).toThrow(/exactly one/);
+    expect(() => ctx.windows.create({ file: "../escape.html", width: 1, height: 1 })).toThrow(/inside the addon folder/);
+    expect(() => ctx.windows.create({ file: path.resolve("/outside.html"), width: 1, height: 1 })).toThrow(/inside the addon folder/);
+
+    ctx.windows.create({ file: "panel.html", width: 320, height: 200 });
+    const options = (fixture.services.createWindow as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.filePath).toBe(path.join(dir, "panel.html"));
+    expect(options.addonId).toBe("sample");
+
+    // The bridge's closeWindow() request closes only when it comes from the window itself.
+    const closeListener = fixture.ipcListeners.get("addon:sample:window:close");
+    expect(closeListener).toBeDefined();
+    closeListener({ sender: {} });
+    expect(fixture.windows[0].close).not.toHaveBeenCalled();
+    closeListener({ sender: fixture.windows[0].webContents });
+    expect(fixture.windows[0].close).toHaveBeenCalledOnce();
+  });
+
+  it("refuses file windows without an addon folder and namespaces handle sends", () => {
+    const fixture = fakeServices();
+    const ctx = createAddonContext(manifest(), fixture.services, nullBridge());
+
+    expect(() => ctx.windows.create({ file: "panel.html", width: 1, height: 1 })).toThrow(/bundled addons use entry/);
+
+    const handle = ctx.windows.create({ entry: "room", width: 1, height: 1 });
+    handle.send("hello", 1);
+    expect(fixture.windows[0].webContents.send).toHaveBeenCalledWith("addon:sample:hello", 1);
   });
 });
 

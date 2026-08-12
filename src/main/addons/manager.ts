@@ -21,6 +21,8 @@ type ManagedAddon = {
   cssHandles: AddonCssHandle[];
   cleanups: (() => void)[];
   badgeClickCallbacks: (() => void)[];
+  /** External addons only: the folder file windows resolve against */
+  dir?: string;
   scanError?: string;
 };
 
@@ -77,6 +79,7 @@ export class AddonManager {
         cssHandles: [],
         cleanups: [],
         badgeClickCallbacks: [],
+        dir: scan.dir,
         scanError: conflict ? "id conflicts with an installed addon" : scan.error
       });
     }
@@ -105,29 +108,34 @@ export class AddonManager {
         continue;
       }
       try {
-        addon.context = createAddonContext(manifest, this.services, {
-          setSettingsSections: sections => this.setSettingsSections(manifest.id, sections),
-          addLoadedCallback: callback => {
-            addon.loadedCallbacks.push(callback);
-            return () => {
-              addon.loadedCallbacks = addon.loadedCallbacks.filter(cb => cb !== callback);
-            };
+        addon.context = createAddonContext(
+          manifest,
+          this.services,
+          {
+            setSettingsSections: sections => this.setSettingsSections(manifest.id, sections),
+            addLoadedCallback: callback => {
+              addon.loadedCallbacks.push(callback);
+              return () => {
+                addon.loadedCallbacks = addon.loadedCallbacks.filter(cb => cb !== callback);
+              };
+            },
+            addCssHandle: handle => addon.cssHandles.push(handle),
+            addCleanup: cleanup => addon.cleanups.push(cleanup),
+            setTitlebarBadge: badge => this.setTitlebarBadge(manifest.id, badge),
+            addBadgeClickCallback: callback => {
+              addon.badgeClickCallbacks.push(callback);
+              return () => {
+                addon.badgeClickCallbacks = addon.badgeClickCallbacks.filter(cb => cb !== callback);
+              };
+            },
+            addWindow: window => {
+              this.windows.add(window);
+              window.once("closed", () => this.windows.delete(window));
+            },
+            reportError: (source, error) => this.reportRuntimeError(manifest.id, source, error)
           },
-          addCssHandle: handle => addon.cssHandles.push(handle),
-          addCleanup: cleanup => addon.cleanups.push(cleanup),
-          setTitlebarBadge: badge => this.setTitlebarBadge(manifest.id, badge),
-          addBadgeClickCallback: callback => {
-            addon.badgeClickCallbacks.push(callback);
-            return () => {
-              addon.badgeClickCallbacks = addon.badgeClickCallbacks.filter(cb => cb !== callback);
-            };
-          },
-          addWindow: window => {
-            this.windows.add(window);
-            window.once("closed", () => this.windows.delete(window));
-          },
-          reportError: (source, error) => this.reportRuntimeError(manifest.id, source, error)
-        });
+          addon.dir
+        );
         addon.instance = ((await addon.definition.activate(addon.context)) as AddonInstance | undefined) ?? {};
         addon.descriptor.state = "active";
         log.info(`Addon active: ${manifest.id} ${manifest.version}`);

@@ -644,6 +644,7 @@ const addonManager: AddonManager = new AddonManager({
       resizable: options.resizable ?? false,
       frame: false,
       show: false,
+      title: options.title,
       icon: getIconPath("ytmd.png"),
       titleBarStyle: "hidden",
       titleBarOverlay: {
@@ -654,7 +655,10 @@ const addonManager: AddonManager = new AddonManager({
       webPreferences: {
         sandbox: true,
         contextIsolation: true,
-        preload: path.join(__dirname, `../renderer/windows/${options.entry}/preload.js`),
+        preload: options.filePath
+          ? path.join(__dirname, "../renderer/windows/addon/preload.js")
+          : path.join(__dirname, `../renderer/windows/${options.entry}/preload.js`),
+        additionalArguments: options.filePath ? [`--ytmd-addon-id=${options.addonId}`] : undefined,
         devTools: store.get("developer.enableDevTools")
       }
     });
@@ -665,7 +669,8 @@ const addonManager: AddonManager = new AddonManager({
       event.preventDefault();
     });
     addonWindow.on("ready-to-show", () => addonWindow.show());
-    if (ALL_WINDOWS_VITE_DEV_SERVER_URL) addonWindow.loadURL(`${ALL_WINDOWS_VITE_DEV_SERVER_URL}/windows/${options.entry}/index.html`);
+    if (options.filePath) addonWindow.loadFile(options.filePath);
+    else if (ALL_WINDOWS_VITE_DEV_SERVER_URL) addonWindow.loadURL(`${ALL_WINDOWS_VITE_DEV_SERVER_URL}/windows/${options.entry}/index.html`);
     else addonWindow.loadFile(path.join(__dirname, `../renderer/windows/${options.entry}/index.html`));
     return addonWindow;
   },

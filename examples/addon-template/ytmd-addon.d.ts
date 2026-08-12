@@ -306,19 +306,45 @@ export interface AddonCssHandle {
     update(css: string): Promise<void>;
     remove(): Promise<void>;
 }
+/** Exactly one of entry or file. Windows are frameless: HTML loaded via file
+ *  supplies its own drag region (-webkit-app-region: drag) and close control
+ *  (window.ytmdAddon.closeWindow()). */
 export type AddonWindowOptions = {
-    /** Name of a renderer window folder compiled into the app (like "room") */
-    entry: string;
+    /** Name of a renderer window folder compiled into the app (like "room"); bundled addons only */
+    entry?: string;
+    /** HTML file relative to the addon's folder, loaded with the ytmdAddon preload bridge */
+    file?: string;
     width: number;
     height: number;
     resizable?: boolean;
+    title?: string;
 };
 export type AddonWindowHandle = {
     show(): void;
     close(): void;
     isOpen(): boolean;
     webContents(): AddonWebContents | null;
+    /** Sends on the addon's namespaced channel: addon:<id>:<channel> */
+    send(channel: string, ...args: unknown[]): void;
 };
+/** What the ytmdAddon preload bridge exposes inside an addon's own window.
+ *  Channels are namespaced automatically; window.ytmdAddon.invoke("ping")
+ *  reaches ctx.ipc.handle("ping", ...). */
+export interface AddonWindowBridge {
+    readonly addonId: string;
+    invoke(channel: string, ...args: unknown[]): Promise<unknown>;
+    send(channel: string, ...args: unknown[]): void;
+    on(channel: string, listener: (...args: unknown[]) => void): Unsubscribe;
+    settings: {
+        getAll(): Promise<Record<string, unknown>>;
+        onChanged(callback: (settings: Record<string, unknown>) => void): Unsubscribe;
+    };
+    memory: {
+        getAll(): Promise<Record<string, unknown>>;
+        onChanged(callback: (memory: Record<string, unknown>) => void): Unsubscribe;
+    };
+    closeWindow(): void;
+}
 export interface AddonContext {
     readonly manifest: AddonManifest;
     readonly log: AddonLogger;

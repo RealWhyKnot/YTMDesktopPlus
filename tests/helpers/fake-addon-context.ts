@@ -120,7 +120,8 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
         open = false;
       }),
       isOpen: () => open,
-      webContents: () => null
+      webContents: () => null,
+      send: vi.fn()
     };
   }
 

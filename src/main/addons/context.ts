@@ -76,7 +76,9 @@ export type AddonHostServices = {
   };
   isAppSender(sender: Electron.WebContents): boolean;
   notify(options: { title: string; body?: string; onClick?: () => void }): void;
-  createWindow(options: AddonWindowOptions): AddonHostWindow;
+  /** filePath is the pre-resolved absolute path for file windows; the context
+   *  owns containment validation before it gets here. */
+  createWindow(options: AddonWindowOptions & { addonId: string; filePath?: string }): AddonHostWindow;
   discord: {
     registerButtonsProvider(provider: (trackShareUrl: string) => { label: string; url: string }[] | undefined): () => void;
     registerRemoteActivityProvider(provider: () => RemoteTrackActivity | undefined): () => void;
@@ -124,7 +126,7 @@ export interface BundledAddonContext extends AddonContext {
   };
 }
 
-export function createAddonContext(manifest: AddonManifest, services: AddonHostServices, bridge: AddonHostBridge): BundledAddonContext {
+export function createAddonContext(manifest: AddonManifest, services: AddonHostServices, bridge: AddonHostBridge, addonDir?: string): BundledAddonContext {
   const id = manifest.id;
   const scopedLog = log.scope(`addon:${id}`);
   const scriptNamespace = `addon:${id}`;
@@ -338,12 +340,39 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
 
     windows: {
       create(options) {
-        const window = services.createWindow(options);
+        if ((options.entry ? 1 : 0) + (options.file ? 1 : 0) !== 1) {
+          throw new Error("windows.create needs exactly one of entry or file");
+        }
+        let filePath: string | undefined;
+        if (options.file) {
+          if (!addonDir) throw new Error("file windows need an addon folder; bundled addons use entry");
+          const resolved = path.resolve(addonDir, options.file);
+          const relative = path.relative(addonDir, resolved);
+          if (relative.startsWith("..") || path.isAbsolute(relative)) {
+            throw new Error("file must stay inside the addon folder");
+          }
+          filePath = resolved;
+        }
+
+        const window = services.createWindow({ ...options, addonId: id, filePath });
         bridge.addWindow(window);
         let open = true;
         window.once("closed", () => {
           open = false;
         });
+
+        if (filePath) {
+          // The bridge's closeWindow() lands here, scoped to this window.
+          const closeChannel = `addon:${id}:window:close`;
+          const onCloseRequest = (event: IpcMainEvent) => {
+            if (!open || window.isDestroyed()) return;
+            if (event.sender !== window.webContents) return;
+            window.close();
+          };
+          services.ipc.on(closeChannel, onCloseRequest);
+          window.once("closed", () => services.ipc.removeListener(closeChannel, onCloseRequest));
+        }
+
         return {
           show() {
             if (!open) return;
@@ -354,7 +383,10 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
             if (open) window.close();
           },
           isOpen: () => open && !window.isDestroyed(),
-          webContents: () => (open && !window.isDestroyed() ? window.webContents : null)
+          webContents: () => (open && !window.isDestroyed() ? window.webContents : null),
+          send(channel, ...args) {
+            if (open && !window.isDestroyed()) window.webContents.send(`addon:${id}:${channel}`, ...args);
+          }
         };
       }
     },
