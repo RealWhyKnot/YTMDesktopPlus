@@ -1,13 +1,9 @@
 # Self-test for Update-Changelog.ps1. Runs against a scratch file so a parser
 # or logic regression fails fast in CI before any workflow depends on it.
-$ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "TestCommon.ps1")
 
 $script = Join-Path $PSScriptRoot "Update-Changelog.ps1"
-$scratch = Join-Path ([System.IO.Path]::GetTempPath()) ("changelog-test-" + [guid]::NewGuid() + ".md")
-
-function Assert-True([bool]$condition, [string]$message) {
-  if (-not $condition) { throw "FAILED: $message" }
-}
+$scratch = New-ScratchPath "changelog-test-" ".md"
 
 try {
   [System.IO.File]::WriteAllText($scratch, "# Changelog`n`n## Unreleased`n", (New-Object System.Text.UTF8Encoding($false)))

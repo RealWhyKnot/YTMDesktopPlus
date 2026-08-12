@@ -1,13 +1,9 @@
 # Self-test for Generate-ReleaseNotes.ps1. Runs against synthetic commits so
 # a regression fails fast in CI before a release depends on it.
-$ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "TestCommon.ps1")
 
 $script = Join-Path $PSScriptRoot "Generate-ReleaseNotes.ps1"
-$scratch = Join-Path ([System.IO.Path]::GetTempPath()) ("relnotes-test-" + [guid]::NewGuid() + ".json")
-
-function Assert-True([bool]$condition, [string]$message) {
-  if (-not $condition) { throw "FAILED: $message" }
-}
+$scratch = New-ScratchPath "relnotes-test-" ".json"
 
 try {
   @(
