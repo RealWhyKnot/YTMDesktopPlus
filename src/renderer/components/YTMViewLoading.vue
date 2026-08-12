@@ -54,8 +54,8 @@ function retry() {
 
 <style scoped>
 .ytmview-loading-container {
-  height: calc(100% - 36px);
-  background-color: #000000;
+  height: calc(100% - var(--titlebar-height));
+  background-color: var(--bg);
 }
 
 .ytmview-loading {
@@ -63,26 +63,26 @@ function retry() {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  height: calc(100% - 36px);
+  height: calc(100% - var(--titlebar-height));
   user-select: none;
 }
 
 .ytmview-loading-status {
-  color: #969696;
+  color: var(--text-faint);
 }
 
 .ytmview-loading-status.error {
-  color: #f44336;
+  color: var(--accent);
 }
 
 .ytmview-loading-timeout {
-  color: #f44336;
+  color: var(--accent);
 }
 
 .ytmview-loading-retry {
   margin-top: 8px;
   padding: 6px 24px;
-  border: 1px solid #969696;
+  border: 1px solid var(--text-faint);
   border-radius: 16px;
   background: none;
   color: #ffffff;
