@@ -55,6 +55,18 @@ jobs:
             exit 0
           fi
           exit $code
+      - name: Run external-addon scenario
+        id: addon
+        run: |
+          set +e
+          xvfb-run --auto-servernum node tools/test-harness/run.mjs external-addon --timeout 420 | tee -a canary.jsonl
+          code=$?
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" = "5" ]; then
+            echo "::warning::Environment blocked (consent or sign-in wall) - addon pipeline unverified this run"
+            exit 0
+          fi
+          exit $code
       - name: Job summary
         if: always()
         shell: pwsh

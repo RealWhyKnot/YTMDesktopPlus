@@ -140,6 +140,10 @@ if (seedProfile) {
   writeFileSync(path.join(profileDir, ".first-run"), "");
 }
 
+// A scenario can place files into the profile before launch (addon folders,
+// caches) beyond what the config fixture covers.
+if (scenario.prepareProfile) await scenario.prepareProfile(profileDir);
+
 watchdog = setTimeout(async () => {
   emit("watchdog", await evidence());
   await finish(4, "watchdog-timeout");
