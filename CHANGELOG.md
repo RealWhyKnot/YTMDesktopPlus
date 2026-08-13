@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- ci: judge the windows install smoke by process age, not first pid
 - ci: smoke test the flatpak, windows, and macos installs
 - feat(linux): ship a flatpak bundle for SteamOS and other immutable distros
 - fix(dj): keep recently played tracks in the library pool, priced by recency
