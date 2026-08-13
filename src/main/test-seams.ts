@@ -24,6 +24,15 @@ export function initializeTestSeams() {
       app.commandLine.appendSwitch("remote-debugging-port", cdpPort);
     }
 
+    if (process.env.YTMD_TEST_MUTED) {
+      // Hard mute for test runs: nothing any renderer does, page audio and
+      // Web Audio alike, reaches the speakers. Capture and analysis paths
+      // keep working; only the output device is cut.
+      app.on("web-contents-created", (_event, contents) => {
+        contents.setAudioMuted(true);
+      });
+    }
+
     const breakSpec = process.env.YTMD_TEST_BREAK_HOOKS;
     if (breakSpec) {
       const [stage, modifier] = breakSpec.split(":");

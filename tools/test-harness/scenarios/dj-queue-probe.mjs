@@ -14,6 +14,11 @@ const VIDEO_ID = "dQw4w9WgXcQ";
 export default async function djQueueProbe(ctx) {
   await hooksReadyStep(ctx);
 
+  await ctx.step("player silenced before anything plays", async () => {
+    await ctx.evalYtm(`document.querySelector("ytmusic-app-layout>ytmusic-player-bar")?.playerApi?.setVolume?.(2)`);
+    await ctx.evalYtm(`{ const v = document.querySelector("video"); if (v) v.muted = true; }`);
+  });
+
   await ctx.step(
     "a track is playing",
     async () => {

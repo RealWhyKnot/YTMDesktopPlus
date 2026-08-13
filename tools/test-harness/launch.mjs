@@ -26,6 +26,7 @@ export function launchApp({ profileDir, cdpPort, logPath, env = {} }) {
       YTMD_TEST_RUNNER_PID: String(process.pid),
       YTMD_TEST_PROFILE: profileDir,
       YTMD_TEST_CDP_PORT: String(cdpPort),
+      YTMD_TEST_MUTED: "1",
       ...env
     }
   });
