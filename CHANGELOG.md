@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.813.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.813.1-beta) - 2026-08-13
 - feat(addons): dj tempo-matches blends and mixes in library tracks
 - feat(addons): dj learns tracks and picks the next one to mix
 - feat(addons): windows can open hidden for background work
