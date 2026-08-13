@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.813.2-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.813.2-beta) - 2026-08-13
 - ci(release): clear a leg's stale assets before publishing so re-runs are safe
 - ci(release): smoke test the published flatpak before attaching notes
 - feat(logging): record whether the music page loaded in the log
