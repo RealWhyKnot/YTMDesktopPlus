@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- fix(dj): keep recently played tracks in the library pool, priced by recency
 
 ## [v2026.813.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.813.1-beta) - 2026-08-13
 - feat(addons): dj tempo-matches blends and mixes in library tracks
