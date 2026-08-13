@@ -158,21 +158,37 @@ jobs:
           $setup = Get-ChildItem dist -Recurse -Filter "*Setup.exe" | Select-Object -First 1
           if (-not $setup) { Write-Output "::error::No Setup.exe in the artifact"; exit 1 }
           Start-Process $setup.FullName -ArgumentList "--silent" -Wait
-          # Squirrel normally launches the app itself after installing; fall
-          # back to starting the installed exe if it has not appeared.
-          $process = $null
-          $deadline = (Get-Date).AddSeconds(60)
-          while (-not $process -and (Get-Date) -lt $deadline) {
-            Start-Sleep -Seconds 3
-            $process = Get-Process ytmdesktop-plus -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$env:LOCALAPPDATA*" } | Select-Object -First 1
+          # Squirrel spawns short-lived event processes and a stub exe that
+          # hands off to the real binary, so no single pid is trustworthy.
+          # Pass when any installed-copy process has stayed alive for 20s.
+          function Get-AppProcesses {
+            @(Get-Process ytmdesktop-plus -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$env:LOCALAPPDATA*" })
           }
-          if (-not $process) {
-            $exe = Get-ChildItem "$env:LOCALAPPDATA" -Directory -Filter "ytmdesktop*" | Get-ChildItem -Recurse -Depth 1 -Filter "ytmdesktop-plus.exe" | Select-Object -First 1
-            if (-not $exe) { Write-Output "::error::Setup.exe left no installed copy under LOCALAPPDATA"; exit 1 }
-            $process = Start-Process $exe.FullName -PassThru
+          $launched = $false
+          $survivor = $null
+          $deadline = (Get-Date).AddSeconds(150)
+          while (-not $survivor -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 5
+            $procs = Get-AppProcesses
+            $survivor = $procs | Where-Object { ((Get-Date) - $_.StartTime).TotalSeconds -ge 20 } | Select-Object -First 1
+            if (-not $procs -and -not $launched -and (Get-Date) -gt $deadline.AddSeconds(-90)) {
+              # Setup did not leave the app running; start the installed copy
+              # directly, from app-* rather than the exiting stub.
+              $exe = Get-ChildItem "$env:LOCALAPPDATA" -Directory -Filter "ytmdesktop*" | Get-ChildItem -Directory -Filter "app-*" | Get-ChildItem -Filter "ytmdesktop-plus.exe" | Select-Object -First 1
+              if (-not $exe) { Write-Output "::error::Setup.exe left no installed copy under LOCALAPPDATA"; exit 1 }
+              Write-Output "Auto-launch not detected, starting $($exe.FullName)"
+              Start-Process $exe.FullName
+              $launched = $true
+            }
           }
-          Start-Sleep -Seconds 20
-          if ($process.HasExited) { Write-Output "::error::Installed app exited shortly after launch"; exit 1 }
+          if (-not $survivor) {
+            Write-Output "::error::No installed app process survived startup"
+            Write-Output "Recent app processes:"
+            Get-AppProcesses | Format-Table Id, StartTime, Path
+            $logs = Get-ChildItem "$env:APPDATA\YTMDesktopPlus\logs" -ErrorAction SilentlyContinue
+            foreach ($log in $logs) { Write-Output "--- $($log.Name)"; Get-Content $log.FullName -Tail 50 }
+            exit 1
+          }
           if (-not (Test-Path "$env:APPDATA\YTMDesktopPlus")) { Write-Output "::error::App never created its user data directory"; exit 1 }
           Get-Process ytmdesktop-plus -ErrorAction SilentlyContinue | Stop-Process -Force
       - name: Extract and launch the macOS app
