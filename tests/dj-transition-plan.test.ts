@@ -1,0 +1,56 @@
+import { describe, expect, it } from "vitest";
+import { fadeStartSeconds, planTransition } from "../src/addons/bundled/dj/transition-plan";
+import type { TrackFeatures } from "../src/addons/bundled/dj/scoring";
+
+function features(overrides: Partial<TrackFeatures> = {}): TrackFeatures {
+  return {
+    videoId: "vid",
+    bpm: 120,
+    bpmConfidence: 1,
+    camelot: "8B",
+    keyConfidence: 1,
+    energy: 0.5,
+    loudnessDb: 0,
+    durationS: 200,
+    beatOffsetS: 0.25,
+    analysisVersion: 1,
+    analyzedAt: 0,
+    ...overrides
+  };
+}
+
+const DEFAULTS = { fadeOutS: 5, fadeInS: 1.5 };
+
+describe("dj transition plan", () => {
+  it("carries the outgoing beat grid when it is trustworthy", () => {
+    const plan = planTransition(features(), features(), DEFAULTS);
+    expect(plan.beatOffsetS).toBe(0.25);
+    expect(plan.beatPeriodS).toBeCloseTo(0.5);
+  });
+
+  it("drops the grid for missing or absurd tempos", () => {
+    expect(planTransition(features({ bpm: null }), null, DEFAULTS).beatOffsetS).toBeNull();
+    expect(planTransition(features({ bpm: 300 }), null, DEFAULTS).beatOffsetS).toBeNull();
+    expect(planTransition(features({ beatOffsetS: null }), null, DEFAULTS).beatOffsetS).toBeNull();
+  });
+
+  it("extends the blend for tempo-matched pairs and caps it", () => {
+    const matched = planTransition(features({ bpm: 128 }), features({ bpm: 128.5 }), DEFAULTS);
+    expect(matched.fadeOutS).toBeCloseTo(7.5);
+    const capped = planTransition(features({ bpm: 128 }), features({ bpm: 128 }), { fadeOutS: 10, fadeInS: 2 });
+    expect(capped.fadeOutS).toBe(12);
+    const unmatched = planTransition(features({ bpm: 128 }), features({ bpm: 100 }), DEFAULTS);
+    expect(unmatched.fadeOutS).toBe(5);
+  });
+
+  it("snaps the fade start to the last downbeat before the window", () => {
+    const plan = planTransition(features({ bpm: 120, beatOffsetS: 0.25 }), null, DEFAULTS);
+    // duration 200, fadeOut 5 -> unaligned 195; grid 0.25 + n*0.5 -> 194.75
+    expect(fadeStartSeconds(200, plan)).toBeCloseTo(194.75);
+  });
+
+  it("falls back to the plain window without a grid", () => {
+    const plan = planTransition(features({ bpm: null }), null, DEFAULTS);
+    expect(fadeStartSeconds(200, plan)).toBe(195);
+  });
+});

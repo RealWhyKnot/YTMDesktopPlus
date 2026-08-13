@@ -1,10 +1,19 @@
+import path from "path";
 import type { BundledAddonDefinition } from "../../../main/addons/manager";
-import { RepeatMode } from "../../../shared/addons/sdk";
+import { RepeatMode, type VideoDetails } from "../../../shared/addons/sdk";
 
 import crossfadeScript from "./scripts/crossfade.script?raw";
 import crossfadeDisableScript from "./scripts/crossfade-disable.script?raw";
+import catalogScript from "./scripts/catalog.script?raw";
 
-const SETTING_KEYS = ["fadeOut", "fadeIn", "curve", "fadeOnManualSkip", "fadeOnRepeatOne"] as const;
+import { Analyzer } from "./analyzer";
+import { FeatureDb } from "./feature-db";
+import { pickNext, type NextPick } from "./auto-dj";
+import { planTransition } from "./transition-plan";
+
+const SETTING_KEYS = ["fadeOut", "fadeIn", "curve", "fadeOnManualSkip", "fadeOnRepeatOne", "autoDj"] as const;
+const CATALOG_DELAY_MS = 12000;
+const RECENT_LIMIT = 20;
 
 const djAddon: BundledAddonDefinition = {
   manifest: {
@@ -12,17 +21,19 @@ const djAddon: BundledAddonDefinition = {
     name: "DJ",
     version: "1.0.0",
     author: "WhyKnot",
-    description: "Blends song changes into each other. The outgoing track keeps playing under the incoming one instead of cutting off.",
+    description:
+      "Blends song changes into each other instead of cutting off, learns the tempo, key and energy of what plays, and can pick the next track like a DJ.",
     defaultEnabled: false
   },
 
-  activate(ctx) {
+  async activate(ctx) {
     ctx.settings.registerDefaults({
       fadeOut: 5,
       fadeIn: 1.5,
       curve: 0,
       fadeOnManualSkip: true,
-      fadeOnRepeatOne: false
+      fadeOnRepeatOne: false,
+      autoDj: false
     });
     ctx.settings.registerSettingsUI([
       {
@@ -68,6 +79,12 @@ const djAddon: BundledAddonDefinition = {
             type: "toggle",
             label: "Fade on repeat one",
             description: "Blend the track into its own restart while repeating a single track."
+          },
+          {
+            key: "autoDj",
+            type: "toggle",
+            label: "Auto DJ",
+            description: "Pick the upcoming track by tempo, key and energy instead of queue order, with beat-matched blends."
           }
         ]
       }
@@ -75,28 +92,59 @@ const djAddon: BundledAddonDefinition = {
 
     ctx.ytmview.registerScript("crossfade", crossfadeScript);
     ctx.ytmview.registerScript("crossfade-disable", crossfadeDisableScript);
+    ctx.ytmview.registerScript("catalog", catalogScript);
+
+    const db = new FeatureDb(path.join(ctx.paths.data, "features.json"));
+    await db.load();
+
+    const analyzer = new Analyzer(ctx, features => {
+      db.set(features);
+      recomputePick();
+      void apply();
+    });
 
     const nextAvailable = (queue: ReturnType<typeof ctx.player.getQueue>) =>
       queue ? queue.selectedItemIndex < queue.items.length - 1 || queue.automixItems.length > 0 || queue.isInfinite : false;
 
-    const initialState = ctx.player.getState();
     const initialQueue = ctx.player.getQueue();
     let repeatOne = initialQueue?.repeatMode === RepeatMode.One;
-    let adPlaying = initialState.adPlaying;
+    let adPlaying = ctx.player.getState().adPlaying;
     let hasNext = initialQueue ? nextAvailable(initialQueue) : true;
+    let currentTrack: VideoDetails | null = ctx.player.getState().videoDetails;
+    let pick: NextPick | null = null;
+    const recentVideoIds: string[] = [];
+    let catalogTimer: NodeJS.Timeout | null = null;
+
+    const autoDjOn = () => ctx.settings.get<boolean>("autoDj") === true;
+
+    const recomputePick = () => {
+      pick = autoDjOn() ? pickNext(ctx.player.getQueue(), currentTrack, db, recentVideoIds) : null;
+      ctx.titlebar.setBadge(
+        autoDjOn() ? { icon: "album", active: true, tooltip: pick ? `Auto DJ next: ${pick.title}` : "Auto DJ: waiting for candidates" } : null
+      );
+    };
 
     const apply = async () => {
+      const fadeOutSetting = ctx.settings.get<number>("fadeOut") ?? 5;
+      const fadeInSetting = ctx.settings.get<number>("fadeIn") ?? 1.5;
+      const plan = planTransition(currentTrack ? db.get(currentTrack.id) : null, pick ? db.get(pick.videoId) : null, {
+        fadeOutS: fadeOutSetting,
+        fadeInS: fadeInSetting
+      });
       try {
         const applied = await ctx.ytmview.invokeScript("crossfade", {
           enabled: true,
-          fadeOutS: ctx.settings.get<number>("fadeOut") ?? 5,
-          fadeInS: ctx.settings.get<number>("fadeIn") ?? 1.5,
+          fadeOutS: pick ? plan.fadeOutS : fadeOutSetting,
+          fadeInS: plan.fadeInS,
           curve: ctx.settings.get<number>("curve") ?? 0,
           fadeOnManualSkip: ctx.settings.get<boolean>("fadeOnManualSkip") ?? true,
           fadeOnRepeatOne: ctx.settings.get<boolean>("fadeOnRepeatOne") ?? false,
           repeatOne,
           adPlaying,
-          hasNext
+          hasNext,
+          transitionIndex: pick ? pick.queueIndex : null,
+          beatOffsetS: pick ? plan.beatOffsetS : null,
+          beatPeriodS: pick ? plan.beatPeriodS : null
         });
         if (applied !== true) ctx.log.info("Crossfade could not attach yet; the page has no audio graph");
       } catch (error) {
@@ -104,8 +152,51 @@ const djAddon: BundledAddonDefinition = {
       }
     };
 
-    const unsubscribes = SETTING_KEYS.map(key => ctx.settings.onDidChange(key, apply));
+    const scheduleCatalog = (videoId: string) => {
+      if (catalogTimer) clearTimeout(catalogTimer);
+      catalogTimer = setTimeout(() => {
+        catalogTimer = null;
+        if (db.has(videoId) || analyzer.isBusy(videoId)) return;
+        ctx.ytmview.invokeScript("catalog", { videoId }).catch(() => {
+          // View gone or no segment URLs yet; the next track change retries.
+        });
+      }, CATALOG_DELAY_MS);
+    };
+
+    const unsubscribes = SETTING_KEYS.map(key =>
+      ctx.settings.onDidChange(key, () => {
+        recomputePick();
+        void apply();
+      })
+    );
     unsubscribes.push(ctx.ytmview.onLoaded(apply));
+    unsubscribes.push(
+      ctx.ytmview.onMessage("audioData", payload => {
+        const data = payload as { videoId?: unknown; buffer?: unknown };
+        if (typeof data?.videoId !== "string" || !(data.buffer instanceof ArrayBuffer)) return;
+        if (db.has(data.videoId)) return;
+        analyzer.submit(data.videoId, data.buffer);
+      })
+    );
+    unsubscribes.push(
+      ctx.ytmview.onMessage("transitionNow", payload => {
+        const data = payload as { index?: unknown };
+        if (typeof data?.index !== "number" || !Number.isInteger(data.index) || data.index < 0) return;
+        ctx.playback.playQueueIndex(data.index);
+      })
+    );
+    unsubscribes.push(
+      ctx.player.on("trackChanged", payload => {
+        currentTrack = payload.current;
+        if (payload.current) {
+          recentVideoIds.unshift(payload.current.id);
+          if (recentVideoIds.length > RECENT_LIMIT) recentVideoIds.pop();
+          scheduleCatalog(payload.current.id);
+        }
+        recomputePick();
+        void apply();
+      })
+    );
     unsubscribes.push(
       ctx.player.on("repeatModeChanged", payload => {
         repeatOne = payload.repeatMode === RepeatMode.One;
@@ -121,21 +212,25 @@ const djAddon: BundledAddonDefinition = {
     unsubscribes.push(
       ctx.player.on("queueChanged", payload => {
         const next = nextAvailable(payload.queue);
-        if (next !== hasNext) {
-          hasNext = next;
-          void apply();
-        }
+        const changed = next !== hasNext;
+        hasNext = next;
+        const before = pick?.videoId;
+        recomputePick();
+        if (changed || pick?.videoId !== before) void apply();
       })
     );
 
     return {
-      destroy() {
+      async destroy() {
         for (const unsubscribe of unsubscribes) unsubscribe();
+        if (catalogTimer) clearTimeout(catalogTimer);
+        analyzer.close();
         try {
           ctx.ytmview.runScript("crossfade-disable");
         } catch {
           // View already gone.
         }
+        await db.flush();
       }
     };
   }

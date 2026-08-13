@@ -76,6 +76,11 @@ function dispatch(type: string) {
   for (const listener of listeners.get(type) ?? []) listener();
 }
 
+// The stand-in window replaces the lib.dom Window for these tests.
+function pageWindow() {
+  return (globalThis as unknown as { window: { ytmd: { postAddonMessage: ReturnType<typeof vi.fn> }; __ytmdDjCrossfade?: unknown } }).window;
+}
+
 function run(config: Record<string, unknown> = {}) {
   return new Function(`return (${source.replace(/;$/, "")})`)()({
     enabled: true,
@@ -159,7 +164,8 @@ beforeEach(() => {
 
   const globals = globalThis as Record<string, unknown>;
   globals.window = {
-    __ytmdEnsureAudioGraph: () => ({ context, source: {}, out: { gain: outGain } })
+    __ytmdEnsureAudioGraph: () => ({ context, source: {}, out: { gain: outGain } }),
+    ytmd: { postAddonMessage: vi.fn() }
   };
   globals.document = {
     querySelector: (selector: string) => {
@@ -366,6 +372,52 @@ describe("dj crossfade script", () => {
     expect(outGain.calls.filter(call => call.method !== "cancel")).toHaveLength(0);
   });
 
+  it("posts a directed transition instead of pressing next when a pick is set", async () => {
+    run({ transitionIndex: 4 });
+    video.currentTime = 180;
+    dispatch("timeupdate");
+    await flushPrepare();
+    video.currentTime = 195.5;
+    dispatch("timeupdate");
+
+    expect(shadowSources).toHaveLength(1);
+    expect(nextVideo).not.toHaveBeenCalled();
+    const post = pageWindow().ytmd.postAddonMessage;
+    expect(post).toHaveBeenCalledWith("dj", "transitionNow", { index: 4 });
+  });
+
+  it("snaps the fade start back onto the pushed beat grid", async () => {
+    run({ beatOffsetS: 0.25, beatPeriodS: 0.5 });
+    video.currentTime = 180;
+    dispatch("timeupdate");
+    await flushPrepare();
+
+    // Grid puts the fade start at 194.75; just before it nothing happens.
+    video.currentTime = 194.5;
+    dispatch("timeupdate");
+    expect(shadowSources).toHaveLength(0);
+
+    video.currentTime = 194.8;
+    dispatch("timeupdate");
+    expect(shadowSources).toHaveLength(1);
+  });
+
+  it("still jumps to the pick when only a plain fade is possible", async () => {
+    resourceEntries = [];
+    run({ transitionIndex: 2 });
+    video.currentTime = 197.5;
+    dispatch("timeupdate");
+    const post = pageWindow().ytmd.postAddonMessage;
+    expect(post).not.toHaveBeenCalled();
+
+    video.currentTime = 199.3;
+    dispatch("timeupdate");
+    video.currentTime = 199.5;
+    dispatch("timeupdate");
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith("dj", "transitionNow", { index: 2 });
+  });
+
   it("tears down cleanly: listeners gone, gain restored, global dropped", async () => {
     run();
     video.currentTime = 180;
@@ -378,6 +430,6 @@ describe("dj crossfade script", () => {
     expect(shadowSources[0].stop).toHaveBeenCalled();
     expect(lastGainValue()).toMatchObject({ method: "target", value: 1 });
     expect(listeners.get("timeupdate")).toHaveLength(0);
-    expect((globalThis as Record<string, unknown> & { window: Record<string, unknown> }).window.__ytmdDjCrossfade).toBeUndefined();
+    expect(pageWindow().__ytmdDjCrossfade).toBeUndefined();
   });
 });

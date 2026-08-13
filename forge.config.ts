@@ -135,6 +135,11 @@ const config: ForgeConfig = {
           target: "preload"
         },
         {
+          entry: "src/renderer/windows/dj-analysis/preload.ts",
+          config: "viteconfig/preload/dj_analysis_window.ts",
+          target: "preload"
+        },
+        {
           entry: "src/renderer/windows/addon/preload.ts",
           config: "viteconfig/preload/addon_window.ts",
           target: "preload"

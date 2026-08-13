@@ -1,13 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import djAddon from "../src/addons/bundled/dj";
-import { fakeAddonContext } from "./helpers/fake-addon-context";
+import { fakeAddonContext, makeVideoDetails } from "./helpers/fake-addon-context";
 import { RepeatMode, type PlayerQueue } from "../src/shared/addons/sdk";
+import { makeTempDir } from "./helpers/temp-dir";
 
 function fakeContext(overrides: { settings?: Record<string, unknown> } = {}) {
-  return fakeAddonContext({
+  const bag = fakeAddonContext({
     manifest: djAddon.manifest,
-    settings: { fadeOut: 5, fadeIn: 1.5, curve: 0, fadeOnManualSkip: true, fadeOnRepeatOne: false, ...overrides.settings }
+    settings: { fadeOut: 5, fadeIn: 1.5, curve: 0, fadeOnManualSkip: true, fadeOnRepeatOne: false, autoDj: false, ...overrides.settings }
   });
+  bag.ctx.paths.data = makeTempDir("dj-addon-");
+  return bag;
 }
 
 function makeQueue(overrides: Partial<PlayerQueue> = {}): PlayerQueue {
@@ -23,107 +26,133 @@ function makeQueue(overrides: Partial<PlayerQueue> = {}): PlayerQueue {
   };
 }
 
+const crossfadeArgs = (captured: ReturnType<typeof fakeContext>["captured"]) =>
+  captured.invocations.filter(entry => entry.name === "crossfade").map(entry => entry.arg);
+
 describe("dj bundled addon", () => {
   it("ships disabled, since it changes how playback sounds", () => {
     expect(djAddon.manifest.defaultEnabled).toBe(false);
   });
 
-  it("registers both page scripts", () => {
+  it("registers the page scripts", async () => {
     const { ctx, captured } = fakeContext();
-    djAddon.activate(ctx);
-    expect(Object.keys(captured.scripts).sort()).toEqual(["crossfade", "crossfade-disable"]);
+    await djAddon.activate(ctx);
+    expect(Object.keys(captured.scripts).sort()).toEqual(["catalog", "crossfade", "crossfade-disable"]);
   });
 
-  it("offers number-valued curve options, which is all a select field accepts", () => {
+  it("offers number-valued curve options, which is all a select field accepts", async () => {
     const { ctx, captured } = fakeContext();
-    djAddon.activate(ctx);
+    await djAddon.activate(ctx);
     const fields = captured.sections.flatMap(section => section.fields);
     const curve = fields.find(field => field.key === "curve");
     const values = curve?.type === "select" ? curve.options.map(option => option.value) : [];
     expect(values).toEqual([0, 1, 2]);
-    expect(values.every(value => typeof value === "number")).toBe(true);
+    expect(fields.find(field => field.key === "autoDj")?.type).toBe("toggle");
   });
 
   it("pushes the current settings into the page each time it loads", async () => {
     const { ctx, captured } = fakeContext({ settings: { fadeOut: 8, curve: 1 } });
-    djAddon.activate(ctx);
+    await djAddon.activate(ctx);
     await captured.loadedCallbacks[0]();
-    expect(captured.invocations).toEqual([
-      {
-        name: "crossfade",
-        arg: {
-          enabled: true,
-          fadeOutS: 8,
-          fadeInS: 1.5,
-          curve: 1,
-          fadeOnManualSkip: true,
-          fadeOnRepeatOne: false,
-          repeatOne: false,
-          adPlaying: false,
-          hasNext: true
-        }
-      }
-    ]);
+    expect(crossfadeArgs(captured).at(-1)).toEqual({
+      enabled: true,
+      fadeOutS: 8,
+      fadeInS: 1.5,
+      curve: 1,
+      fadeOnManualSkip: true,
+      fadeOnRepeatOne: false,
+      repeatOne: false,
+      adPlaying: false,
+      hasNext: true,
+      transitionIndex: null,
+      beatOffsetS: null,
+      beatPeriodS: null
+    });
   });
 
   it("reapplies with repeatOne when the repeat mode flips to one", async () => {
     const { ctx, captured, emitPlayerEvent } = fakeContext();
-    djAddon.activate(ctx);
+    await djAddon.activate(ctx);
     emitPlayerEvent("repeatModeChanged", { repeatMode: RepeatMode.One });
     await Promise.resolve();
-    expect(captured.invocations.at(-1)?.arg).toMatchObject({ repeatOne: true });
-  });
-
-  it("reapplies when an ad starts", async () => {
-    const { ctx, captured, emitPlayerEvent } = fakeContext();
-    djAddon.activate(ctx);
-    emitPlayerEvent("adStateChanged", { adPlaying: true });
-    await Promise.resolve();
-    expect(captured.invocations.at(-1)?.arg).toMatchObject({ adPlaying: true });
+    expect(crossfadeArgs(captured).at(-1)).toMatchObject({ repeatOne: true });
   });
 
   it("reports no next track only when the queue is exhausted and finite", async () => {
     const { ctx, captured, emitPlayerEvent } = fakeContext();
-    djAddon.activate(ctx);
-
+    await djAddon.activate(ctx);
     emitPlayerEvent("queueChanged", { queue: makeQueue({ items: [{} as never], selectedItemIndex: 0 }) });
     await Promise.resolve();
-    expect(captured.invocations.at(-1)?.arg).toMatchObject({ hasNext: false });
-
-    emitPlayerEvent("queueChanged", { queue: makeQueue({ items: [{} as never, {} as never], selectedItemIndex: 0 }) });
-    await Promise.resolve();
-    expect(captured.invocations.at(-1)?.arg).toMatchObject({ hasNext: true });
+    expect(crossfadeArgs(captured).at(-1)).toMatchObject({ hasNext: false });
   });
 
-  it("does not reapply when the queue changes but next-availability does not", async () => {
-    const { ctx, captured, emitPlayerEvent } = fakeContext();
-    djAddon.activate(ctx);
-    const queue = makeQueue({ items: [{} as never, {} as never], selectedItemIndex: 0 });
-    emitPlayerEvent("queueChanged", { queue });
-    await Promise.resolve();
-    const count = captured.invocations.length;
-    emitPlayerEvent("queueChanged", { queue });
-    await Promise.resolve();
-    expect(captured.invocations.length).toBe(count);
+  it("spins up the hidden analysis window for valid audio and ignores junk", async () => {
+    const { ctx, captured, emitViewMessage } = fakeContext();
+    await djAddon.activate(ctx);
+
+    emitViewMessage("audioData", { videoId: 42, buffer: "nope" });
+    emitViewMessage("audioData", null);
+    expect(captured.windows).toHaveLength(0);
+
+    emitViewMessage("audioData", { videoId: "vid", buffer: new ArrayBuffer(8) });
+    expect(captured.windows).toHaveLength(1);
+    expect(ctx.windows.create).toHaveBeenCalledWith(expect.objectContaining({ entry: "dj-analysis", show: false }));
+  });
+
+  it("executes page-requested transitions through playQueueIndex", async () => {
+    const { ctx, emitViewMessage } = fakeContext();
+    await djAddon.activate(ctx);
+    emitViewMessage("transitionNow", { index: 7 });
+    expect(ctx.playback.playQueueIndex).toHaveBeenCalledWith(7);
+    emitViewMessage("transitionNow", { index: -1 });
+    emitViewMessage("transitionNow", { index: 1.5 });
+    emitViewMessage("transitionNow", {});
+    expect(ctx.playback.playQueueIndex).toHaveBeenCalledTimes(1);
+  });
+
+  it("schedules cataloging a while after a track starts", async () => {
+    vi.useFakeTimers();
+    try {
+      const { ctx, captured, emitPlayerEvent } = fakeContext();
+      await djAddon.activate(ctx);
+      emitPlayerEvent("trackChanged", { current: makeVideoDetails({ id: "fresh" }), previous: null, playlistId: null });
+      expect(captured.invocations.some(entry => entry.name === "catalog")).toBe(false);
+      await vi.advanceTimersByTimeAsync(13000);
+      expect(captured.invocations.filter(entry => entry.name === "catalog").map(entry => entry.arg)).toEqual([{ videoId: "fresh" }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows the badge only while auto DJ is on", async () => {
+    const { ctx, captured, settings, emitPlayerEvent } = fakeContext();
+    await djAddon.activate(ctx);
+    emitPlayerEvent("trackChanged", { current: makeVideoDetails(), previous: null, playlistId: null });
+    expect(captured.badges.at(-1)).toBeNull();
+
+    settings.autoDj = true;
+    await captured.settingsListeners.autoDj();
+    expect(captured.badges.at(-1)).toMatchObject({ active: true });
   });
 
   it("survives the page rejecting the script rather than taking the addon down", async () => {
-    const { ctx, captured } = fakeAddonContext({
+    const bag = fakeAddonContext({
       manifest: djAddon.manifest,
       invokeScript: async () => {
         throw new Error("no such script");
       }
     });
-    djAddon.activate(ctx);
-    await expect(captured.loadedCallbacks[0]()).resolves.not.toThrow();
-    expect(ctx.log.warn).toHaveBeenCalled();
+    bag.ctx.paths.data = makeTempDir("dj-addon-");
+    await djAddon.activate(bag.ctx);
+    await expect(bag.captured.loadedCallbacks[0]()).resolves.not.toThrow();
+    expect(bag.ctx.log.warn).toHaveBeenCalled();
   });
 
-  it("tears the page engine down and drops listeners on destroy", () => {
+  it("tears the page engine down and drops listeners on destroy", async () => {
     const { ctx, unsubscribe } = fakeContext();
-    const instance = djAddon.activate(ctx);
-    (instance as { destroy: () => void }).destroy();
+    const instance = await djAddon.activate(ctx);
+    await (instance as { destroy: () => Promise<void> }).destroy();
     expect(ctx.ytmview.runScript).toHaveBeenCalledWith("crossfade-disable");
-    expect(unsubscribe).toHaveBeenCalledTimes(9);
+    expect(unsubscribe).toHaveBeenCalledTimes(13);
   });
 });

@@ -23,6 +23,7 @@
       video: null,
       phase: "idle",
       pendingFadeIn: false,
+      transitionPosted: false,
       lastVideoId: null,
       outLevel: 1,
       prep: null,
@@ -41,7 +42,10 @@
     fadeOnRepeatOne: options.fadeOnRepeatOne === true,
     repeatOne: options.repeatOne === true,
     adPlaying: options.adPlaying === true,
-    hasNext: options.hasNext !== false
+    hasNext: options.hasNext !== false,
+    transitionIndex: Number.isInteger(options.transitionIndex) ? options.transitionIndex : null,
+    beatOffsetS: typeof options.beatOffsetS === "number" && isFinite(options.beatOffsetS) ? options.beatOffsetS : null,
+    beatPeriodS: typeof options.beatPeriodS === "number" && options.beatPeriodS > 0 ? options.beatPeriodS : null
   };
 
   const playerBar = () => document.querySelector("ytmusic-app-layout>ytmusic-player-bar");
@@ -138,7 +142,16 @@
     })();
   };
 
-  const startOverlap = video => {
+  const advance = () => {
+    if (state.config.transitionIndex != null && window.ytmd && window.ytmd.postAddonMessage) {
+      window.ytmd.postAddonMessage("dj", "transitionNow", { index: state.config.transitionIndex });
+      return;
+    }
+    const bar = playerBar();
+    if (bar && bar.playerApi && bar.playerApi.nextVideo) bar.playerApi.nextVideo();
+  };
+
+  const startOverlap = (video, fadeS) => {
     const prep = state.prep;
     const context = graph.context;
     // The shadow bypasses the element, so element mute has to be mirrored by
@@ -155,8 +168,7 @@
     source.connect(shadowGain);
     shadowGain.connect(context.destination);
     source.start(context.currentTime, offset);
-    const fadeS = Math.min(state.config.fadeOutS, tailLeftS);
-    shadowGain.gain.setValueCurveAtTime(buildCurve("out", level), context.currentTime, fadeS);
+    shadowGain.gain.setValueCurveAtTime(buildCurve("out", level), context.currentTime, Math.min(fadeS, tailLeftS));
     source.onended = () => {
       if (state.shadow && state.shadow.source === source) state.shadow = null;
     };
@@ -166,9 +178,18 @@
     setOutGain(0, 0.02);
     state.phase = "overlap";
     state.pendingFadeIn = true;
-    const bar = playerBar();
-    if (bar && bar.playerApi && bar.playerApi.nextVideo) bar.playerApi.nextVideo();
+    advance();
     return true;
+  };
+
+  // The configured window, snapped back to the outgoing track's last downbeat
+  // when a beat grid was pushed.
+  const fadeStartSeconds = durationS => {
+    const config = state.config;
+    const unaligned = durationS - config.fadeOutS;
+    if (config.beatOffsetS == null || config.beatPeriodS == null || unaligned <= config.beatOffsetS) return unaligned;
+    const beats = Math.floor((unaligned - config.beatOffsetS) / config.beatPeriodS);
+    return config.beatOffsetS + beats * config.beatPeriodS;
   };
 
   const beginFadeIn = () => {
@@ -191,6 +212,7 @@
     if (videoId && videoId !== state.lastVideoId) {
       const wasOverlap = state.phase === "overlap";
       state.lastVideoId = videoId;
+      state.transitionPosted = false;
       if (wasOverlap || state.pendingFadeIn) {
         if (!video.paused) beginFadeIn();
       } else {
@@ -209,16 +231,17 @@
     }
     if (state.phase !== "idle") return;
 
-    const remaining = video.duration - video.currentTime;
-    if (remaining <= config.fadeOutS + 0.25) {
+    const fadeStartS = fadeStartSeconds(video.duration);
+    const fadeLengthS = video.duration - fadeStartS;
+    if (video.currentTime >= fadeStartS - 0.12) {
       const ready = state.prep && state.prep.videoId === state.lastVideoId && state.prep.tail;
       if (ready && config.hasNext && !roomCaptureActive()) {
-        if (!startOverlap(video)) plainFadeTick(remaining);
+        if (!startOverlap(video, fadeLengthS)) plainFadeTick(video, fadeLengthS);
       } else {
-        plainFadeTick(remaining);
+        plainFadeTick(video, fadeLengthS);
       }
     } else {
-      if (remaining <= config.fadeOutS + PREP_LEAD_S && videoId) prepare(videoId, video.duration);
+      if (video.duration - video.currentTime <= config.fadeOutS + PREP_LEAD_S && videoId) prepare(videoId, video.duration);
       // Recovery net: a loadstart can pin the gain to zero after the playing
       // event already fired, which would otherwise stay silent forever.
       if (state.pendingFadeIn && !video.paused && video.readyState >= 3) beginFadeIn();
@@ -226,13 +249,20 @@
     }
   };
 
-  function plainFadeTick(remaining) {
-    const t = Math.min(1, Math.max(0, 1 - remaining / state.config.fadeOutS));
+  function plainFadeTick(video, fadeLengthS) {
+    const remaining = video.duration - video.currentTime;
+    const t = Math.min(1, Math.max(0, 1 - remaining / fadeLengthS));
     const gain = graph.out.gain;
     gain.cancelScheduledValues(graph.context.currentTime);
     gain.setTargetAtTime(curveValue(t, "out"), graph.context.currentTime, 0.08);
     state.outLevel = curveValue(t, "out");
     state.pendingFadeIn = true;
+    // A directed pick still has to happen without a shadow; jump just before
+    // the element runs out so the plain fade lands on the chosen track.
+    if (state.config.transitionIndex != null && remaining <= 1 && !state.transitionPosted) {
+      state.transitionPosted = true;
+      advance();
+    }
   }
 
   const onLoadStart = () => {
