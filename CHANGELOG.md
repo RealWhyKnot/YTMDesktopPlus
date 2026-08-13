@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- ci: smoke test the flatpak, windows, and macos installs
+- feat(linux): ship a flatpak bundle for SteamOS and other immutable distros
 - fix(dj): keep recently played tracks in the library pool, priced by recency
 
 ## [v2026.813.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.813.1-beta) - 2026-08-13
