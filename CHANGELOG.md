@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.813.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.813.0-beta) - 2026-08-13
 - refactor: share powershell self-test preamble
 - refactor: move shared scenario fixtures into harness lib
 - test: manage temp dirs with shared helper
