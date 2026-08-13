@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- ci(release): smoke test the published flatpak before attaching notes
+- feat(logging): record whether the music page loaded in the log
 - ci: judge the windows install smoke by process age, not first pid
 - ci: smoke test the flatpak, windows, and macos installs
 - feat(linux): ship a flatpak bundle for SteamOS and other immutable distros
