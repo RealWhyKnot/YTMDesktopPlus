@@ -34,15 +34,13 @@ export function findQueueItemRenderer(node: unknown, videoId: string): { playlis
   return null;
 }
 
-export function libraryCandidates(db: FeatureDb, queue: PlayerQueue | null, current: VideoDetails | null, recentVideoIds: string[]): TrackFeatures[] {
+export function libraryCandidates(db: FeatureDb, queue: PlayerQueue | null, current: VideoDetails | null): TrackFeatures[] {
   const queued = new Set<string>();
   if (queue) {
     for (const item of queue.items) queued.add(item.videoId);
     for (const item of queue.automixItems) queued.add(item.videoId);
   }
-  return db
-    .all()
-    .filter(track => track.title != null && track.videoId !== current?.id && !queued.has(track.videoId) && !recentVideoIds.includes(track.videoId));
+  return db.all().filter(track => track.title != null && track.videoId !== current?.id && !queued.has(track.videoId));
 }
 
 export function pickNext(queue: PlayerQueue | null, current: VideoDetails | null, db: FeatureDb, recentVideoIds: string[]): NextPick | null {
@@ -73,9 +71,10 @@ export function pickNext(queue: PlayerQueue | null, current: VideoDetails | null
   }
 
   // The library only competes when the current track is analyzed; otherwise
-  // every comparison is neutral and the queue should win.
+  // every comparison is neutral and the queue should win. Recently played
+  // tracks stay in the pool; the scoring recency penalty prices them out.
   if (currentFeatures) {
-    for (const track of libraryCandidates(db, queue, current, recentVideoIds)) {
+    for (const track of libraryCandidates(db, queue, current)) {
       const score = scorePair(currentFeatures, track, {
         recentVideoIds,
         currentAuthor: current?.author,

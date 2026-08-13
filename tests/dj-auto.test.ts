@@ -79,16 +79,26 @@ describe("dj auto pick", () => {
     expect(pick).toMatchObject({ videoId: "b" });
   });
 
-  it("filters library candidates down to unqueued, unplayed, titled tracks", () => {
+  it("filters library candidates down to unqueued, titled tracks", () => {
     const store = db();
     store.set(features("current"));
     store.set(features("queued"));
-    store.set(features("recent"));
     store.set(features("nameless", { title: null }));
     store.set(features("eligible"));
     const queue = queueOf([item("current"), item("queued")], [], 0);
-    const candidates = libraryCandidates(store, queue, makeVideoDetails({ id: "current" }), ["recent"]);
+    const candidates = libraryCandidates(store, queue, makeVideoDetails({ id: "current" }));
     expect(candidates.map(track => track.videoId)).toEqual(["eligible"]);
+  });
+
+  it("prices recently played library tracks out until they age", () => {
+    const store = db();
+    store.set(features("current"));
+    store.set(features("perfect"));
+    const queue = queueOf([item("current"), item("unknown")], [], 0);
+    const justPlayed = pickNext(queue, makeVideoDetails({ id: "current" }), store, ["perfect"]);
+    expect(justPlayed).toMatchObject({ videoId: "unknown", source: "queue" });
+    const aged = pickNext(queue, makeVideoDetails({ id: "current" }), store, [...Array(17).fill("x"), "perfect"]);
+    expect(aged).toMatchObject({ videoId: "perfect", source: "library", queueIndex: null });
   });
 
   it("reaches into the library only for a clear win over the queue", () => {
