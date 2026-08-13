@@ -338,6 +338,8 @@ export type AddonWindowOptions = {
     height: number;
     resizable?: boolean;
     title?: string;
+    /** false keeps the window hidden and unthrottled, for background work; handle.show() reveals it */
+    show?: boolean;
 };
 export type AddonWindowHandle = {
     show(): void;

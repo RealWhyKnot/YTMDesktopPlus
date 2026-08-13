@@ -285,6 +285,10 @@ its history polling.
 - `entry` - a renderer folder compiled into the app (bundled addons only), or
 - `file` - an HTML file inside your addon folder.
 
+Pass `show: false` to keep the window hidden and exempt from background
+throttling, for windows that exist to do work rather than be seen;
+`handle.show()` reveals it later.
+
 ```js
 const win = ctx.windows.create({ file: "panel.html", width: 360, height: 240, title: "My panel" });
 ctx.ipc.handle("greet", () => "hello from main");

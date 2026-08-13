@@ -446,10 +446,13 @@ const addonManager: AddonManager = new AddonManager({
           ? path.join(__dirname, "../renderer/windows/addon/preload.js")
           : path.join(__dirname, `../renderer/windows/${options.entry}/preload.js`),
         additionalArguments: options.filePath ? [`--ytmd-addon-id=${options.addonId}`] : undefined,
-        devTools: store.get("developer").enableDevTools
+        devTools: store.get("developer").enableDevTools,
+        // A window created hidden is doing background work; throttled timers
+        // would starve it.
+        backgroundThrottling: options.show !== false
       }
     });
-    addonWindow.on("ready-to-show", () => addonWindow.show());
+    if (options.show !== false) addonWindow.on("ready-to-show", () => addonWindow.show());
     if (options.filePath) addonWindow.loadFile(options.filePath);
     else loadWindowEntry(addonWindow, options.entry, ALL_WINDOWS_VITE_DEV_SERVER_URL);
     return addonWindow;
