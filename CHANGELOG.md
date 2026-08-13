@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- feat(addons): dj tempo-matches blends and mixes in library tracks
+- feat(addons): dj learns tracks and picks the next one to mix
+- feat(addons): windows can open hidden for background work
+- feat(addons): dj addon with overlapping crossfade between tracks
+- test(harness): hard-mute app audio in test runs
+- test(harness): add dj stream and queue probe scenarios
 
 ## [v2026.813.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.813.0-beta) - 2026-08-13
 - refactor: share powershell self-test preamble
