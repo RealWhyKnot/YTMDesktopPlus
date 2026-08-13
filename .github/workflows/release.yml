@@ -156,11 +156,60 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+  # Installs the flatpak asset exactly as a user would, from the release,
+  # and requires the YTM page to actually load and hook inside the sandbox.
+  # Beta and stable releases both run it; the log check relies on debug
+  # logging, which packaged builds only write for -beta versions, so the
+  # marker wait is skipped for stables and process survival is used instead.
+  smoke:
+    name: released flatpak smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [validate, build]
+    steps:
+      - name: Cache flatpak runtimes
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/flatpak
+          key: flatpak-25.08-v1
+      - name: Install, launch, and check the published bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+          REPO: ${{ github.repository }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak xvfb
+          flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub org.freedesktop.Platform//25.08
+          gh release download "$TAG" --repo "$REPO" --pattern "*.flatpak" --dir bundle
+          flatpak install --user --noninteractive ./bundle/*.flatpak
+          desktop=~/.local/share/flatpak/exports/share/applications/dev.whyknot.YTMDesktopPlus.desktop
+          grep -q "x-scheme-handler/ytmdplus" "$desktop"
+          dbus-run-session -- xvfb-run -a flatpak run dev.whyknot.YTMDesktopPlus &
+          logfile=~/.var/app/dev.whyknot.YTMDesktopPlus/config/YTMDesktopPlus/logs/main.log
+          ok=""
+          if [ "$PRERELEASE" = "true" ]; then
+            for _ in $(seq 1 24); do
+              sleep 5
+              if grep -q "YTM view hook failed\|YTM view failed to load" "$logfile" 2>/dev/null; then break; fi
+              if grep -q "YTM view loaded" "$logfile" 2>/dev/null; then ok=1; break; fi
+            done
+            echo "--- main.log tail"
+            tail -n 40 "$logfile" || true
+          else
+            sleep 60
+            flatpak ps --columns=application | grep -qx dev.whyknot.YTMDesktopPlus && ok=1
+          fi
+          flatpak kill dev.whyknot.YTMDesktopPlus || true
+          [ -n "$ok" ]
+
   notes:
     name: changelog + release notes
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [validate, build]
+    needs: [validate, build, smoke]
     steps:
       - uses: actions/checkout@v7
         with:
