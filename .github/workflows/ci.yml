@@ -1,9 +1,11 @@
 # Continuous integration for pushes and pull requests.
 #
-# Two layers:
-#   checks - lint, typecheck, formatting, unit tests. Fast, runs on ubuntu.
-#   build  - electron-forge make across the release matrix, artifacts kept two
-#            weeks. windows arm64 is excluded to match the publish matrix.
+# Three layers:
+#   checks   - lint, typecheck, formatting, unit tests. Fast, runs on ubuntu.
+#   build    - electron-forge make across the release matrix, artifacts kept
+#              two weeks. windows arm64 is excluded to match the publish matrix.
+#   validate - installs the built flatpak, Squirrel setup, and macOS app, then
+#              checks the installed copy actually starts.
 # The end-to-end harness (tools/test-harness) needs a display and live network
 # and runs from nightly-ytm-canary.yml instead of here.
 name: ci
@@ -82,6 +84,19 @@ jobs:
       - uses: ./.github/actions/setup-node-deps
         with:
           cache-electron: "true"
+      # The flatpak is built on linux x64 only; cross-arch builds need qemu.
+      - name: Cache flatpak runtimes
+        if: matrix.os == 'linux' && matrix.arch == 'x64'
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/flatpak
+          key: flatpak-25.08-v1
+      - name: Install flatpak toolchain
+        if: matrix.os == 'linux' && matrix.arch == 'x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder elfutils
+          flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
       - name: Build distributables
         run: yarn make --arch ${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
@@ -90,3 +105,84 @@ jobs:
           path: out/make/**
           if-no-files-found: error
           retention-days: 14
+
+  # Install smoke: the built package installs, the installed app stays up, and
+  # it creates its user data directory. Log files are not a reliable marker
+  # here because stable-version builds keep debug logging off.
+  validate:
+    name: install smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 20
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            image: ubuntu-latest
+            arch: x64
+          - os: windows
+            image: windows-latest
+            arch: x64
+          - os: macos
+            image: macos-latest
+            arch: arm64
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
+          path: dist
+      - name: Cache flatpak runtimes
+        if: matrix.os == 'linux'
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/flatpak
+          key: flatpak-25.08-v1
+      - name: Install and launch the flatpak
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak xvfb
+          flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub org.freedesktop.Platform//25.08
+          flatpak install --user --noninteractive ./dist/flatpak/x86_64/*.flatpak
+          dbus-run-session -- xvfb-run -a flatpak run dev.whyknot.YTMDesktopPlus &
+          sleep 30
+          flatpak ps --columns=application | grep -qx dev.whyknot.YTMDesktopPlus
+          [ -n "$(ls -A "$HOME/.var/app/dev.whyknot.YTMDesktopPlus/config/YTMDesktopPlus" 2>/dev/null)" ]
+          flatpak kill dev.whyknot.YTMDesktopPlus
+      - name: Install and launch the Squirrel setup
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist -Recurse -Filter "*Setup.exe" | Select-Object -First 1
+          if (-not $setup) { Write-Output "::error::No Setup.exe in the artifact"; exit 1 }
+          Start-Process $setup.FullName -ArgumentList "--silent" -Wait
+          # Squirrel normally launches the app itself after installing; fall
+          # back to starting the installed exe if it has not appeared.
+          $process = $null
+          $deadline = (Get-Date).AddSeconds(60)
+          while (-not $process -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 3
+            $process = Get-Process ytmdesktop-plus -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$env:LOCALAPPDATA*" } | Select-Object -First 1
+          }
+          if (-not $process) {
+            $exe = Get-ChildItem "$env:LOCALAPPDATA" -Directory -Filter "ytmdesktop*" | Get-ChildItem -Recurse -Depth 1 -Filter "ytmdesktop-plus.exe" | Select-Object -First 1
+            if (-not $exe) { Write-Output "::error::Setup.exe left no installed copy under LOCALAPPDATA"; exit 1 }
+            $process = Start-Process $exe.FullName -PassThru
+          }
+          Start-Sleep -Seconds 20
+          if ($process.HasExited) { Write-Output "::error::Installed app exited shortly after launch"; exit 1 }
+          if (-not (Test-Path "$env:APPDATA\YTMDesktopPlus")) { Write-Output "::error::App never created its user data directory"; exit 1 }
+          Get-Process ytmdesktop-plus -ErrorAction SilentlyContinue | Stop-Process -Force
+      - name: Extract and launch the macOS app
+        if: matrix.os == 'macos'
+        run: |
+          ditto -x -k ./dist/zip/darwin/arm64/*.zip extracted
+          app=$(ls -d extracted/*.app | head -1)
+          "$app/Contents/MacOS/ytmdesktop-plus" &
+          app_pid=$!
+          sleep 30
+          kill -0 "$app_pid"
+          [ -d "$HOME/Library/Application Support/YTMDesktopPlus" ]
+          kill "$app_pid"
