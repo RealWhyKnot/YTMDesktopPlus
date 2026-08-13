@@ -59,6 +59,14 @@ jobs:
             exit 0
           fi
           exit $code
+      - name: Upload run directories
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-runs
+          path: tools/test-harness/runs/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Job summary
         if: always()
         shell: pwsh
