@@ -953,6 +953,7 @@ const createYTMView = (): void => {
     if (isMainFrame) {
       if (ytmViewLoadTimeout) clearTimeout(ytmViewLoadTimeout);
 
+      log.warn(`YTM view failed to load: ${errorDescription} (${errorCode})`);
       memoryStore.set("ytmViewLoadingError", true);
       memoryStore.set("ytmViewLoadingStatus", `Failed to load YouTube Music: ${errorDescription} (${errorCode})`);
     }
@@ -1271,6 +1272,7 @@ app.on("ready", async () => {
 
       memoryStore.set("ytmViewLoading", false);
       clearTimeout(ytmViewLoadTimeout);
+      log.info("YTM view loaded");
       mainWindow.addBrowserView(ytmView);
       ytmView.setBounds({
         x: 0,
