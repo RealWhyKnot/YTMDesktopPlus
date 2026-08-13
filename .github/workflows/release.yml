@@ -151,6 +151,22 @@ jobs:
           $package | ConvertTo-Json -Depth 10 | Set-Content package.json
       - name: Build
         run: yarn publish:dry --arch ${{ matrix.arch }}
+      # Uploads can land server-side while the client sees a network error;
+      # the retry then dies on already_exists and the leg goes red with its
+      # assets half-attached. Clearing this leg's names first makes re-running
+      # a failed leg safe.
+      - name: Clear this leg's assets from any earlier attempt
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          foreach ($file in Get-ChildItem out/make -Recurse -File) {
+            gh release delete-asset $env:TAG $file.Name --repo $env:REPO --yes 2>$null
+            if ($LASTEXITCODE -eq 0) { Write-Output "Deleted stale asset $($file.Name)" }
+          }
+          exit 0
       - name: Publish to release
         run: yarn publish:fromdry
         env:
