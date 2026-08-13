@@ -5,10 +5,11 @@ import { RepeatMode, type VideoDetails } from "../../../shared/addons/sdk";
 import crossfadeScript from "./scripts/crossfade.script?raw";
 import crossfadeDisableScript from "./scripts/crossfade-disable.script?raw";
 import catalogScript from "./scripts/catalog.script?raw";
+import enqueueScript from "./scripts/enqueue.script?raw";
 
 import { Analyzer } from "./analyzer";
 import { FeatureDb } from "./feature-db";
-import { pickNext, type NextPick } from "./auto-dj";
+import { findQueueItemRenderer, pickNext, type NextPick } from "./auto-dj";
 import { planTransition } from "./transition-plan";
 
 const SETTING_KEYS = ["fadeOut", "fadeIn", "curve", "fadeOnManualSkip", "fadeOnRepeatOne", "autoDj"] as const;
@@ -93,6 +94,7 @@ const djAddon: BundledAddonDefinition = {
     ctx.ytmview.registerScript("crossfade", crossfadeScript);
     ctx.ytmview.registerScript("crossfade-disable", crossfadeDisableScript);
     ctx.ytmview.registerScript("catalog", catalogScript);
+    ctx.ytmview.registerScript("enqueue", enqueueScript);
 
     const db = new FeatureDb(path.join(ctx.paths.data, "features.json"));
     await db.load();
@@ -117,8 +119,31 @@ const djAddon: BundledAddonDefinition = {
 
     const autoDjOn = () => ctx.settings.get<boolean>("autoDj") === true;
 
+    let enqueueInFlight: string | null = null;
+    const failedEnqueues = new Set<string>();
+
+    // A library pick lives outside the queue; it becomes reachable for the
+    // transition only once it sits in the queue as the next item.
+    const ensureEnqueued = async (wanted: NextPick) => {
+      if (enqueueInFlight || failedEnqueues.has(wanted.videoId)) return;
+      enqueueInFlight = wanted.videoId;
+      try {
+        const response = await ctx.innertube.request("next", { videoId: wanted.videoId });
+        const item = findQueueItemRenderer(response, wanted.videoId);
+        if (!item) throw new Error("no queue renderer in the next response");
+        const index = await ctx.ytmview.invokeScript("enqueue", { item });
+        if (typeof index !== "number" || index < 0) throw new Error(`enqueue landed at ${index}`);
+      } catch (error) {
+        failedEnqueues.add(wanted.videoId);
+        ctx.log.info(`Could not enqueue library pick ${wanted.videoId}`, error);
+      } finally {
+        enqueueInFlight = null;
+      }
+    };
+
     const recomputePick = () => {
       pick = autoDjOn() ? pickNext(ctx.player.getQueue(), currentTrack, db, recentVideoIds) : null;
+      if (pick && pick.source === "library" && pick.queueIndex == null) void ensureEnqueued(pick);
       ctx.titlebar.setBadge(
         autoDjOn() ? { icon: "album", active: true, tooltip: pick ? `Auto DJ next: ${pick.title}` : "Auto DJ: waiting for candidates" } : null
       );
@@ -142,9 +167,11 @@ const djAddon: BundledAddonDefinition = {
           repeatOne,
           adPlaying,
           hasNext,
-          transitionIndex: pick ? pick.queueIndex : null,
+          transitionIndex: pick && pick.queueIndex != null ? pick.queueIndex : null,
           beatOffsetS: pick ? plan.beatOffsetS : null,
-          beatPeriodS: pick ? plan.beatPeriodS : null
+          beatPeriodS: pick ? plan.beatPeriodS : null,
+          incomingRate: pick ? plan.incomingRate : null,
+          rateGlideS: plan.rateGlideS
         });
         if (applied !== true) ctx.log.info("Crossfade could not attach yet; the page has no audio graph");
       } catch (error) {
@@ -175,7 +202,8 @@ const djAddon: BundledAddonDefinition = {
         const data = payload as { videoId?: unknown; buffer?: unknown };
         if (typeof data?.videoId !== "string" || !(data.buffer instanceof ArrayBuffer)) return;
         if (db.has(data.videoId)) return;
-        analyzer.submit(data.videoId, data.buffer);
+        const meta = currentTrack?.id === data.videoId ? { title: currentTrack.title, author: currentTrack.author } : undefined;
+        analyzer.submit(data.videoId, data.buffer, meta);
       })
     );
     unsubscribes.push(

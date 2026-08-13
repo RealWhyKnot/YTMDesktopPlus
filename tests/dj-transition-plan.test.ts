@@ -5,6 +5,8 @@ import type { TrackFeatures } from "../src/addons/bundled/dj/scoring";
 function features(overrides: Partial<TrackFeatures> = {}): TrackFeatures {
   return {
     videoId: "vid",
+    title: null,
+    author: null,
     bpm: 120,
     bpmConfidence: 1,
     camelot: "8B",
@@ -52,5 +54,21 @@ describe("dj transition plan", () => {
   it("falls back to the plain window without a grid", () => {
     const plan = planTransition(features({ bpm: null }), null, DEFAULTS);
     expect(fadeStartSeconds(200, plan)).toBe(195);
+  });
+
+  it("stretches the incoming track toward the outgoing tempo within limits", () => {
+    const close = planTransition(features({ bpm: 128 }), features({ bpm: 126 }), DEFAULTS);
+    expect(close.incomingRate).toBeCloseTo(128 / 126);
+
+    const slower = planTransition(features({ bpm: 120 }), features({ bpm: 126 }), DEFAULTS);
+    expect(slower.incomingRate).toBeCloseTo(120 / 126);
+
+    const far = planTransition(features({ bpm: 128 }), features({ bpm: 100 }), DEFAULTS);
+    expect(far.incomingRate).toBeNull();
+  });
+
+  it("needs no stretch for a clean half-time pair", () => {
+    const plan = planTransition(features({ bpm: 128 }), features({ bpm: 64 }), DEFAULTS);
+    expect(plan.incomingRate).toBeNull();
   });
 });

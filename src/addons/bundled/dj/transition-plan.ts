@@ -11,14 +11,24 @@ export type TransitionPlan = {
   // start at the last grid point <= (duration - fadeOutS).
   beatOffsetS: number | null;
   beatPeriodS: number | null;
+  // Playback rate the incoming track starts at so its tempo matches the
+  // outgoing one, gliding back to 1 over rateGlideS. Null when the tempos are
+  // too far apart to stretch convincingly.
+  incomingRate: number | null;
+  rateGlideS: number;
 };
+
+const MAX_STRETCH = 0.06;
+const RATE_GLIDE_S = 6;
 
 export function planTransition(current: TrackFeatures | null, next: TrackFeatures | null, defaults: { fadeOutS: number; fadeInS: number }): TransitionPlan {
   const plan: TransitionPlan = {
     fadeOutS: defaults.fadeOutS,
     fadeInS: defaults.fadeInS,
     beatOffsetS: null,
-    beatPeriodS: null
+    beatPeriodS: null,
+    incomingRate: null,
+    rateGlideS: RATE_GLIDE_S
   };
   if (current?.bpm && current.beatOffsetS != null && current.bpm >= 40 && current.bpm <= 240) {
     plan.beatOffsetS = current.beatOffsetS;
@@ -29,6 +39,20 @@ export function planTransition(current: TrackFeatures | null, next: TrackFeature
   if (current?.bpm && next?.bpm) {
     const ratio = Math.abs(Math.log2(next.bpm / current.bpm));
     if (ratio < 0.03) plan.fadeOutS = Math.min(12, defaults.fadeOutS * 1.5);
+
+    // Stretch against the nearest half/double interpretation of the incoming
+    // tempo, so 64 under a 128 outgoing needs no stretch at all.
+    let bestMultiple = 1;
+    let bestDistance = Infinity;
+    for (const multiple of [0.5, 1, 2]) {
+      const distance = Math.abs(Math.log2((next.bpm * multiple) / current.bpm));
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestMultiple = multiple;
+      }
+    }
+    const rate = current.bpm / (next.bpm * bestMultiple);
+    if (rate !== 1 && Math.abs(Math.log2(rate)) <= Math.log2(1 + MAX_STRETCH)) plan.incomingRate = rate;
   }
   return plan;
 }

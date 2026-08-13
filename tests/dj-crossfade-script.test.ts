@@ -53,6 +53,8 @@ let video: {
   paused: boolean;
   muted: boolean;
   readyState: number;
+  playbackRate: number;
+  preservesPitch: boolean;
   volume: number;
   addEventListener: (type: string, listener: () => void) => void;
   removeEventListener: (type: string, listener: () => void) => void;
@@ -149,6 +151,8 @@ beforeEach(() => {
     paused: false,
     muted: false,
     readyState: 4,
+    playbackRate: 1,
+    preservesPitch: false,
     volume: 0.83,
     addEventListener: (type, listener) => {
       if (!listeners.has(type)) listeners.set(type, []);
@@ -416,6 +420,39 @@ describe("dj crossfade script", () => {
     dispatch("timeupdate");
     expect(post).toHaveBeenCalledTimes(1);
     expect(post).toHaveBeenCalledWith("dj", "transitionNow", { index: 2 });
+  });
+
+  it("tempo-matches the incoming track and glides back to natural speed", () => {
+    run({ incomingRate: 1.05, rateGlideS: 1 });
+    dispatch("loadstart");
+    dispatch("playing");
+    expect(video.playbackRate).toBeCloseTo(1.05);
+    expect(video.preservesPitch).toBe(true);
+
+    video.currentTime = 30;
+    dispatch("timeupdate");
+    expect(video.playbackRate).toBeLessThan(1.05);
+    for (let i = 0; i < 10; i++) dispatch("timeupdate");
+    expect(video.playbackRate).toBe(1);
+  });
+
+  it("resets the rate the moment the track changes mid-glide", () => {
+    run({ incomingRate: 1.05 });
+    dispatch("loadstart");
+    dispatch("playing");
+    expect(video.playbackRate).toBeCloseTo(1.05);
+
+    currentId = "trackB";
+    dispatch("timeupdate");
+    expect(video.playbackRate).toBe(1);
+  });
+
+  it("leaves an externally changed rate alone", () => {
+    run({ incomingRate: 1.05 });
+    video.playbackRate = 1.5;
+    dispatch("loadstart");
+    dispatch("playing");
+    expect(video.playbackRate).toBe(1.5);
   });
 
   it("tears down cleanly: listeners gone, gain restored, global dropped", async () => {

@@ -20,11 +20,15 @@ export type WindowResult = {
   decodedDurationS?: number;
 };
 
-export function featuresFromResult(result: WindowResult): TrackFeatures | null {
+export type TrackMeta = { title: string | null; author: string | null };
+
+export function featuresFromResult(result: WindowResult, meta: TrackMeta = { title: null, author: null }): TrackFeatures | null {
   if (!result.ok) return null;
   const key = result.chromaMean ? estimateKey(result.chromaMean) : null;
   return {
     videoId: result.videoId,
+    title: meta.title,
+    author: meta.author,
     bpm: typeof result.bpm === "number" && isFinite(result.bpm) ? result.bpm : null,
     bpmConfidence: typeof result.bpm === "number" ? 1 : 0,
     camelot: key ? key.camelot : null,
@@ -45,6 +49,7 @@ export class Analyzer {
   private windowReady = false;
   private pending: { videoId: string; buffer: ArrayBuffer }[] = [];
   private inFlight = new Set<string>();
+  private meta = new Map<string, TrackMeta>();
 
   constructor(
     private readonly ctx: AddonContext,
@@ -58,11 +63,13 @@ export class Analyzer {
       const result = raw as WindowResult;
       if (!result || typeof result.videoId !== "string") return;
       this.inFlight.delete(result.videoId);
+      const meta = this.meta.get(result.videoId) ?? { title: null, author: null };
+      this.meta.delete(result.videoId);
       if (!result.ok) {
         ctx.log.info(`Analysis failed for ${result.videoId}: ${result.error}`);
         return;
       }
-      const features = featuresFromResult(result);
+      const features = featuresFromResult(result, meta);
       if (features) this.onFeatures(features);
     });
   }
@@ -71,8 +78,9 @@ export class Analyzer {
     return this.inFlight.has(videoId) || this.pending.some(job => job.videoId === videoId);
   }
 
-  submit(videoId: string, buffer: ArrayBuffer): void {
+  submit(videoId: string, buffer: ArrayBuffer, meta?: TrackMeta): void {
     if (this.isBusy(videoId)) return;
+    if (meta) this.meta.set(videoId, meta);
     this.pending.push({ videoId, buffer });
     this.ensureWindow();
     this.drain();

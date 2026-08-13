@@ -8,6 +8,8 @@ import { makeTempDir } from "./helpers/temp-dir";
 function features(videoId: string): TrackFeatures {
   return {
     videoId,
+    title: "a title",
+    author: "an author",
     bpm: 128,
     bpmConfidence: 0.9,
     camelot: "8B",

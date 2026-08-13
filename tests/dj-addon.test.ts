@@ -1,7 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { writeFileSync } from "node:fs";
+import path from "node:path";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import djAddon from "../src/addons/bundled/dj";
+import { ANALYSIS_VERSION } from "../src/addons/bundled/dj/feature-db";
 import { fakeAddonContext, makeVideoDetails } from "./helpers/fake-addon-context";
-import { RepeatMode, type PlayerQueue } from "../src/shared/addons/sdk";
+import { RepeatMode, type PlayerQueue, type PlayerQueueItem } from "../src/shared/addons/sdk";
 import { makeTempDir } from "./helpers/temp-dir";
 
 function fakeContext(overrides: { settings?: Record<string, unknown> } = {}) {
@@ -37,7 +40,7 @@ describe("dj bundled addon", () => {
   it("registers the page scripts", async () => {
     const { ctx, captured } = fakeContext();
     await djAddon.activate(ctx);
-    expect(Object.keys(captured.scripts).sort()).toEqual(["catalog", "crossfade", "crossfade-disable"]);
+    expect(Object.keys(captured.scripts).sort()).toEqual(["catalog", "crossfade", "crossfade-disable", "enqueue"]);
   });
 
   it("offers number-valued curve options, which is all a select field accepts", async () => {
@@ -66,7 +69,9 @@ describe("dj bundled addon", () => {
       hasNext: true,
       transitionIndex: null,
       beatOffsetS: null,
-      beatPeriodS: null
+      beatPeriodS: null,
+      incomingRate: null,
+      rateGlideS: 6
     });
   });
 
@@ -146,6 +151,67 @@ describe("dj bundled addon", () => {
     await djAddon.activate(bag.ctx);
     await expect(bag.captured.loadedCallbacks[0]()).resolves.not.toThrow();
     expect(bag.ctx.log.warn).toHaveBeenCalled();
+  });
+
+  it("enqueues a clearly better library track through innertube and the page", async () => {
+    const dataDir = makeTempDir("dj-addon-");
+    const record = (videoId: string, extras: Record<string, unknown> = {}) => ({
+      videoId,
+      title: `title of ${videoId}`,
+      author: "someone",
+      bpm: 128,
+      bpmConfidence: 1,
+      camelot: "8B",
+      keyConfidence: 1,
+      energy: 0.5,
+      loudnessDb: null as number | null,
+      durationS: 200,
+      beatOffsetS: 0.2,
+      analysisVersion: ANALYSIS_VERSION,
+      analyzedAt: 0,
+      ...extras
+    });
+    writeFileSync(
+      path.join(dataDir, "features.json"),
+      JSON.stringify({ analysisVersion: ANALYSIS_VERSION, tracks: { current: record("current"), lib: record("lib", { author: "other" }) } }),
+      "utf8"
+    );
+
+    const bag = fakeAddonContext({
+      manifest: djAddon.manifest,
+      settings: { fadeOut: 5, fadeIn: 1.5, curve: 0, fadeOnManualSkip: true, fadeOnRepeatOne: false, autoDj: true },
+      innertube: async () => ({ contents: [{ playlistPanelVideoRenderer: { videoId: "lib", navigationEndpoint: {} } }] }),
+      invokeScript: async name => (name === "enqueue" ? 1 : true)
+    });
+    bag.ctx.paths.data = dataDir;
+
+    const queueItem = (videoId: string): PlayerQueueItem => ({
+      videoId,
+      title: videoId,
+      author: "someone",
+      duration: "3:20",
+      thumbnails: [],
+      selected: false,
+      counterparts: null
+    });
+    const queue: PlayerQueue = {
+      items: [queueItem("current"), queueItem("unknown")],
+      automixItems: [],
+      autoplay: false,
+      isGenerating: false,
+      isInfinite: false,
+      repeatMode: RepeatMode.None,
+      selectedItemIndex: 0
+    };
+    (bag.ctx.player.getQueue as Mock).mockReturnValue(queue);
+
+    await djAddon.activate(bag.ctx);
+    bag.emitPlayerEvent("trackChanged", { current: makeVideoDetails({ id: "current" }), previous: null, playlistId: null });
+    await vi.waitFor(() => {
+      expect(bag.captured.innertubeCalls).toContainEqual({ endpoint: "next", body: { videoId: "lib" } });
+      expect(bag.captured.invocations.some(entry => entry.name === "enqueue")).toBe(true);
+    });
+    expect(bag.captured.badges.at(-1)?.tooltip).toContain("title of lib");
   });
 
   it("tears the page engine down and drops listeners on destroy", async () => {

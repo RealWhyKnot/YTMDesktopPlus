@@ -28,6 +28,7 @@
       outLevel: 1,
       prep: null,
       shadow: null,
+      rateGlide: null,
       handlers: null
     };
     window.__ytmdDjCrossfade = state;
@@ -45,7 +46,9 @@
     hasNext: options.hasNext !== false,
     transitionIndex: Number.isInteger(options.transitionIndex) ? options.transitionIndex : null,
     beatOffsetS: typeof options.beatOffsetS === "number" && isFinite(options.beatOffsetS) ? options.beatOffsetS : null,
-    beatPeriodS: typeof options.beatPeriodS === "number" && options.beatPeriodS > 0 ? options.beatPeriodS : null
+    beatPeriodS: typeof options.beatPeriodS === "number" && options.beatPeriodS > 0 ? options.beatPeriodS : null,
+    incomingRate: typeof options.incomingRate === "number" && options.incomingRate >= 0.9 && options.incomingRate <= 1.1 ? options.incomingRate : null,
+    rateGlideS: Math.min(20, Math.max(1, Number(options.rateGlideS) || 6))
   };
 
   const playerBar = () => document.querySelector("ytmusic-app-layout>ytmusic-player-bar");
@@ -104,6 +107,7 @@
 
   const abortTransition = () => {
     stopShadow();
+    clearRateGlide();
     state.phase = "idle";
     state.pendingFadeIn = false;
     if (state.outLevel !== 1) setOutGain(1, 0.05);
@@ -192,6 +196,12 @@
     return config.beatOffsetS + beats * config.beatPeriodS;
   };
 
+  const clearRateGlide = () => {
+    if (!state.rateGlide) return;
+    if (state.video) state.video.playbackRate = 1;
+    state.rateGlide = null;
+  };
+
   const beginFadeIn = () => {
     const gain = graph.out.gain;
     const now = graph.context.currentTime;
@@ -201,6 +211,14 @@
     state.outLevel = 1;
     state.pendingFadeIn = false;
     state.phase = "idle";
+    // Tempo-match the incoming track, easing back to natural speed. Skip when
+    // something else already runs the element off its normal rate.
+    const video = state.video;
+    if (video && state.config.incomingRate != null && video.playbackRate === 1) {
+      video.preservesPitch = true;
+      video.playbackRate = state.config.incomingRate;
+      state.rateGlide = { stepPerTick: (1 - state.config.incomingRate) / (state.config.rateGlideS * 4) };
+    }
   };
 
   const onTimeUpdate = () => {
@@ -213,12 +231,23 @@
       const wasOverlap = state.phase === "overlap";
       state.lastVideoId = videoId;
       state.transitionPosted = false;
+      clearRateGlide();
       if (wasOverlap || state.pendingFadeIn) {
         if (!video.paused) beginFadeIn();
       } else {
         state.prep = null;
       }
       return;
+    }
+
+    if (state.rateGlide) {
+      if (video.playbackRate === 1) {
+        state.rateGlide = null;
+      } else {
+        const next = video.playbackRate + state.rateGlide.stepPerTick;
+        if (Math.abs(next - 1) < 0.003 || (state.rateGlide.stepPerTick > 0) === (next > 1)) clearRateGlide();
+        else video.playbackRate = next;
+      }
     }
 
     if (!config.enabled || config.adPlaying || !isFinite(video.duration) || video.duration <= 0) {

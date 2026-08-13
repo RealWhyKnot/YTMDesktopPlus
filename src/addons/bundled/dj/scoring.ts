@@ -6,6 +6,8 @@ import { camelotAffinity } from "./key";
 
 export type TrackFeatures = {
   videoId: string;
+  title: string | null;
+  author: string | null;
   bpm: number | null;
   bpmConfidence: number;
   camelot: string | null;

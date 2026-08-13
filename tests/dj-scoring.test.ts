@@ -4,6 +4,8 @@ import { energyAffinity, scorePair, tempoAffinity, type TrackFeatures } from "..
 function features(overrides: Partial<TrackFeatures> = {}): TrackFeatures {
   return {
     videoId: "vid",
+    title: null,
+    author: null,
     bpm: 128,
     bpmConfidence: 1,
     camelot: "8B",

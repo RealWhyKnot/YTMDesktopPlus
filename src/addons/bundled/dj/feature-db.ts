@@ -6,7 +6,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import type { TrackFeatures } from "./scoring";
 
-export const ANALYSIS_VERSION = 1;
+export const ANALYSIS_VERSION = 2;
 
 type DbShape = {
   analysisVersion: number;
@@ -50,6 +50,10 @@ export class FeatureDb {
 
   size(): number {
     return this.tracks.size;
+  }
+
+  all(): TrackFeatures[] {
+    return Array.from(this.tracks.values());
   }
 
   set(features: TrackFeatures): void {
