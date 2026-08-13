@@ -128,6 +128,19 @@ jobs:
       - uses: ./.github/actions/setup-node-deps
         with:
           cache-electron: "true"
+      # The flatpak is built on linux x64 only; cross-arch builds need qemu.
+      - name: Cache flatpak runtimes
+        if: matrix.os == 'linux' && matrix.arch == 'x64'
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/flatpak
+          key: flatpak-25.08-v1
+      - name: Install flatpak toolchain
+        if: matrix.os == 'linux' && matrix.arch == 'x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder elfutils
+          flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
       - name: Stamp version from tag
         shell: pwsh
         env:
@@ -214,6 +227,10 @@ jobs:
           $install = ""
           if ($setup) {
             $install = "`n`nWindows: download and run [$($setup.Name)](https://github.com/$env:REPO/releases/download/$env:TAG/$($setup.Name)). Installed copies update on their own."
+          }
+          $bundle = Get-ChildItem assets -Filter "*.flatpak" | Select-Object -First 1
+          if ($bundle) {
+            $install += "`n`nSteam Deck and other Linux: download [$($bundle.Name)](https://github.com/$env:REPO/releases/download/$env:TAG/$($bundle.Name)), then open it in Discover or run ``flatpak install --user ./$($bundle.Name)``."
           }
           $table = "| Asset | Size | SHA-256 |`n| --- | --- | --- |"
           Get-ChildItem assets -File | Sort-Object Name | ForEach-Object {

@@ -10,6 +10,14 @@ Grab the installer for your platform from [releases](https://github.com/RealWhyK
 
 On Windows the app can install updates on launch, like Discord does. It asks once on first run and the choice can be changed in settings at any time. The update channel follows the installed build, so a stable install stays on stable and a nightly install follows nightlies, and you can override the channel in settings; changing it applies the matching update when you save.
 
+On a Steam Deck, or any Linux distribution where the deb and rpm packages do not apply, download the `.flatpak` file from a release and open it in Discover, or install it from a terminal:
+
+```bash
+flatpak install --user ./dev.whyknot.YTMDesktopPlus_stable_x86_64.flatpak
+```
+
+The flatpak needs the Flathub remote for its runtime, which SteamOS already has set up. One limitation: Discord rich presence from inside the flatpak reaches a normally installed Discord, but not the flatpak build of Discord.
+
 ## Features
 
 - The full YouTube Music web player with your existing account
@@ -58,7 +66,7 @@ Useful commands:
 - `node tools/test-harness/run.mjs boot-hooks` - end-to-end check that the app still hooks the live YouTube Music page; more scenarios live in `tools/test-harness/scenarios`
 - `yarn make` - build platform installers into `out/make`
 
-On Linux, building the deb and rpm packages needs `fakeroot`, `dpkg`, and `rpm`.
+On Linux, building the deb and rpm packages needs `fakeroot`, `dpkg`, and `rpm`. The flatpak additionally needs `flatpak`, `flatpak-builder`, `elfutils`, and the Flathub remote (`flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo`).
 
 ## License
 

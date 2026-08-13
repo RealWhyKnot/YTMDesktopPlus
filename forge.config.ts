@@ -6,6 +6,7 @@ const appVersion: string = JSON.parse(readFileSync(path.join(__dirname, "package
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { MakerDeb } from "@electron-forge/maker-deb";
+import { MakerFlatpak } from "@electron-forge/maker-flatpak";
 import { MakerRpm } from "@electron-forge/maker-rpm";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
@@ -88,7 +89,43 @@ const config: ForgeConfig = {
         section: "sound",
         icon: "./src/assets/icons/ytmd.png"
       }
-    })
+    }),
+    // x64 only: cross-arch flatpak builds need qemu on the runner. The base
+    // app ships zypak, so modules stays empty instead of building the
+    // installer's pinned 2021 zypak against a current sdk.
+    ...(makerArch !== "arm64"
+      ? [
+          new MakerFlatpak({
+            options: {
+              id: "dev.whyknot.YTMDesktopPlus",
+              base: "org.electronjs.Electron2.BaseApp",
+              baseVersion: "25.08",
+              runtime: "org.freedesktop.Platform",
+              runtimeVersion: "25.08",
+              sdk: "org.freedesktop.Sdk",
+              categories: ["AudioVideo", "Audio"],
+              mimeType: ["x-scheme-handler/ytmdplus"],
+              icon: "./src/assets/icons/ytmd.png",
+              files: [],
+              modules: [],
+              finishArgs: [
+                "--share=ipc",
+                "--share=network",
+                "--socket=x11",
+                "--socket=wayland",
+                "--socket=pulseaudio",
+                "--device=dri",
+                // Chromium's singleton check uses a socket in tmp
+                "--env=TMPDIR=/var/tmp",
+                "--talk-name=org.kde.StatusNotifierWatcher",
+                "--talk-name=org.freedesktop.Notifications",
+                "--filesystem=xdg-run/discord-ipc-0",
+                "--filesystem=xdg-run/app/com.discordapp.Discord:create"
+              ]
+            }
+          })
+        ]
+      : [])
   ],
   publishers: [
     {
