@@ -30,7 +30,7 @@ export async function prepareProfile(profileDir) {
   }
 }
 
-const TRACK_IDS = ["dQw4w9WgXcQ", "kJQP7kiw5Fk"];
+const START_TRACK = "dQw4w9WgXcQ";
 
 const PLAYER_BAR = `document.querySelector("ytmusic-app-layout>ytmusic-player-bar")`;
 const TRACK_POSITION = `(${PLAYER_BAR}?.playerApi?.getCurrentTime?.() ?? 0)`;
@@ -45,7 +45,7 @@ export default async function djAutomix(ctx) {
     await ctx.evalYtm(`${PLAYER_BAR}?.playerApi?.setVolume?.(5)`);
   });
 
-  let target = TRACK_IDS[0];
+  let target = START_TRACK;
   await ctx.step(
     "a track is playing",
     async () => {
@@ -54,10 +54,8 @@ export default async function djAutomix(ctx) {
         target = parked;
         await ctx.evalYtm(`${PLAYER_BAR}.playerApi.playVideo()`);
       } else {
-        target = TRACK_IDS[0];
-        await ctx.evalYtm(
-          `document.dispatchEvent(new CustomEvent("yt-navigate", { detail: { endpoint: { watchEndpoint: { videoId: "${TRACK_IDS[0]}" } } } }))`
-        );
+        target = START_TRACK;
+        await ctx.evalYtm(`document.dispatchEvent(new CustomEvent("yt-navigate", { detail: { endpoint: { watchEndpoint: { videoId: "${START_TRACK}" } } } }))`);
       }
       ctx.emit("probe", { parked, target });
       // Nudge on every poll rather than once: a navigate issued while YTM is
@@ -86,44 +84,40 @@ export default async function djAutomix(ctx) {
   await ctx.step(
     "queue offers a next track",
     async () => {
-      const other = TRACK_IDS.find(id => id !== target);
       const aheadExpr = `(() => { const q = window.__YTMD_HOOK__?.ytmStore?.getState()?.queue; return q ? q.items.length - 1 - q.selectedItemIndex : -1; })()`;
-      // A cold navigate reaches playing before the queue is populated, and the
-      // clone below needs something to copy.
+      // A cold navigate reaches playing before the queue is populated.
       await ctx.waitYtm(
         `(() => { const q = window.__YTMD_HOOK__?.ytmStore?.getState()?.queue; return q?.items?.length ?? 0; })()`,
         count => Number(count) > 0,
         30000
       );
       try {
-        // Wait properly for YTM's own radio queue: a synthesized clone carries
-        // a real videoId but YTM refuses to start it, which reads as a failed
-        // mix when nothing is wrong with the engine.
-        await ctx.waitYtm(aheadExpr, ahead => Number(ahead) > 0, 25000);
-        return;
+        await ctx.waitYtm(aheadExpr, ahead => Number(ahead) > 0, 15000);
       } catch {
-        // Still nothing; synthesize a second item from the current one.
+        // A parked single track has nothing after it. Start YTM's radio for
+        // that track rather than synthesizing an entry: a hand-built queue item
+        // carries a real videoId but YTM refuses to start it, which reads as a
+        // failed mix with nothing wrong in the engine.
+        await ctx.evalYtm(
+          `document.dispatchEvent(new CustomEvent("yt-navigate", { detail: { endpoint: { watchEndpoint: { videoId: "${target}", playlistId: "RDAMVM${target}" } } } }))`
+        );
+        await ctx.waitYtm(aheadExpr, ahead => Number(ahead) > 0, 40000);
+        await ctx.waitYtm(
+          `(() => {
+            const api = ${PLAYER_BAR}?.playerApi;
+            if (!api?.getPlayerState) return null;
+            if (api.getPlayerState() !== 1) api.playVideo?.();
+            return api.getPlayerState();
+          })()`,
+          state => state === 1,
+          30000
+        );
+        target = await ctx.evalYtm(`${PLAYER_BAR}.playerApi.getVideoData().video_id`);
       }
-      await ctx.evalYtm(`(() => {
-        const store = window.__YTMD_HOOK__.ytmStore;
-        const queue = store.getState().queue;
-        if (queue.items.length - 1 - queue.selectedItemIndex > 0) return;
-        const current = queue.items[queue.selectedItemIndex] ?? queue.items[0];
-        const clone = JSON.parse(JSON.stringify(current).split("${target}").join("${other}"));
-        store.dispatch({
-          type: "ADD_ITEMS",
-          payload: {
-            nextQueueItemId: queue.nextQueueItemId,
-            index: queue.items.length,
-            items: [clone],
-            shuffleEnabled: false,
-            shouldAssignIds: true
-          }
-        });
-      })()`);
-      await ctx.waitYtm(aheadExpr, ahead => Number(ahead) > 0, 20000);
+      const ahead = await ctx.evalYtm(aheadExpr);
+      ctx.emit("probe", { target, ahead });
     },
-    55000
+    120000
   );
 
   await ctx.step("engine attached", () => ctx.waitYtm(`!!window.__ytmdDjCrossfade`, attached => attached === true, 15000), 20000);
