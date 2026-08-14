@@ -71,6 +71,12 @@ let shadowSources: {
 }[];
 let nextVideo: ReturnType<typeof vi.fn>;
 let currentId: string;
+// YTM concatenates tracks into one MediaSource: the element's clock counts
+// every track buffered so far, while playerApi stays track-relative. Both are
+// zero by default so a test that does not care reads one clock; the timeline
+// test below sets them to the values measured on the live page.
+let priorTracksS: number;
+let appendedNextS: number;
 let fetchedUrls: string[];
 let resourceEntries: { name: string }[];
 let perf: { bufferSize: number | null; cleared: number; bufferFull: (() => void)[] };
@@ -125,6 +131,8 @@ beforeEach(() => {
   shadowSources = [];
   fetchedUrls = [];
   currentId = "trackA";
+  priorTracksS = 0;
+  appendedNextS = 0;
   nextVideo = vi.fn();
   resourceEntries = [{ name: SEGMENT_URL }];
   perf = { bufferSize: null, cleared: 0, bufferFull: [] };
@@ -183,7 +191,20 @@ beforeEach(() => {
   globals.document = {
     querySelector: (selector: string) => {
       if (selector === "video") return video;
-      if (selector === "ytmusic-app-layout>ytmusic-player-bar") return { playerApi: { getVideoData: () => ({ video_id: currentId }), nextVideo } };
+      if (selector === "ytmusic-app-layout>ytmusic-player-bar") {
+        return {
+          playerApi: {
+            getVideoData: () => ({ video_id: currentId }),
+            getCurrentTime: () => video.currentTime - priorTracksS,
+            // Deliberately the buffered extent, which is what YTM reports and
+            // why the engine must not use it: it grows by the next track's
+            // length shortly before the change.
+            getDuration: () => video.duration - priorTracksS,
+            getPlayerResponse: () => ({ videoDetails: { lengthSeconds: String(video.duration - priorTracksS - appendedNextS) } }),
+            nextVideo
+          }
+        };
+      }
       return null;
     }
   };
@@ -252,6 +273,42 @@ describe("dj crossfade script", () => {
     expect(shadowGains[0].value).toBe(0.83);
     expect(lastGainValue()).toMatchObject({ method: "target", value: 0 });
     expect(nextVideo).toHaveBeenCalledTimes(1);
+  });
+
+  // Measured on the live page: YTM appends the next track into the same
+  // MediaSource ~10s before the current one ends. The element then reported
+  // duration 161 for a track ending at 112.4, and playerApi.getDuration()
+  // jumped 183.62 -> 199.91 on a track whose lengthSeconds stayed 184. Timing
+  // off either one misses the fade window by whatever has been appended.
+  it("fades on the track length, not the element or the buffered extent", async () => {
+    priorTracksS = 112.33;
+    appendedNextS = 49;
+    video.duration = priorTracksS + 200 + appendedNextS;
+
+    run();
+    video.currentTime = priorTracksS + 180;
+    dispatch("timeupdate");
+    await flushPrepare();
+    expect(fetchedUrls).toHaveLength(1);
+
+    video.currentTime = priorTracksS + 195.5;
+    dispatch("timeupdate");
+
+    expect(shadowSources).toHaveLength(1);
+    expect(diags().some(entry => entry.event === "overlap")).toBe(true);
+    // Offset into the decoded tail is track-relative too: 195.5 into a 200s
+    // track whose tail starts at 200 - 5 - 2.
+    expect(shadowSources[0].start).toHaveBeenCalledWith(expect.any(Number), 2.5);
+  });
+
+  it("stands down when the track clock is unreadable", () => {
+    run();
+    video.currentTime = 195.5;
+    video.duration = Number.NaN;
+    dispatch("timeupdate");
+
+    expect(shadowSources).toHaveLength(0);
+    expect(diags().some(entry => entry.event === "suppressed" && entry.reason === "no track clock")).toBe(true);
   });
 
   it("fades the incoming track in from silence once it plays", async () => {

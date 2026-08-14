@@ -74,6 +74,22 @@
     const descriptor = window.HTMLMediaElement_volume;
     return descriptor && descriptor.get ? descriptor.get.call(video) : video.volume;
   };
+  // Where this track actually starts and ends. Two traps, both measured live:
+  // the element's clock spans every track appended into the one MediaSource,
+  // and playerApi.getDuration() is the buffered extent from this track's
+  // start, so it jumps by the next track's length about 10s before the change.
+  // getCurrentTime does reset per track, and lengthSeconds cannot grow.
+  // Without both there is no safe fade window, so the engine stands down.
+  const trackClock = () => {
+    const bar = playerBar();
+    const api = bar && bar.playerApi;
+    if (!api || !api.getCurrentTime || !api.getPlayerResponse) return null;
+    const positionS = api.getCurrentTime();
+    const response = api.getPlayerResponse();
+    const durationS = Number(response && response.videoDetails && response.videoDetails.lengthSeconds);
+    if (!isFinite(positionS) || !isFinite(durationS) || durationS <= 0) return null;
+    return { positionS, durationS };
+  };
   const roomCaptureActive = () => !!window.__ytmdAudioStream;
 
   // Every branch below decides silently, so each one says what it did. The
@@ -118,7 +134,7 @@
     state.outLevel = value;
   };
 
-  const stopShadow = () => {
+  const stopShadow = reason => {
     if (!state.shadow) return;
     try {
       state.shadow.source.onended = null;
@@ -133,6 +149,7 @@
       // Never connected.
     }
     state.shadow = null;
+    if (reason) report("overlapKilled", { reason });
   };
 
   // Last line of defence for the one failure that is worse than a bad mix: a
@@ -150,7 +167,7 @@
     state.silenceGuard = setTimeout(() => {
       state.silenceGuard = null;
       if (!state.pendingFadeIn && state.outLevel === 1) return;
-      stopShadow();
+      stopShadow("silence recovered");
       state.phase = "idle";
       state.pendingFadeIn = false;
       graph.out.gain.cancelScheduledValues(graph.context.currentTime);
@@ -162,7 +179,7 @@
 
   const abortTransition = () => {
     clearSilenceGuard();
-    stopShadow();
+    stopShadow("transition aborted");
     clearRateGlide();
     state.phase = "idle";
     state.pendingFadeIn = false;
@@ -219,13 +236,13 @@
     if (bar && bar.playerApi && bar.playerApi.nextVideo) bar.playerApi.nextVideo();
   };
 
-  const startOverlap = (video, fadeS) => {
+  const startOverlap = (video, fadeS, positionS) => {
     const prep = state.prep;
     const context = graph.context;
     // The shadow bypasses the element, so element mute has to be mirrored by
     // hand or muted playback would still be audible during the blend.
     const level = video.muted ? 0 : nativeVolume(video);
-    const offset = Math.max(0, video.currentTime - prep.tailStartS);
+    const offset = Math.max(0, positionS - prep.tailStartS);
     const tailLeftS = prep.tail.duration - offset;
     if (tailLeftS < 0.5) return false;
 
@@ -317,12 +334,13 @@
       }
     }
 
-    if (!config.enabled || config.adPlaying || !isFinite(video.duration) || video.duration <= 0) {
+    const clock = trackClock();
+    if (!config.enabled || config.adPlaying || !clock) {
       if (state.phase !== "idle" || state.outLevel !== 1) abortTransition();
-      // Duration is briefly unknown at every track start; only a state that
-      // outlives the opening seconds is worth reporting.
+      // The clock is briefly unreadable at every track start; only a state
+      // that outlives the opening seconds is worth reporting.
       if (video.currentTime > 5) {
-        reportOnce("suppressed", "suppressed", { reason: !config.enabled ? "disabled" : config.adPlaying ? "ad playing" : "duration unknown" });
+        reportOnce("suppressed", "suppressed", { reason: !config.enabled ? "disabled" : config.adPlaying ? "ad playing" : "no track clock" });
       }
       return;
     }
@@ -333,20 +351,21 @@
     }
     if (state.phase !== "idle") return;
 
-    const fadeStartS = fadeStartSeconds(video.duration);
-    const fadeLengthS = video.duration - fadeStartS;
-    if (video.currentTime >= fadeStartS - 0.12) {
+    const fadeStartS = fadeStartSeconds(clock.durationS);
+    const fadeLengthS = clock.durationS - fadeStartS;
+    if (clock.positionS >= fadeStartS - 0.12) {
+      const remaining = clock.durationS - clock.positionS;
       const ready = state.prep && state.prep.videoId === state.lastVideoId && state.prep.tail;
       const roomCapture = roomCaptureActive();
       if (ready && config.hasNext && !roomCapture) {
-        if (startOverlap(video, fadeLengthS)) {
+        if (startOverlap(video, fadeLengthS, clock.positionS)) {
           reportOnce("transition", "overlap", { fadeS: Math.round(fadeLengthS * 10) / 10 });
         } else {
-          plainFadeTick(video, fadeLengthS);
+          plainFadeTick(remaining, fadeLengthS);
           reportOnce("transition", "plainFade", { reason: "tail ran out before the fade" });
         }
       } else {
-        plainFadeTick(video, fadeLengthS);
+        plainFadeTick(remaining, fadeLengthS);
         reportOnce("transition", "plainFade", {
           reason: !ready
             ? state.prep && state.prep.failed
@@ -358,7 +377,7 @@
         });
       }
     } else {
-      if (video.duration - video.currentTime <= config.fadeOutS + PREP_LEAD_S && videoId) prepare(videoId, video.duration);
+      if (clock.durationS - clock.positionS <= config.fadeOutS + PREP_LEAD_S && videoId) prepare(videoId, clock.durationS);
       // Recovery net: a loadstart can pin the gain to zero after the playing
       // event already fired, which would otherwise stay silent forever.
       if (state.pendingFadeIn && !video.paused && video.readyState >= 3) beginFadeIn();
@@ -366,8 +385,7 @@
     }
   };
 
-  function plainFadeTick(video, fadeLengthS) {
-    const remaining = video.duration - video.currentTime;
+  function plainFadeTick(remaining, fadeLengthS) {
     const t = Math.min(1, Math.max(0, 1 - remaining / fadeLengthS));
     const gain = graph.out.gain;
     gain.cancelScheduledValues(graph.context.currentTime);
@@ -390,6 +408,9 @@
     if (state.phase === "overlap" || state.pendingFadeIn || state.config.fadeOnManualSkip) {
       setOutGain(0);
       state.pendingFadeIn = true;
+      // Zeroing the gain here without a watchdog is how a load that never
+      // reaches "playing" leaves the app silent with nothing to lift it.
+      armSilenceGuard();
     }
   };
 
