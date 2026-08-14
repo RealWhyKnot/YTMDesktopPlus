@@ -343,6 +343,47 @@ const startHooking = async () => {
     return;
   }
 
+  // Serving scripts has to be ready before hookPlayerApiEvents starts feeding
+  // player state to the main process: the first state push makes addons invoke
+  // scripts, and an invoke that lands before this listener exists is dropped
+  // and left to time out.
+  const integrationScripts: ScriptTable = {};
+  // Scripts registered after this page load arrive as pushes. The listener
+  // attaches before the snapshot so a registration in flight is never lost;
+  // merging the same script twice is idempotent.
+  ipcRenderer.on("ytmView:scriptRegistered", (_event, namespace: string, name: string, script: string) => {
+    mergeScript(integrationScripts, namespace, name, script);
+  });
+  const scriptSnapshot: ScriptTable = await ipcRenderer.invoke("ytmView:getIntegrationScripts");
+  for (const [namespace, scripts] of Object.entries(scriptSnapshot)) {
+    for (const [name, script] of Object.entries(scripts)) mergeScript(integrationScripts, namespace, name, script);
+  }
+
+  ipcRenderer.on("ytmView:executeScript", async (_event, integrationName, scriptName) => {
+    const scripts = integrationScripts[integrationName];
+    if (scripts) {
+      const script = scripts[scriptName];
+      if (script) {
+        (await webFrame.executeJavaScript(script))();
+      }
+    }
+  });
+
+  ipcRenderer.on("ytmView:invokeScript", async (_event, integrationName, scriptName, requestId, arg) => {
+    const respond = (payload: { ok: boolean; value?: unknown; error?: string }) => ipcRenderer.send(`ytmView:invokeScript:response:${requestId}`, payload);
+    try {
+      const script = integrationScripts[integrationName]?.[scriptName];
+      if (!script) {
+        respond({ ok: false, error: `unknown script ${integrationName}/${scriptName}` });
+        return;
+      }
+      const value = await (await webFrame.executeJavaScript(script))(arg);
+      respond({ ok: true, value });
+    } catch (error) {
+      respond({ ok: false, error: String(error) });
+    }
+  });
+
   // The icon font is cosmetic: give it a bounded grace period but never let it
   // block the app from finishing setup.
   await pollUntil<boolean>(
@@ -359,18 +400,6 @@ const startHooking = async () => {
   await optionalModule("hide-chromecast-button", () => hideChromecastButton());
   await hookPlayerApiEvents();
   await optionalModule("history-button-display", () => overrideHistoryButtonDisplay());
-
-  const integrationScripts: ScriptTable = {};
-  // Scripts registered after this page load arrive as pushes. The listener
-  // attaches before the snapshot so a registration in flight is never lost;
-  // merging the same script twice is idempotent.
-  ipcRenderer.on("ytmView:scriptRegistered", (_event, namespace: string, name: string, script: string) => {
-    mergeScript(integrationScripts, namespace, name, script);
-  });
-  const scriptSnapshot: ScriptTable = await ipcRenderer.invoke("ytmView:getIntegrationScripts");
-  for (const [namespace, scripts] of Object.entries(scriptSnapshot)) {
-    for (const [name, script] of Object.entries(scripts)) mergeScript(integrationScripts, namespace, name, script);
-  }
 
   await optionalModule("continue-where-you-left-off", async () => {
     const state = await store.get("state");
@@ -725,31 +754,6 @@ const startHooking = async () => {
       `)
     )();
     */
-  });
-
-  ipcRenderer.on("ytmView:executeScript", async (_event, integrationName, scriptName) => {
-    const scripts = integrationScripts[integrationName];
-    if (scripts) {
-      const script = scripts[scriptName];
-      if (script) {
-        (await webFrame.executeJavaScript(script))();
-      }
-    }
-  });
-
-  ipcRenderer.on("ytmView:invokeScript", async (_event, integrationName, scriptName, requestId, arg) => {
-    const respond = (payload: { ok: boolean; value?: unknown; error?: string }) => ipcRenderer.send(`ytmView:invokeScript:response:${requestId}`, payload);
-    try {
-      const script = integrationScripts[integrationName]?.[scriptName];
-      if (!script) {
-        respond({ ok: false, error: `unknown script ${integrationName}/${scriptName}` });
-        return;
-      }
-      const value = await (await webFrame.executeJavaScript(script))(arg);
-      respond({ ok: true, value });
-    } catch (error) {
-      respond({ ok: false, error: String(error) });
-    }
   });
 
   if (YTMD_DEV_TOOLS) {
