@@ -77,6 +77,8 @@ let currentId: string;
 // test below sets them to the values measured on the live page.
 let priorTracksS: number;
 let appendedNextS: number;
+// 1 playing, 2 paused by the user, -1 unstarted, 3 buffering.
+let playerState: number;
 let fetchedUrls: string[];
 let resourceEntries: { name: string }[];
 let perf: { bufferSize: number | null; cleared: number; bufferFull: (() => void)[] };
@@ -133,6 +135,7 @@ beforeEach(() => {
   currentId = "trackA";
   priorTracksS = 0;
   appendedNextS = 0;
+  playerState = 1;
   nextVideo = vi.fn();
   resourceEntries = [{ name: SEGMENT_URL }];
   perf = { bufferSize: null, cleared: 0, bufferFull: [] };
@@ -195,6 +198,7 @@ beforeEach(() => {
         return {
           playerApi: {
             getVideoData: () => ({ video_id: currentId }),
+            getPlayerState: () => playerState,
             getCurrentTime: () => video.currentTime - priorTracksS,
             // Deliberately the buffered extent, which is what YTM reports and
             // why the engine must not use it: it grows by the next track's
@@ -365,9 +369,29 @@ describe("dj crossfade script", () => {
     video.currentTime = 195.5;
     dispatch("timeupdate");
 
+    playerState = 2;
     dispatch("pause");
     expect(shadowSources[0].stop).toHaveBeenCalled();
     expect(lastGainValue()).toMatchObject({ method: "target", value: 1 });
+  });
+
+  // Advancing pauses and seeks the element while the incoming track loads.
+  // Measured live: an incoming track slow to start left the player unstarted,
+  // the pause tore the blend down 0.8s in, and the tail was never heard.
+  it("keeps the tail alive through the pause its own advance caused", async () => {
+    run();
+    video.currentTime = 180;
+    dispatch("timeupdate");
+    await flushPrepare();
+    video.currentTime = 195.5;
+    dispatch("timeupdate");
+
+    playerState = -1;
+    dispatch("pause");
+    dispatch("seeking");
+
+    expect(shadowSources[0].stop).not.toHaveBeenCalled();
+    expect(diags().some(entry => entry.event === "overlapKilled")).toBe(false);
   });
 
   it("lifts the gain itself when nothing ever arrives to lift it", async () => {

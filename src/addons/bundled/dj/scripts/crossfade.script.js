@@ -406,15 +406,27 @@
     if (state.pendingFadeIn) beginFadeIn();
   };
 
+  // Advancing makes the element pause and seek while the incoming track loads.
+  // Treating that as a user stop tore the blend down a moment after starting
+  // it, so only a settled player counts: -1 unstarted and 3 buffering are the
+  // engine's own doing, 2 is someone pressing pause.
+  const loadInProgress = () => {
+    const bar = playerBar();
+    const playerState = bar && bar.playerApi && bar.playerApi.getPlayerState ? bar.playerApi.getPlayerState() : null;
+    return playerState === -1 || playerState === 3;
+  };
+
   const onPause = () => {
     // A faded-out track that stops without the next one ever playing would
     // leave the gain at zero with no tick coming to lift it, so the app would
     // sit silent until the user found the volume themselves.
-    if (state.phase === "overlap" || state.pendingFadeIn) abortTransition();
+    if (state.phase !== "overlap" && !state.pendingFadeIn) return;
+    if (loadInProgress()) return;
+    abortTransition();
   };
 
   const onSeeking = () => {
-    if (state.phase === "overlap") abortTransition();
+    if (state.phase === "overlap" && !loadInProgress()) abortTransition();
   };
 
   const onVolumeChange = () => {

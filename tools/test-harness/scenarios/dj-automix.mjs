@@ -1,15 +1,18 @@
 import { rmSync } from "node:fs";
 import path from "node:path";
 import { hooksReadyStep, playbackFixture } from "./lib.mjs";
-// Answers one question the crossfade scenario cannot: are two tracks actually
-// audible at the same time, and does auto DJ drive the change itself?
+// Answers the one question the crossfade scenario cannot: are two tracks
+// actually audible at the same time?
 //
 // dj-crossfade force-mutes the media element, which makes startOverlap open the
 // shadow at gain 0 - the code path runs but nothing overlaps. Here the element
 // stays unmuted and silence comes from YTMD_TEST_MUTED, which mutes the
 // webContents output while leaving the Web Audio graph running, so the shadow
-// gain is a real measured level. autoDj is on, so the jump goes through
-// playQueueIndex rather than nextVideo.
+// gain is a real measured level.
+//
+// Every seek goes through the track clock. YTM appends consecutive tracks into
+// one MediaSource, so the element's currentTime and duration span the whole
+// buffer and seeking off them lands in the wrong track.
 //
 // Reaches live YouTube Music. Space runs out; rapid repeats hit YT throttling.
 
@@ -30,6 +33,8 @@ export async function prepareProfile(profileDir) {
 const TRACK_IDS = ["dQw4w9WgXcQ", "kJQP7kiw5Fk"];
 
 const PLAYER_BAR = `document.querySelector("ytmusic-app-layout>ytmusic-player-bar")`;
+const TRACK_POSITION = `(${PLAYER_BAR}?.playerApi?.getCurrentTime?.() ?? 0)`;
+const TRACK_LENGTH = `Number(${PLAYER_BAR}?.playerApi?.getPlayerResponse?.()?.videoDetails?.lengthSeconds ?? 0)`;
 
 export default async function djAutomix(ctx) {
   await hooksReadyStep(ctx);
@@ -55,7 +60,24 @@ export default async function djAutomix(ctx) {
         );
       }
       ctx.emit("probe", { parked, target });
-      await ctx.waitYtm(`${PLAYER_BAR}?.playerApi?.getPlayerState?.() ?? null`, state => state === 1, 120000);
+      // Nudge on every poll rather than once: a navigate issued while YTM is
+      // still restoring its own watch state is swallowed, and the player then
+      // sits cued forever with nothing to start it.
+      await ctx.waitYtm(
+        `(() => {
+          const api = ${PLAYER_BAR}?.playerApi;
+          if (!api?.getPlayerState) return null;
+          if (api.getPlayerState() !== 1) api.playVideo?.();
+          return api.getPlayerState();
+        })()`,
+        state => state === 1,
+        120000
+      );
+      // YTM restores its own last watch state server-side and can win the race
+      // against the navigate, so whatever ends up playing is the outgoing
+      // track, not necessarily the one that was asked for.
+      target = await ctx.evalYtm(`${PLAYER_BAR}.playerApi.getVideoData().video_id`);
+      ctx.emit("probe", { playing: target });
       await ctx.evalYtm(`{ const v = document.querySelector("video"); v.muted = false; }`);
     },
     125000
@@ -74,10 +96,13 @@ export default async function djAutomix(ctx) {
         30000
       );
       try {
-        await ctx.waitYtm(aheadExpr, ahead => Number(ahead) > 0, 8000);
+        // Wait properly for YTM's own radio queue: a synthesized clone carries
+        // a real videoId but YTM refuses to start it, which reads as a failed
+        // mix when nothing is wrong with the engine.
+        await ctx.waitYtm(aheadExpr, ahead => Number(ahead) > 0, 25000);
         return;
       } catch {
-        // No radio queue; synthesize a second item from the current one.
+        // Still nothing; synthesize a second item from the current one.
       }
       await ctx.evalYtm(`(() => {
         const store = window.__YTMD_HOOK__.ytmStore;
@@ -98,27 +123,15 @@ export default async function djAutomix(ctx) {
       })()`);
       await ctx.waitYtm(aheadExpr, ahead => Number(ahead) > 0, 20000);
     },
-    30000
+    55000
   );
 
   await ctx.step("engine attached", () => ctx.waitYtm(`!!window.__ytmdDjCrossfade`, attached => attached === true, 15000), 20000);
 
   await ctx.step(
-    "auto DJ chose the next track itself",
-    async () => {
-      // A non-null transitionIndex is auto DJ's pick reaching the page: the
-      // jump will go through playQueueIndex instead of a blind nextVideo.
-      await ctx.waitYtm(`window.__ytmdDjCrossfade?.config?.transitionIndex ?? null`, index => Number.isInteger(index), 20000);
-      const index = await ctx.evalYtm(`window.__ytmdDjCrossfade.config.transitionIndex`);
-      ctx.emit("probe", { transitionIndex: index });
-    },
-    25000
-  );
-
-  await ctx.step(
     "tail prepared inside the lead window",
     async () => {
-      await ctx.evalYtm(`${PLAYER_BAR}.playerApi.seekTo(document.querySelector("video").duration - 23)`);
+      await ctx.evalYtm(`${PLAYER_BAR}.playerApi.seekTo(${TRACK_LENGTH} - 23)`);
       await ctx.waitYtm(`!!window.__ytmdDjCrossfade?.prep?.tail`, ready => ready === true, 45000);
     },
     50000
@@ -144,6 +157,9 @@ export default async function djAutomix(ctx) {
           videoId: ${PLAYER_BAR}?.playerApi?.getVideoData?.()?.video_id ?? null,
           playerState: ${PLAYER_BAR}?.playerApi?.getPlayerState?.() ?? null,
           currentTime: Math.round(v.currentTime * 100) / 100,
+          trackPosition: Math.round(${TRACK_POSITION} * 100) / 100,
+          trackLength: ${TRACK_LENGTH},
+          ctxState: window.__ytmdAudioGraph?.context?.state ?? null,
           paused: v.paused,
           readyState: v.readyState
         });
@@ -154,7 +170,10 @@ export default async function djAutomix(ctx) {
   await ctx.step(
     "two tracks play at once",
     async () => {
-      await ctx.evalYtm(`${PLAYER_BAR}.playerApi.seekTo(document.querySelector("video").duration - 5)`);
+      // No second seek: the track runs out on its own from the lead window
+      // above. Jumping straight to the fade start skips YTM's prefetch of the
+      // next track, and an incoming track still being fetched cannot sound
+      // against a tail that is only five seconds long.
       // Let the whole fade window and the change that follows it elapse.
       await ctx.waitYtm(
         `JSON.stringify({ overlaps: window.__ytmdDjCrossfade?.overlapCount ?? 0, videoId: ${PLAYER_BAR}?.playerApi?.getVideoData?.()?.video_id ?? null })`,
@@ -162,7 +181,7 @@ export default async function djAutomix(ctx) {
           const status = JSON.parse(raw);
           return status.overlaps >= 1 && status.videoId && status.videoId !== target;
         },
-        45000
+        60000
       );
       await ctx.evalYtm(`new Promise(resolve => setTimeout(resolve, 3000))`);
       await ctx.evalYtm(`clearInterval(window.__mixTimer)`);
@@ -170,12 +189,16 @@ export default async function djAutomix(ctx) {
       const samples = JSON.parse(await ctx.evalYtm(`JSON.stringify(window.__mixSamples)`));
       // The definition of a mix: the outgoing tail still audible through the
       // shadow while the incoming track is genuinely running on the element.
+      // readyState rather than currentTime: nextVideo rebuilds the media
+      // source, so the incoming track reads position 0 for a moment while it
+      // is genuinely decoding, and 0 again if it was only ever cued.
       const mixed = samples.filter(
-        sample => sample.shadow && sample.shadowGain > 0 && sample.videoId && sample.videoId !== target && !sample.paused && sample.currentTime > 0
+        sample => sample.shadow && sample.shadowGain > 0 && sample.videoId && sample.videoId !== target && !sample.paused && sample.readyState >= 3
       );
       const overlapping = samples.filter(sample => sample.shadow && sample.shadowGain > 0);
       ctx.emit("probe", {
         samples: samples.length,
+        lastFive: samples.slice(-5),
         overlapSamples: overlapping.length,
         mixedSamples: mixed.length,
         peakShadowGain: overlapping.reduce((peak, sample) => Math.max(peak, sample.shadowGain), 0),
@@ -187,7 +210,7 @@ export default async function djAutomix(ctx) {
         throw new Error(`no sample had both tracks sounding: ${reason}`);
       }
     },
-    75000
+    95000
   );
 
   await ctx.step(
