@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- test(harness): drive dj-automix from a real radio queue on the track clock
+- fix(dj): keep the blend alive through the pause that advancing causes
+- feat(dj): shape the blend into the queue's next track instead of choosing it
+- fix(dj): time the blend off the track length instead of the media element
+- feat(dj): report what each transition decided and recover from a wedged one
+- fix(ytmview): serve script invokes before player state starts flowing
 
 ## [v2026.813.2-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.813.2-beta) - 2026-08-13
 - ci(release): clear a leg's stale assets before publishing so re-runs are safe
