@@ -2,7 +2,7 @@
 // With a beat grid on the outgoing track the fade start snaps to a downbeat;
 // without one it falls back to the configured window unchanged.
 
-import type { TrackFeatures } from "./scoring";
+import type { TrackFeatures } from "./feature-db";
 
 export type TransitionPlan = {
   fadeOutS: number;

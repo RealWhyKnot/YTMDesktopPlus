@@ -1,10 +1,8 @@
-// Background track analysis: decode the encoded audio the addon hands over,
-// estimate tempo and first-beat offset, average a chromagram and summarize
-// energy. Everything DSP-heavy stays in this hidden window; the key call and
-// scoring happen in the main process where they are unit-testable.
+// Background track analysis: decode the encoded audio the addon hands over
+// and estimate tempo and first-beat offset. Everything DSP-heavy stays in
+// this hidden window so decoding never blocks the player.
 
 import { guess } from "web-audio-beat-detector";
-import Meyda from "meyda";
 
 type AnalysisJob = { videoId: string; buffer: ArrayBuffer };
 
@@ -15,25 +13,6 @@ type AnalysisBridge = {
 };
 
 const bridge = (window as unknown as { ytmdDjAnalysis: AnalysisBridge }).ytmdDjAnalysis;
-
-const FRAME_SIZE = 4096;
-
-function mixdown(buffer: AudioBuffer): Float32Array {
-  const mono = new Float32Array(buffer.length);
-  for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
-    const data = buffer.getChannelData(channel);
-    for (let i = 0; i < data.length; i++) mono[i] += data[i];
-  }
-  if (buffer.numberOfChannels > 1) {
-    for (let i = 0; i < mono.length; i++) mono[i] /= buffer.numberOfChannels;
-  }
-  return mono;
-}
-
-function percentile(sorted: number[], fraction: number): number {
-  if (sorted.length === 0) return 0;
-  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
-}
 
 async function analyze(job: AnalysisJob) {
   const context = new AudioContext();
@@ -47,36 +26,10 @@ async function analyze(job: AnalysisJob) {
       bpm = guessed.bpm;
       bpmOffset = guessed.offset;
     } catch {
-      // No confident tempo; the record still carries key and energy.
+      // No confident tempo; the record still pins the track's duration.
     }
 
-    const mono = mixdown(decoded);
-    Meyda.sampleRate = decoded.sampleRate;
-    Meyda.bufferSize = FRAME_SIZE;
-    const chromaSum = new Array<number>(12).fill(0);
-    const rmsValues: number[] = [];
-    let frames = 0;
-    for (let start = 0; start + FRAME_SIZE <= mono.length; start += FRAME_SIZE) {
-      const frame = mono.subarray(start, start + FRAME_SIZE);
-      const extracted = Meyda.extract(["chroma", "rms"], frame) as { chroma?: number[]; rms?: number };
-      if (extracted?.chroma?.length === 12) {
-        for (let i = 0; i < 12; i++) chromaSum[i] += extracted.chroma[i];
-      }
-      if (typeof extracted?.rms === "number") rmsValues.push(extracted.rms);
-      frames++;
-    }
-    rmsValues.sort((a, b) => a - b);
-
-    bridge.sendResult({
-      videoId: job.videoId,
-      ok: true,
-      bpm,
-      bpmOffset,
-      chromaMean: frames > 0 ? chromaSum.map(v => v / frames) : null,
-      rmsP50: percentile(rmsValues, 0.5),
-      rmsP90: percentile(rmsValues, 0.9),
-      decodedDurationS: decoded.duration
-    });
+    bridge.sendResult({ videoId: job.videoId, ok: true, bpm, bpmOffset, decodedDurationS: decoded.duration });
   } catch (error) {
     bridge.sendResult({ videoId: job.videoId, ok: false, error: String(error) });
   } finally {

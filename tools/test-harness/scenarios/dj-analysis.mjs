@@ -62,7 +62,9 @@ export default async function djAnalysis(ctx) {
       ctx.emit("probe", record);
       if (record.bpm != null && (record.bpm < 40 || record.bpm > 220)) throw new Error(`implausible bpm ${record.bpm}`);
       if (!(record.durationS > 30)) throw new Error(`implausible duration ${record.durationS}`);
-      if (record.camelot != null && !/^([1-9]|1[0-2])[AB]$/.test(record.camelot)) throw new Error(`bad camelot ${record.camelot}`);
+      // The beat grid is what the blend runs on, so an analyzed track without
+      // an offset is as useless as one without a tempo.
+      if (record.bpm != null && record.beatOffsetS == null) throw new Error("tempo without a beat offset");
     },
     95000
   );

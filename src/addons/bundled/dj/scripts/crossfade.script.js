@@ -25,7 +25,6 @@
       video: null,
       phase: "idle",
       pendingFadeIn: false,
-      transitionPosted: false,
       lastVideoId: null,
       outLevel: 1,
       reported: {},
@@ -57,7 +56,6 @@
     repeatOne: options.repeatOne === true,
     adPlaying: options.adPlaying === true,
     hasNext: options.hasNext !== false,
-    transitionIndex: Number.isInteger(options.transitionIndex) ? options.transitionIndex : null,
     beatOffsetS: typeof options.beatOffsetS === "number" && isFinite(options.beatOffsetS) ? options.beatOffsetS : null,
     beatPeriodS: typeof options.beatPeriodS === "number" && options.beatPeriodS > 0 ? options.beatPeriodS : null,
     incomingRate: typeof options.incomingRate === "number" && options.incomingRate >= 0.9 && options.incomingRate <= 1.1 ? options.incomingRate : null,
@@ -228,10 +226,6 @@
   };
 
   const advance = () => {
-    if (state.config.transitionIndex != null && window.ytmd && window.ytmd.postAddonMessage) {
-      window.ytmd.postAddonMessage("dj", "transitionNow", { index: state.config.transitionIndex });
-      return;
-    }
     const bar = playerBar();
     if (bar && bar.playerApi && bar.playerApi.nextVideo) bar.playerApi.nextVideo();
   };
@@ -313,7 +307,6 @@
     if (videoId && videoId !== state.lastVideoId) {
       const wasOverlap = state.phase === "overlap";
       state.lastVideoId = videoId;
-      state.transitionPosted = false;
       state.reported = {};
       clearRateGlide();
       if (wasOverlap || state.pendingFadeIn) {
@@ -394,12 +387,6 @@
     if (!state.pendingFadeIn) {
       state.pendingFadeIn = true;
       armSilenceGuard();
-    }
-    // A directed pick still has to happen without a shadow; jump just before
-    // the element runs out so the plain fade lands on the chosen track.
-    if (state.config.transitionIndex != null && remaining <= 1 && !state.transitionPosted) {
-      state.transitionPosted = true;
-      advance();
     }
   }
 

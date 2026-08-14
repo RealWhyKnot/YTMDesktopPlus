@@ -490,20 +490,6 @@ describe("dj crossfade script", () => {
     expect(outGain.calls.filter(call => call.method !== "cancel")).toHaveLength(0);
   });
 
-  it("posts a directed transition instead of pressing next when a pick is set", async () => {
-    run({ transitionIndex: 4 });
-    video.currentTime = 180;
-    dispatch("timeupdate");
-    await flushPrepare();
-    video.currentTime = 195.5;
-    dispatch("timeupdate");
-
-    expect(shadowSources).toHaveLength(1);
-    expect(nextVideo).not.toHaveBeenCalled();
-    const post = pageWindow().ytmd.postAddonMessage;
-    expect(post).toHaveBeenCalledWith("dj", "transitionNow", { index: 4 });
-  });
-
   it("snaps the fade start back onto the pushed beat grid", async () => {
     run({ beatOffsetS: 0.25, beatPeriodS: 0.5 });
     video.currentTime = 180;
@@ -518,23 +504,6 @@ describe("dj crossfade script", () => {
     video.currentTime = 194.8;
     dispatch("timeupdate");
     expect(shadowSources).toHaveLength(1);
-  });
-
-  it("still jumps to the pick when only a plain fade is possible", async () => {
-    resourceEntries = [];
-    run({ transitionIndex: 2 });
-    video.currentTime = 197.5;
-    dispatch("timeupdate");
-    const post = pageWindow().ytmd.postAddonMessage;
-    const jumps = () => post.mock.calls.filter(call => call[1] === "transitionNow");
-    expect(jumps()).toHaveLength(0);
-
-    video.currentTime = 199.3;
-    dispatch("timeupdate");
-    video.currentTime = 199.5;
-    dispatch("timeupdate");
-    expect(jumps()).toHaveLength(1);
-    expect(post).toHaveBeenCalledWith("dj", "transitionNow", { index: 2 });
   });
 
   it("reports an overlap once, however many ticks the fade spans", async () => {

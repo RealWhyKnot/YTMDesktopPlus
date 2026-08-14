@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fadeStartSeconds, planTransition } from "../src/addons/bundled/dj/transition-plan";
-import type { TrackFeatures } from "../src/addons/bundled/dj/scoring";
+import type { TrackFeatures } from "../src/addons/bundled/dj/feature-db";
 
 function features(overrides: Partial<TrackFeatures> = {}): TrackFeatures {
   return {
@@ -8,9 +8,6 @@ function features(overrides: Partial<TrackFeatures> = {}): TrackFeatures {
     title: null,
     author: null,
     bpm: 120,
-    camelot: "8B",
-    keyConfidence: 1,
-    energy: 0.5,
     durationS: 200,
     beatOffsetS: 0.25,
     analysisVersion: 1,

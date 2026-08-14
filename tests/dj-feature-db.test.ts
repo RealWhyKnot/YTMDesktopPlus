@@ -1,8 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { ANALYSIS_VERSION, FeatureDb } from "../src/addons/bundled/dj/feature-db";
-import type { TrackFeatures } from "../src/addons/bundled/dj/scoring";
+import { ANALYSIS_VERSION, FeatureDb, type TrackFeatures } from "../src/addons/bundled/dj/feature-db";
 import { makeTempDir } from "./helpers/temp-dir";
 
 function features(videoId: string): TrackFeatures {
@@ -11,9 +10,6 @@ function features(videoId: string): TrackFeatures {
     title: "a title",
     author: "an author",
     bpm: 128,
-    camelot: "8B",
-    keyConfidence: 0.8,
-    energy: 0.5,
     durationS: 201.5,
     beatOffsetS: 0.31,
     analysisVersion: ANALYSIS_VERSION,

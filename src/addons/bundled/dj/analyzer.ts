@@ -1,12 +1,9 @@
 // Feeds encoded audio through the hidden dj-analysis window and turns raw
-// window results into TrackFeatures. Key estimation and energy mapping happen
-// here rather than in the window so they stay unit-testable.
+// window results into TrackFeatures.
 
 import type { AddonContext } from "../../../main/addons/context";
 import type { AddonWindowHandle } from "../../../shared/addons/sdk";
-import { estimateKey } from "./key";
-import { ANALYSIS_VERSION } from "./feature-db";
-import type { TrackFeatures } from "./scoring";
+import { ANALYSIS_VERSION, type TrackFeatures } from "./feature-db";
 
 export type WindowResult = {
   videoId: string;
@@ -14,9 +11,6 @@ export type WindowResult = {
   error?: string;
   bpm?: number | null;
   bpmOffset?: number | null;
-  chromaMean?: number[] | null;
-  rmsP50?: number;
-  rmsP90?: number;
   decodedDurationS?: number;
 };
 
@@ -26,17 +20,11 @@ const JOB_TIMEOUT_MS = 120000;
 
 export function featuresFromResult(result: WindowResult, meta: TrackMeta = { title: null, author: null }): TrackFeatures | null {
   if (!result.ok) return null;
-  const key = result.chromaMean ? estimateKey(result.chromaMean) : null;
   return {
     videoId: result.videoId,
     title: meta.title,
     author: meta.author,
     bpm: typeof result.bpm === "number" && isFinite(result.bpm) ? result.bpm : null,
-    camelot: key ? key.camelot : null,
-    keyConfidence: key ? Math.max(0, key.margin) : 0,
-    // rms of full-scale audio tops out well under 0.4; 2.5 spreads typical
-    // tracks across 0..1 while clamping hot masters.
-    energy: typeof result.rmsP90 === "number" ? Math.min(1, result.rmsP90 * 2.5) : null,
     durationS: result.decodedDurationS ?? 0,
     beatOffsetS: typeof result.bpmOffset === "number" && isFinite(result.bpmOffset) ? result.bpmOffset : null,
     analysisVersion: ANALYSIS_VERSION,

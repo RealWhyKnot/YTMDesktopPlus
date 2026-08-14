@@ -4,7 +4,18 @@
 
 import { promises as fs } from "fs";
 import path from "path";
-import type { TrackFeatures } from "./scoring";
+
+export type TrackFeatures = {
+  videoId: string;
+  title: string | null;
+  author: string | null;
+  bpm: number | null;
+  durationS: number;
+  // First-beat offset in seconds; the beat grid is offset + n * 60/bpm
+  beatOffsetS: number | null;
+  analysisVersion: number;
+  analyzedAt: number;
+};
 
 export const ANALYSIS_VERSION = 2;
 
