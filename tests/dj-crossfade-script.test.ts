@@ -73,9 +73,17 @@ let nextVideo: ReturnType<typeof vi.fn>;
 let currentId: string;
 let fetchedUrls: string[];
 let resourceEntries: { name: string }[];
+let perf: { bufferSize: number | null; cleared: number; bufferFull: (() => void)[] };
 
 function dispatch(type: string) {
   for (const listener of listeners.get(type) ?? []) listener();
+}
+
+// Diagnostic reports the page pushes to the main process, in order.
+function diags(): Record<string, unknown>[] {
+  return pageWindow()
+    .ytmd.postAddonMessage.mock.calls.filter(call => call[1] === "diag")
+    .map(call => call[2] as Record<string, unknown>);
 }
 
 // The stand-in window replaces the lib.dom Window for these tests.
@@ -119,6 +127,7 @@ beforeEach(() => {
   currentId = "trackA";
   nextVideo = vi.fn();
   resourceEntries = [{ name: SEGMENT_URL }];
+  perf = { bufferSize: null, cleared: 0, bufferFull: [] };
 
   outGain = fakeGainParam();
   context = {
@@ -178,7 +187,19 @@ beforeEach(() => {
       return null;
     }
   };
-  globals.performance = { getEntriesByType: () => resourceEntries };
+  globals.performance = {
+    getEntriesByType: () => resourceEntries,
+    setResourceTimingBufferSize: (size: number) => {
+      perf.bufferSize = size;
+    },
+    clearResourceTimings: () => {
+      perf.cleared++;
+      resourceEntries = [];
+    },
+    addEventListener: (type: string, listener: () => void) => {
+      if (type === "resourcetimingbufferfull") perf.bufferFull.push(listener);
+    }
+  };
   globals.fetch = vi.fn(async (url: string) => {
     fetchedUrls.push(url);
     return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
@@ -289,6 +310,42 @@ describe("dj crossfade script", () => {
 
     dispatch("pause");
     expect(shadowSources[0].stop).toHaveBeenCalled();
+    expect(lastGainValue()).toMatchObject({ method: "target", value: 1 });
+  });
+
+  it("lifts the gain itself when nothing ever arrives to lift it", async () => {
+    vi.useFakeTimers();
+    try {
+      resourceEntries = [];
+      run();
+      video.currentTime = 197.5;
+      dispatch("timeupdate");
+      // The page went quiet mid-fade: no pause, no playing, no further ticks.
+      outGain.value = 0;
+
+      await vi.advanceTimersByTimeAsync(5000 + 1500 + 8000);
+      expect(outGain.value).toBe(1);
+      expect(diags().at(-1)).toMatchObject({ event: "silenceRecovered" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never leaves the app silent when the incoming track never starts", async () => {
+    resourceEntries = [];
+    run();
+    video.currentTime = 180;
+    dispatch("timeupdate");
+    await flushPrepare();
+
+    // Faded out on the plain path, then playback stops without the next track
+    // ever reaching a timeupdate that could lift the gain again.
+    video.currentTime = 199;
+    dispatch("timeupdate");
+    expect(lastGainValue()?.value).toBeLessThan(1);
+
+    video.paused = true;
+    dispatch("pause");
     expect(lastGainValue()).toMatchObject({ method: "target", value: 1 });
   });
 
@@ -412,14 +469,114 @@ describe("dj crossfade script", () => {
     video.currentTime = 197.5;
     dispatch("timeupdate");
     const post = pageWindow().ytmd.postAddonMessage;
-    expect(post).not.toHaveBeenCalled();
+    const jumps = () => post.mock.calls.filter(call => call[1] === "transitionNow");
+    expect(jumps()).toHaveLength(0);
 
     video.currentTime = 199.3;
     dispatch("timeupdate");
     video.currentTime = 199.5;
     dispatch("timeupdate");
-    expect(post).toHaveBeenCalledTimes(1);
+    expect(jumps()).toHaveLength(1);
     expect(post).toHaveBeenCalledWith("dj", "transitionNow", { index: 2 });
+  });
+
+  it("reports an overlap once, however many ticks the fade spans", async () => {
+    run();
+    video.currentTime = 180;
+    dispatch("timeupdate");
+    await flushPrepare();
+
+    video.currentTime = 195.5;
+    dispatch("timeupdate");
+    video.currentTime = 196;
+    dispatch("timeupdate");
+
+    expect(diags()).toEqual([
+      { event: "prepReady", videoId: "trackA", tailS: expect.any(Number) },
+      { event: "overlap", videoId: "trackA", fadeS: 5 }
+    ]);
+  });
+
+  it("names the reason when a transition degrades to a plain fade", async () => {
+    resourceEntries = [];
+    run();
+    video.currentTime = 180;
+    dispatch("timeupdate");
+    await flushPrepare();
+    video.currentTime = 195.5;
+    dispatch("timeupdate");
+
+    expect(diags().filter(entry => entry.event === "prepFailed")).toEqual([
+      { event: "prepFailed", videoId: "trackA", attempt: 1, reason: "no audio segment urls" }
+    ]);
+    expect(diags().at(-1)).toEqual({ event: "plainFade", videoId: "trackA", reason: "tail unavailable" });
+  });
+
+  it("distinguishes a missing next track from a room capture", async () => {
+    run({ hasNext: false });
+    video.currentTime = 180;
+    dispatch("timeupdate");
+    await flushPrepare();
+    video.currentTime = 195.5;
+    dispatch("timeupdate");
+    expect(diags().at(-1)).toEqual({ event: "plainFade", videoId: "trackA", reason: "no next track" });
+
+    runDisable();
+    (globalThis as unknown as { window: Record<string, unknown> }).window.__ytmdAudioStream = {};
+    pageWindow().ytmd.postAddonMessage.mockClear();
+    run();
+    video.currentTime = 180;
+    dispatch("timeupdate");
+    await flushPrepare();
+    video.currentTime = 195.5;
+    dispatch("timeupdate");
+    expect(diags().at(-1)).toEqual({ event: "plainFade", videoId: "trackA", reason: "room capture active" });
+  });
+
+  it("reports a suppressing state only once it outlives the opening seconds", () => {
+    run({ adPlaying: true });
+    video.currentTime = 3;
+    dispatch("timeupdate");
+    expect(diags()).toEqual([]);
+
+    video.currentTime = 6;
+    dispatch("timeupdate");
+    video.currentTime = 7;
+    dispatch("timeupdate");
+    expect(diags()).toEqual([{ event: "suppressed", videoId: "trackA", reason: "ad playing" }]);
+  });
+
+  it("retries a failed tail prepare inside the prep window, then gives up", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(0);
+    resourceEntries = [];
+    run();
+
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      now.mockReturnValue(attempt * 5000);
+      video.currentTime = 180 + attempt;
+      dispatch("timeupdate");
+      await flushPrepare();
+    }
+
+    expect(
+      diags()
+        .filter(entry => entry.event === "prepFailed")
+        .map(entry => entry.attempt)
+    ).toEqual([1, 2, 3]);
+    now.mockRestore();
+  });
+
+  it("keeps resource timing recording on a long-lived page", () => {
+    run();
+    expect(perf.bufferSize).toBe(1000);
+    expect(perf.bufferFull).toHaveLength(1);
+
+    perf.bufferFull[0]();
+    expect(perf.cleared).toBe(1);
+
+    // Re-invoking on every track change must not stack another listener.
+    run();
+    expect(perf.bufferFull).toHaveLength(1);
   });
 
   it("tempo-matches the incoming track and glides back to natural speed", () => {

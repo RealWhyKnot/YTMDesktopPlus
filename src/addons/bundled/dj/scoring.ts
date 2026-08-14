@@ -9,12 +9,10 @@ export type TrackFeatures = {
   title: string | null;
   author: string | null;
   bpm: number | null;
-  bpmConfidence: number;
   camelot: string | null;
   keyConfidence: number;
   // 0..1 normalized RMS summary
   energy: number | null;
-  loudnessDb: number | null;
   durationS: number;
   // First-beat offset in seconds; the beat grid is offset + n * 60/bpm
   beatOffsetS: number | null;

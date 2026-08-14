@@ -15,6 +15,8 @@
   const PREP_LEAD_S = 20;
   const TAIL_MARGIN_S = 2;
   const CURVE_POINTS = 65;
+  const PREP_ATTEMPTS = 3;
+  const PREP_RETRY_GAP_MS = 4000;
 
   let state = window.__ytmdDjCrossfade;
   if (!state) {
@@ -26,12 +28,23 @@
       transitionPosted: false,
       lastVideoId: null,
       outLevel: 1,
+      reported: {},
+      silenceGuard: null,
       prep: null,
       shadow: null,
       rateGlide: null,
       handlers: null
     };
     window.__ytmdDjCrossfade = state;
+  }
+
+  // Resource timing is how this script and the catalog both find the segment
+  // URL. The default 250-entry buffer fills on a page left open for hours and
+  // then silently stops recording, so keep it large and recycle it when full.
+  if (!state.resourceBufferHooked) {
+    state.resourceBufferHooked = true;
+    if (performance.setResourceTimingBufferSize) performance.setResourceTimingBufferSize(1000);
+    if (performance.addEventListener) performance.addEventListener("resourcetimingbufferfull", () => performance.clearResourceTimings());
   }
 
   state.config = {
@@ -62,6 +75,23 @@
     return descriptor && descriptor.get ? descriptor.get.call(video) : video.volume;
   };
   const roomCaptureActive = () => !!window.__ytmdAudioStream;
+
+  // Every branch below decides silently, so each one says what it did. The
+  // ticker runs at ~4Hz: reportOnce keeps that to one line per track.
+  const report = (event, detail) => {
+    if (!window.ytmd || !window.ytmd.postAddonMessage) return;
+    try {
+      window.ytmd.postAddonMessage("dj", "diag", Object.assign({ event, videoId: state.lastVideoId }, detail));
+    } catch {
+      // Bridge gone with the page.
+    }
+  };
+  const reportOnce = (key, event, detail) => {
+    if (!state.reported) state.reported = {};
+    if (state.reported[key]) return;
+    state.reported[key] = true;
+    report(event, detail);
+  };
 
   // t runs 0..1 across the fade; both directions stay near equal power at the
   // crossing point so the sum does not dip or bump.
@@ -105,7 +135,33 @@
     state.shadow = null;
   };
 
+  // Last line of defence for the one failure that is worse than a bad mix: a
+  // faded-out track whose successor never plays leaves the gain at zero with
+  // no event coming to lift it. Written straight to the param, since a
+  // scheduled ramp needs a running context clock to move at all.
+  const clearSilenceGuard = () => {
+    if (!state.silenceGuard) return;
+    clearTimeout(state.silenceGuard);
+    state.silenceGuard = null;
+  };
+  const armSilenceGuard = () => {
+    clearSilenceGuard();
+    const budgetS = state.config.fadeOutS + state.config.fadeInS + 8;
+    state.silenceGuard = setTimeout(() => {
+      state.silenceGuard = null;
+      if (!state.pendingFadeIn && state.outLevel === 1) return;
+      stopShadow();
+      state.phase = "idle";
+      state.pendingFadeIn = false;
+      graph.out.gain.cancelScheduledValues(graph.context.currentTime);
+      graph.out.gain.value = 1;
+      state.outLevel = 1;
+      report("silenceRecovered", { videoId: currentVideoId() });
+    }, budgetS * 1000);
+  };
+
   const abortTransition = () => {
+    clearSilenceGuard();
     stopShadow();
     clearRateGlide();
     state.phase = "idle";
@@ -117,8 +173,11 @@
   // range and ump stripped returns the whole file, which decodes to PCM. Only
   // the tail needed for the fade is kept; the full decode is let go.
   const prepare = (videoId, durationS) => {
-    if (state.prep && state.prep.videoId === videoId) return;
-    const prep = { videoId, tail: null, tailStartS: 0, failed: false };
+    const previous = state.prep && state.prep.videoId === videoId ? state.prep : null;
+    // A miss is usually the segment URL not being visible yet, so retry a few
+    // times inside the prep window rather than giving up on the track.
+    if (previous && (!previous.failed || previous.attempts >= PREP_ATTEMPTS || Date.now() - previous.failedAt < PREP_RETRY_GAP_MS)) return;
+    const prep = { videoId, tail: null, tailStartS: 0, failed: false, failedAt: 0, attempts: (previous ? previous.attempts : 0) + 1 };
     state.prep = prep;
     (async () => {
       try {
@@ -140,8 +199,13 @@
           prep.tail = tail;
           prep.tailStartS = tailStartS;
         }
-      } catch {
-        if (state.prep === prep) prep.failed = true;
+        report("prepReady", { videoId, tailS: Math.round(tail.duration * 10) / 10 });
+      } catch (error) {
+        if (state.prep === prep) {
+          prep.failed = true;
+          prep.failedAt = Date.now();
+        }
+        report("prepFailed", { videoId, attempt: prep.attempts, reason: String((error && error.message) || error) });
       }
     })();
   };
@@ -182,6 +246,7 @@
     setOutGain(0, 0.02);
     state.phase = "overlap";
     state.pendingFadeIn = true;
+    armSilenceGuard();
     advance();
     return true;
   };
@@ -211,6 +276,7 @@
     state.outLevel = 1;
     state.pendingFadeIn = false;
     state.phase = "idle";
+    clearSilenceGuard();
     // Tempo-match the incoming track, easing back to natural speed. Skip when
     // something else already runs the element off its normal rate.
     const video = state.video;
@@ -231,6 +297,7 @@
       const wasOverlap = state.phase === "overlap";
       state.lastVideoId = videoId;
       state.transitionPosted = false;
+      state.reported = {};
       clearRateGlide();
       if (wasOverlap || state.pendingFadeIn) {
         if (!video.paused) beginFadeIn();
@@ -252,10 +319,16 @@
 
     if (!config.enabled || config.adPlaying || !isFinite(video.duration) || video.duration <= 0) {
       if (state.phase !== "idle" || state.outLevel !== 1) abortTransition();
+      // Duration is briefly unknown at every track start; only a state that
+      // outlives the opening seconds is worth reporting.
+      if (video.currentTime > 5) {
+        reportOnce("suppressed", "suppressed", { reason: !config.enabled ? "disabled" : config.adPlaying ? "ad playing" : "duration unknown" });
+      }
       return;
     }
     if (config.repeatOne && !config.fadeOnRepeatOne) {
       if (state.outLevel !== 1) setOutGain(1, 0.05);
+      if (video.currentTime > 5) reportOnce("suppressed", "suppressed", { reason: "repeat one" });
       return;
     }
     if (state.phase !== "idle") return;
@@ -264,10 +337,25 @@
     const fadeLengthS = video.duration - fadeStartS;
     if (video.currentTime >= fadeStartS - 0.12) {
       const ready = state.prep && state.prep.videoId === state.lastVideoId && state.prep.tail;
-      if (ready && config.hasNext && !roomCaptureActive()) {
-        if (!startOverlap(video, fadeLengthS)) plainFadeTick(video, fadeLengthS);
+      const roomCapture = roomCaptureActive();
+      if (ready && config.hasNext && !roomCapture) {
+        if (startOverlap(video, fadeLengthS)) {
+          reportOnce("transition", "overlap", { fadeS: Math.round(fadeLengthS * 10) / 10 });
+        } else {
+          plainFadeTick(video, fadeLengthS);
+          reportOnce("transition", "plainFade", { reason: "tail ran out before the fade" });
+        }
       } else {
         plainFadeTick(video, fadeLengthS);
+        reportOnce("transition", "plainFade", {
+          reason: !ready
+            ? state.prep && state.prep.failed
+              ? "tail unavailable"
+              : "tail not ready in time"
+            : !config.hasNext
+              ? "no next track"
+              : "room capture active"
+        });
       }
     } else {
       if (video.duration - video.currentTime <= config.fadeOutS + PREP_LEAD_S && videoId) prepare(videoId, video.duration);
@@ -285,7 +373,10 @@
     gain.cancelScheduledValues(graph.context.currentTime);
     gain.setTargetAtTime(curveValue(t, "out"), graph.context.currentTime, 0.08);
     state.outLevel = curveValue(t, "out");
-    state.pendingFadeIn = true;
+    if (!state.pendingFadeIn) {
+      state.pendingFadeIn = true;
+      armSilenceGuard();
+    }
     // A directed pick still has to happen without a shadow; jump just before
     // the element runs out so the plain fade lands on the chosen track.
     if (state.config.transitionIndex != null && remaining <= 1 && !state.transitionPosted) {
@@ -308,7 +399,10 @@
   };
 
   const onPause = () => {
-    if (state.phase === "overlap") abortTransition();
+    // A faded-out track that stops without the next one ever playing would
+    // leave the gain at zero with no tick coming to lift it, so the app would
+    // sit silent until the user found the volume themselves.
+    if (state.phase === "overlap" || state.pendingFadeIn) abortTransition();
   };
 
   const onSeeking = () => {

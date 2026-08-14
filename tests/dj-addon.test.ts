@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi, type Mock } from "vitest";
 import djAddon from "../src/addons/bundled/dj";
@@ -28,6 +28,9 @@ function makeQueue(overrides: Partial<PlayerQueue> = {}): PlayerQueue {
     ...overrides
   };
 }
+
+// The addon never reads the ipc event itself, only its payload.
+const IPC_EVENT = {} as never;
 
 const crossfadeArgs = (captured: ReturnType<typeof fakeContext>["captured"]) =>
   captured.invocations.filter(entry => entry.name === "crossfade").map(entry => entry.arg);
@@ -104,6 +107,76 @@ describe("dj bundled addon", () => {
     expect(ctx.windows.create).toHaveBeenCalledWith(expect.objectContaining({ entry: "dj-analysis", show: false }));
   });
 
+  it("writes page transition reports to the log, where they can be read back", async () => {
+    const { ctx, emitViewMessage } = fakeContext();
+    await djAddon.activate(ctx);
+
+    emitViewMessage("diag", { event: "plainFade", videoId: "vid", reason: "tail unavailable" });
+    expect(ctx.log.info).toHaveBeenCalledWith("transition plainFade videoId=vid reason=tail unavailable");
+
+    emitViewMessage("diag", { event: "overlap" });
+    expect(ctx.log.info).toHaveBeenCalledWith("transition overlap");
+
+    (ctx.log.info as Mock).mockClear();
+    emitViewMessage("diag", { reason: "no event name" });
+    emitViewMessage("diag", null);
+    expect(ctx.log.info).not.toHaveBeenCalled();
+  });
+
+  it("releases a wedged analysis so later tracks still get catalogued", async () => {
+    vi.useFakeTimers();
+    try {
+      const { ctx, captured, emitViewMessage, emitPlayerEvent } = fakeContext();
+      await djAddon.activate(ctx);
+      emitViewMessage("audioData", { videoId: "stuck", buffer: new ArrayBuffer(8) });
+      captured.ipcHandlers.analysisReady(IPC_EVENT);
+
+      // The window never answers: without a timeout this id stays in flight
+      // and every later catalog for it is skipped for the rest of the session.
+      emitPlayerEvent("trackChanged", { current: makeVideoDetails({ id: "stuck" }), previous: null, playlistId: null });
+      await vi.advanceTimersByTimeAsync(13000);
+      expect(captured.invocations.some(entry => entry.name === "catalog")).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(120000);
+      expect(ctx.log.info).toHaveBeenCalledWith("Analysis timed out for stuck");
+
+      emitPlayerEvent("trackChanged", { current: makeVideoDetails({ id: "stuck" }), previous: null, playlistId: null });
+      await vi.advanceTimersByTimeAsync(13000);
+      expect(captured.invocations.filter(entry => entry.name === "catalog").map(entry => entry.arg)).toEqual([{ videoId: "stuck" }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fills in the title of a track that was analyzed after the user skipped on", async () => {
+    const { ctx, captured, emitViewMessage, emitPlayerEvent } = fakeContext();
+    const instance = await djAddon.activate(ctx);
+    emitViewMessage("audioData", { videoId: "late", buffer: new ArrayBuffer(8) });
+    captured.ipcHandlers.analysisReady(IPC_EVENT);
+    captured.ipcHandlers.analysisResult(IPC_EVENT, {
+      videoId: "late",
+      ok: true,
+      bpm: 120,
+      bpmOffset: 0.1,
+      chromaMean: new Array(12).fill(1),
+      rmsP50: 0.1,
+      rmsP90: 0.2,
+      decodedDurationS: 180
+    });
+
+    // Nothing was playing when the bytes landed, so the record has no title and
+    // the library pool would ignore it for good.
+    emitPlayerEvent("trackChanged", {
+      current: makeVideoDetails({ id: "late", title: "Late Title", author: "Late Author" }),
+      previous: null,
+      playlistId: null
+    });
+    await (instance as { destroy: () => Promise<void> }).destroy();
+
+    const stored = JSON.parse(readFileSync(path.join(ctx.paths.data, "features.json"), "utf8")).tracks.late;
+    expect(stored).toMatchObject({ title: "Late Title", author: "Late Author" });
+  });
+
   it("executes page-requested transitions through playQueueIndex", async () => {
     const { ctx, emitViewMessage } = fakeContext();
     await djAddon.activate(ctx);
@@ -160,11 +233,9 @@ describe("dj bundled addon", () => {
       title: `title of ${videoId}`,
       author: "someone",
       bpm: 128,
-      bpmConfidence: 1,
       camelot: "8B",
       keyConfidence: 1,
       energy: 0.5,
-      loudnessDb: null as number | null,
       durationS: 200,
       beatOffsetS: 0.2,
       analysisVersion: ANALYSIS_VERSION,
@@ -219,6 +290,6 @@ describe("dj bundled addon", () => {
     const instance = await djAddon.activate(ctx);
     await (instance as { destroy: () => Promise<void> }).destroy();
     expect(ctx.ytmview.runScript).toHaveBeenCalledWith("crossfade-disable");
-    expect(unsubscribe).toHaveBeenCalledTimes(13);
+    expect(unsubscribe).toHaveBeenCalledTimes(14);
   });
 });

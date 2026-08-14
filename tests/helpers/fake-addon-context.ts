@@ -5,6 +5,7 @@ import {
   VideoType,
   LikeStatus,
   type AddonCssHandle,
+  type AddonIpcEvent,
   type AddonManifest,
   type AddonSettingsSection,
   type AddonTitlebarBadge,
@@ -100,6 +101,7 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
     innertubeCalls: [] as { endpoint: string; body?: Record<string, unknown> }[],
     trayItems: [] as AddonTrayMenuItem[],
     windows: [] as AddonWindowHandle[],
+    ipcHandlers: {} as Record<string, (event: AddonIpcEvent, ...args: unknown[]) => void>,
     notificationsShown: [] as { title: string; body?: string }[],
     cssRemoved: 0
   };
@@ -225,7 +227,10 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
     },
     ipc: {
       handle: vi.fn(() => unsubscribe),
-      on: vi.fn(() => unsubscribe)
+      on: vi.fn((channel: string, listener: (event: AddonIpcEvent, ...args: unknown[]) => void) => {
+        captured.ipcHandlers[channel] = listener;
+        return unsubscribe;
+      })
     },
     innertube: {
       request: vi.fn((endpoint: string, body?: Record<string, unknown>) => {

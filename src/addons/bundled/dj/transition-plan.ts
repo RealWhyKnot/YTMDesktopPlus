@@ -37,9 +37,6 @@ export function planTransition(current: TrackFeatures | null, next: TrackFeature
   // Two analyzed, tempo-close tracks earn a longer blend; unknown pairs keep
   // the configured fade so the failure mode is the ordinary crossfade.
   if (current?.bpm && next?.bpm) {
-    const ratio = Math.abs(Math.log2(next.bpm / current.bpm));
-    if (ratio < 0.03) plan.fadeOutS = Math.min(12, defaults.fadeOutS * 1.5);
-
     // Stretch against the nearest half/double interpretation of the incoming
     // tempo, so 64 under a 128 outgoing needs no stretch at all.
     let bestMultiple = 1;
@@ -51,6 +48,11 @@ export function planTransition(current: TrackFeatures | null, next: TrackFeature
         bestMultiple = multiple;
       }
     }
+    // Judged on the same half/double reading the stretch uses: detection lands
+    // on half time often enough that a raw ratio denies the blend to pairs that
+    // are actually tempo-identical.
+    if (bestDistance < 0.03) plan.fadeOutS = Math.min(12, defaults.fadeOutS * 1.5);
+
     const rate = current.bpm / (next.bpm * bestMultiple);
     if (rate !== 1 && Math.abs(Math.log2(rate)) <= Math.log2(1 + MAX_STRETCH)) plan.incomingRate = rate;
   }

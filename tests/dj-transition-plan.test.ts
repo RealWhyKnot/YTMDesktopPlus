@@ -8,11 +8,9 @@ function features(overrides: Partial<TrackFeatures> = {}): TrackFeatures {
     title: null,
     author: null,
     bpm: 120,
-    bpmConfidence: 1,
     camelot: "8B",
     keyConfidence: 1,
     energy: 0.5,
-    loudnessDb: 0,
     durationS: 200,
     beatOffsetS: 0.25,
     analysisVersion: 1,
@@ -43,6 +41,14 @@ describe("dj transition plan", () => {
     expect(capped.fadeOutS).toBe(12);
     const unmatched = planTransition(features({ bpm: 128 }), features({ bpm: 100 }), DEFAULTS);
     expect(unmatched.fadeOutS).toBe(5);
+  });
+
+  it("extends the blend for a pair detected an octave apart", () => {
+    // Tempo detection lands on half time often enough that judging the pair on
+    // the raw ratio would deny the longer blend to identical tempos.
+    const plan = planTransition(features({ bpm: 70 }), features({ bpm: 140 }), DEFAULTS);
+    expect(plan.fadeOutS).toBe(7.5);
+    expect(plan.incomingRate).toBeNull();
   });
 
   it("snaps the fade start to the last downbeat before the window", () => {

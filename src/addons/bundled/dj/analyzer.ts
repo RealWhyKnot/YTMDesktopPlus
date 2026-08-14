@@ -22,6 +22,8 @@ export type WindowResult = {
 
 export type TrackMeta = { title: string | null; author: string | null };
 
+const JOB_TIMEOUT_MS = 120000;
+
 export function featuresFromResult(result: WindowResult, meta: TrackMeta = { title: null, author: null }): TrackFeatures | null {
   if (!result.ok) return null;
   const key = result.chromaMean ? estimateKey(result.chromaMean) : null;
@@ -30,13 +32,11 @@ export function featuresFromResult(result: WindowResult, meta: TrackMeta = { tit
     title: meta.title,
     author: meta.author,
     bpm: typeof result.bpm === "number" && isFinite(result.bpm) ? result.bpm : null,
-    bpmConfidence: typeof result.bpm === "number" ? 1 : 0,
     camelot: key ? key.camelot : null,
     keyConfidence: key ? Math.max(0, key.margin) : 0,
     // rms of full-scale audio tops out well under 0.4; 2.5 spreads typical
     // tracks across 0..1 while clamping hot masters.
     energy: typeof result.rmsP90 === "number" ? Math.min(1, result.rmsP90 * 2.5) : null,
-    loudnessDb: null,
     durationS: result.decodedDurationS ?? 0,
     beatOffsetS: typeof result.bpmOffset === "number" && isFinite(result.bpmOffset) ? result.bpmOffset : null,
     analysisVersion: ANALYSIS_VERSION,
@@ -50,6 +50,7 @@ export class Analyzer {
   private pending: { videoId: string; buffer: ArrayBuffer }[] = [];
   private inFlight = new Set<string>();
   private meta = new Map<string, TrackMeta>();
+  private timers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly ctx: AddonContext,
@@ -63,6 +64,7 @@ export class Analyzer {
       const result = raw as WindowResult;
       if (!result || typeof result.videoId !== "string") return;
       this.inFlight.delete(result.videoId);
+      this.clearTimer(result.videoId);
       const meta = this.meta.get(result.videoId) ?? { title: null, author: null };
       this.meta.delete(result.videoId);
       if (!result.ok) {
@@ -92,6 +94,15 @@ export class Analyzer {
     this.windowReady = false;
     this.pending = [];
     this.inFlight.clear();
+    for (const timer of this.timers.values()) clearTimeout(timer);
+    this.timers.clear();
+  }
+
+  private clearTimer(videoId: string): void {
+    const timer = this.timers.get(videoId);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.timers.delete(videoId);
   }
 
   private ensureWindow(): void {
@@ -104,6 +115,16 @@ export class Analyzer {
     if (!this.windowReady || !this.window?.isOpen()) return;
     for (const job of this.pending.splice(0)) {
       this.inFlight.add(job.videoId);
+      // Without this a crashed or wedged window would leave the id in flight
+      // forever, and isBusy would then skip every later track of the session.
+      const timer = setTimeout(() => {
+        this.timers.delete(job.videoId);
+        if (!this.inFlight.delete(job.videoId)) return;
+        this.meta.delete(job.videoId);
+        this.ctx.log.info(`Analysis timed out for ${job.videoId}`);
+      }, JOB_TIMEOUT_MS);
+      timer.unref();
+      this.timers.set(job.videoId, timer);
       this.window.send("analyze", job);
     }
   }

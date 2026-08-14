@@ -179,6 +179,15 @@ const djAddon: BundledAddonDefinition = {
       }
     };
 
+    // A track analyzed while the user was already on the next one is stored
+    // without a title, which hides it from the library pool for good since
+    // db.has blocks a second analysis. Fill it in when it comes round again.
+    const backfillMeta = (track: VideoDetails) => {
+      const existing = db.get(track.id);
+      if (!existing || existing.title != null) return;
+      db.set({ ...existing, title: track.title, author: track.author });
+    };
+
     const scheduleCatalog = (videoId: string) => {
       if (catalogTimer) clearTimeout(catalogTimer);
       catalogTimer = setTimeout(() => {
@@ -214,11 +223,23 @@ const djAddon: BundledAddonDefinition = {
       })
     );
     unsubscribes.push(
+      ctx.ytmview.onMessage("diag", payload => {
+        const data = payload as Record<string, unknown>;
+        if (typeof data?.event !== "string") return;
+        const detail = Object.entries(data)
+          .filter(([key]) => key !== "event")
+          .map(([key, value]) => `${key}=${String(value)}`)
+          .join(" ");
+        ctx.log.info(`transition ${data.event}${detail ? ` ${detail}` : ""}`);
+      })
+    );
+    unsubscribes.push(
       ctx.player.on("trackChanged", payload => {
         currentTrack = payload.current;
         if (payload.current) {
           recentVideoIds.unshift(payload.current.id);
           if (recentVideoIds.length > RECENT_LIMIT) recentVideoIds.pop();
+          backfillMeta(payload.current);
           scheduleCatalog(payload.current.id);
         }
         recomputePick();
