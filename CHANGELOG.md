@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.815.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.815.0-beta) - 2026-08-15
 - test(harness): drive dj-automix from a real radio queue on the track clock
 - fix(dj): keep the blend alive through the pause that advancing causes
 - feat(dj): shape the blend into the queue's next track instead of choosing it
