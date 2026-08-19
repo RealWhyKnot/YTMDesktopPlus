@@ -203,6 +203,11 @@ jobs:
           flatpak install --user --noninteractive ./bundle/*.flatpak
           desktop=~/.local/share/flatpak/exports/share/applications/dev.whyknot.YTMDesktopPlus.desktop
           grep -q "x-scheme-handler/ytmdplus" "$desktop"
+          # The maker only installs share/pixmaps, which the xdg icon theme does
+          # not search under an exported prefix; a regression there is invisible
+          # until someone opens their launcher.
+          test -f ~/.local/share/flatpak/exports/share/icons/hicolor/512x512/apps/dev.whyknot.YTMDesktopPlus.png
+          test -f ~/.local/share/flatpak/app/dev.whyknot.YTMDesktopPlus/current/active/files/share/metainfo/dev.whyknot.YTMDesktopPlus.metainfo.xml
           dbus-run-session -- xvfb-run -a flatpak run dev.whyknot.YTMDesktopPlus &
           logfile=~/.var/app/dev.whyknot.YTMDesktopPlus/config/YTMDesktopPlus/logs/main.log
           ok=""

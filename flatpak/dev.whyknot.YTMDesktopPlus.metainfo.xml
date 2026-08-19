@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.whyknot.YTMDesktopPlus</id>
+  <name>YTMDesktopPlus</name>
+  <summary>Desktop app for YouTube Music</summary>
+  <developer id="dev.whyknot">
+    <name>WhyKnot</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <launchable type="desktop-id">dev.whyknot.YTMDesktopPlus.desktop</launchable>
+  <description>
+    <p>
+      Wraps the real music.youtube.com player, so the interface always matches
+      the current web version, and adds the things a browser tab cannot do:
+      media keys and global shortcuts, Discord rich presence, Last.fm
+      scrobbling, native notifications, volume past 100%, ad blocking, and a
+      remote control API for companion apps.
+    </p>
+  </description>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+  </categories>
+  <url type="homepage">https://github.com/RealWhyKnot/YTMDesktopPlus</url>
+  <url type="bugtracker">https://github.com/RealWhyKnot/YTMDesktopPlus/issues</url>
+  <content_rating type="oars-1.1"/>
+</component>

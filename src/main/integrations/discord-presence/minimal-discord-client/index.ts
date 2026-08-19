@@ -13,20 +13,25 @@ function directoryExists(dirPath: string): boolean {
   }
 }
 
-function getIPCPath(id: number): string {
+const IPC_ID_COUNT = 10;
+
+// A packaged discord puts its socket in its own runtime dir rather than the
+// shared one, and each packaging format picks a different dir. The flatpak one
+// is only reachable at all because of the matching --filesystem in
+// forge.config.ts.
+export function getIPCPaths(): string[] {
+  const ids = Array.from({ length: IPC_ID_COUNT }, (_unused, id) => id);
+
   if (process.platform === "win32") {
-    return `\\\\?\\pipe\\discord-ipc-${id}`;
+    return ids.map(id => `\\\\?\\pipe\\discord-ipc-${id}`);
   }
 
   const dirtyPrefix = process.env.XDG_RUNTIME_DIR || process.env.TMPDIR || process.env.TMP || process.env.TEMP || "/tmp";
   const prefix = dirtyPrefix.replace(/\/$/, "");
-  const discordSnapDir = "snap.discord";
+  const dirs = [prefix, `${prefix}/snap.discord`, `${prefix}/app/com.discordapp.Discord`].filter(directoryExists);
 
-  if (directoryExists(`${prefix}/${discordSnapDir}`)) {
-    return `${prefix}/${discordSnapDir}/discord-ipc-${id}`;
-  } else {
-    return `${prefix}/discord-ipc-${id}`;
-  }
+  // Id-major, so discord-ipc-0 is tried across every layout before ipc-1.
+  return ids.flatMap(id => dirs.map(dir => `${dir}/discord-ipc-${id}`));
 }
 
 export default class DiscordClient extends EventEmitter {
@@ -48,12 +53,13 @@ export default class DiscordClient extends EventEmitter {
     // Promise chaining is OK here, we're looping through different IPC paths and seeing which one works
     // eslint-disable-next-line no-async-promise-executor
     this.connectionPromise = new Promise(async (resolve, reject) => {
-      log.debug("dipc: initiated connection loop over 10 ids");
-      let id = 0;
-      while (id < 10) {
+      const paths = getIPCPaths();
+      log.debug(`dipc: initiated connection loop over ${paths.length} candidate paths`);
+      let index = 0;
+      while (index < paths.length) {
         try {
           await new Promise<void>((ipcResolve, ipcReject) => {
-            const ipcPath = getIPCPath(id);
+            const ipcPath = paths[index];
             log.debug("dipc: connecting to discord at", ipcPath);
             this.ipcClient.once("close", () => {
               this.ipcClient.removeAllListeners();
@@ -68,7 +74,7 @@ export default class DiscordClient extends EventEmitter {
               this.ipcClient.removeAllListeners();
               ipcResolve();
             });
-            this.ipcClient.connect(getIPCPath(id));
+            this.ipcClient.connect(ipcPath);
           });
 
           this.connected = true;
@@ -118,7 +124,7 @@ export default class DiscordClient extends EventEmitter {
 
           return;
         } catch {
-          id++;
+          index++;
         }
       }
 
