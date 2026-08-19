@@ -106,7 +106,14 @@ const config: ForgeConfig = {
               categories: ["AudioVideo", "Audio"],
               mimeType: ["x-scheme-handler/ytmdplus"],
               icon: "./src/assets/icons/ytmd.png",
-              files: [],
+              // The maker's own icon option only writes share/pixmaps, which the
+              // xdg icon theme never searches under an exported prefix, so the
+              // launcher and discover both come up blank. hicolor and metainfo
+              // are in flatpak build-export's default set; pixmaps is not.
+              files: [
+                ["./src/assets/icons/ytmd.png", "/share/icons/hicolor/512x512/apps/dev.whyknot.YTMDesktopPlus.png"],
+                ["./flatpak/dev.whyknot.YTMDesktopPlus.metainfo.xml", "/share/metainfo/dev.whyknot.YTMDesktopPlus.metainfo.xml"]
+              ],
               modules: [],
               finishArgs: [
                 "--share=ipc",

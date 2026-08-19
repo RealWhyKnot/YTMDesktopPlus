@@ -146,6 +146,11 @@ jobs:
           flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --user --noninteractive flathub org.freedesktop.Platform//25.08
           flatpak install --user --noninteractive ./dist/flatpak/x86_64/*.flatpak
+          # The maker only installs share/pixmaps, which the xdg icon theme does
+          # not search under an exported prefix; a regression there is invisible
+          # until someone opens their launcher.
+          test -f ~/.local/share/flatpak/exports/share/icons/hicolor/512x512/apps/dev.whyknot.YTMDesktopPlus.png
+          test -f ~/.local/share/flatpak/app/dev.whyknot.YTMDesktopPlus/current/active/files/share/metainfo/dev.whyknot.YTMDesktopPlus.metainfo.xml
           dbus-run-session -- xvfb-run -a flatpak run dev.whyknot.YTMDesktopPlus &
           sleep 30
           flatpak ps --columns=application | grep -qx dev.whyknot.YTMDesktopPlus
