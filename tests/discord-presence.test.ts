@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import DiscordPresence, { type PresenceButtonsProvider, type RemoteTrackActivity } from "../src/main/integrations/discord-presence";
+import { getIPCPaths } from "../src/main/integrations/discord-presence/minimal-discord-client";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
 import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
 
@@ -297,5 +301,67 @@ describe("remote activity provider", () => {
     presence.refreshActivity();
     vi.advanceTimersByTime(1000);
     expect(calls).toEqual({ set: 0, clear: 2 });
+  });
+});
+
+// The socket a flatpak discord opens lands under its own runtime dir, not the
+// shared one, and reaching it at all depends on the matching --filesystem in
+// forge.config.ts. Nothing else in the suite would notice it going missing.
+// The posix branch is unreachable on the platform this repo is developed on,
+// hence the override rather than a skip.
+function withPlatform<T>(platform: string, run: () => T): T {
+  const original = Object.getOwnPropertyDescriptor(process, "platform")!;
+  Object.defineProperty(process, "platform", { value: platform, configurable: true });
+  try {
+    return run();
+  } finally {
+    Object.defineProperty(process, "platform", original);
+  }
+}
+
+describe("getIPCPaths", () => {
+  let runtimeDir = "";
+  const originalRuntimeDir = process.env.XDG_RUNTIME_DIR;
+
+  function runtimeDirContaining(...subdirectories: string[]): string {
+    runtimeDir = mkdtempSync(path.join(tmpdir(), "ytmd-ipc-"));
+    for (const subdirectory of subdirectories) {
+      mkdirSync(path.join(runtimeDir, subdirectory), { recursive: true });
+    }
+    process.env.XDG_RUNTIME_DIR = runtimeDir;
+    return runtimeDir;
+  }
+
+  afterEach(() => {
+    if (originalRuntimeDir === undefined) delete process.env.XDG_RUNTIME_DIR;
+    else process.env.XDG_RUNTIME_DIR = originalRuntimeDir;
+    if (runtimeDir) rmSync(runtimeDir, { recursive: true, force: true });
+    runtimeDir = "";
+  });
+
+  it("reaches a flatpak discord and skips layouts that are not installed", () => {
+    const dir = runtimeDirContaining(path.join("app", "com.discordapp.Discord"));
+
+    const paths = withPlatform("linux", getIPCPaths);
+
+    expect(paths.slice(0, 2)).toEqual([`${dir}/discord-ipc-0`, `${dir}/app/com.discordapp.Discord/discord-ipc-0`]);
+    expect(paths.some(candidate => candidate.includes("snap.discord"))).toBe(false);
+    expect(paths).toHaveLength(20);
+  });
+
+  it("reaches a snap discord", () => {
+    const dir = runtimeDirContaining("snap.discord");
+
+    expect(withPlatform("linux", getIPCPaths).slice(0, 2)).toEqual([`${dir}/discord-ipc-0`, `${dir}/snap.discord/discord-ipc-0`]);
+  });
+
+  it("falls back to the shared runtime dir alone", () => {
+    const dir = runtimeDirContaining();
+
+    expect(withPlatform("linux", getIPCPaths)).toEqual(Array.from({ length: 10 }, (_unused, id) => `${dir}/discord-ipc-${id}`));
+  });
+
+  it("uses named pipes on windows", () => {
+    expect(withPlatform("win32", getIPCPaths)).toEqual(Array.from({ length: 10 }, (_unused, id) => String.raw`\\?\pipe\discord-ipc-` + id));
   });
 });
