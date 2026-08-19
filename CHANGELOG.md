@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- fix(flatpak): install the icon into hicolor and ship appstream metadata
+- fix(discord): find the ipc socket a flatpak discord opens
 
 ## [v2026.815.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.815.0-beta) - 2026-08-15
 - test(harness): drive dj-automix from a real radio queue on the track clock
