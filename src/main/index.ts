@@ -361,14 +361,14 @@ const addonManager: AddonManager = new AddonManager({
     ytmViewIntegrationScripts[namespace][name] = script;
     // Live push for a page that is already up; before the page attaches its
     // listener this is a no-op and the load-time snapshot covers it.
-    if (ytmView && !ytmView.webContents.isDestroyed()) {
+    if (ytmView?.webContents && !ytmView.webContents.isDestroyed()) {
       ytmView.webContents.send("ytmView:scriptRegistered", namespace, name, script);
     }
   },
   invokeYtmScript: (namespace, name, arg) =>
     new Promise((resolve, reject) => {
       const view = ytmView;
-      if (!view) {
+      if (!view?.webContents || view.webContents.isDestroyed()) {
         reject(new Error("YTM view unavailable"));
         return;
       }
@@ -1074,6 +1074,14 @@ const createMainWindow = (): void => {
 
   mainWindow.once("closed", () => {
     mainWindow = null;
+    // The attached view is destroyed with the window; a stale reference here
+    // passes every `if (ytmView)` guard against a dead webContents.
+    ytmView = null;
+    // Addon windows (some hidden) keep window-all-closed from firing, which
+    // left the app running headless after the last visible window closed.
+    if (!applicationQuitting) {
+      app.quit();
+    }
   });
 
   mainWindow.on("ready-to-show", () => {

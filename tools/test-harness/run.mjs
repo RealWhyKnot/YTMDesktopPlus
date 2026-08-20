@@ -191,6 +191,15 @@ const ctx = {
   evalOnTarget: (pattern, expr) => evalOnTarget(cdpPort, pattern, expr),
   waitOnTarget: (pattern, expr, predicate, timeoutMs) => waitForValue(cdpPort, pattern, expr, predicate, timeoutMs),
   grepMainLog: pattern => grepFile(mainLog, pattern),
+  waitAppExit: timeoutMs =>
+    new Promise((resolve, reject) => {
+      if (child.exitCode !== null) return resolve(child.exitCode);
+      const timer = setTimeout(() => reject(new Error(`app process still running after ${timeoutMs}ms`)), timeoutMs);
+      child.once("exit", code => {
+        clearTimeout(timer);
+        resolve(code);
+      });
+    }),
   waitMainLog: async (pattern, timeoutMs) => {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
