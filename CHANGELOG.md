@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.820.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.820.0-beta) - 2026-08-20
 - fix(main): quit on native window close instead of lingering headless
 - fix(flatpak): install the icon into hicolor and ship appstream metadata
 - fix(discord): find the ipc socket a flatpak discord opens
