@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- fix(main): quit on native window close instead of lingering headless
 - fix(flatpak): install the icon into hicolor and ship appstream metadata
 - fix(discord): find the ipc socket a flatpak discord opens
 
