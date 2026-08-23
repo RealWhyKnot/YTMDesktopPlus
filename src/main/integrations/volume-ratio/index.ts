@@ -1,4 +1,4 @@
-import { BrowserView } from "electron";
+import type { BrowserView } from "electron";
 import IIntegration from "../integration";
 
 import enableScript from "./script/enable.script?raw";
@@ -72,6 +72,8 @@ export default class VolumeRatio implements IIntegration {
 
   public ytmViewLoaded(): void {
     this.waitForYTMView = false;
+    // A navigation within the same view builds a fresh main world, so the script this held is gone.
+    this.hasInjected = false;
     if (this.isEnabled) this.enable();
   }
 }
