@@ -3,6 +3,10 @@
 // Made by: Marco Pfeiffer <git@marco.zone>
 
 (function() {
+  // Re-running this would wrap the wrapper: the exponent would compound and the native descriptor stashed below would be lost.
+  if (window.__ytmdVolumeRatio) return '';
+  window.__ytmdVolumeRatio = true;
+
   // manipulation exponent, higher value = lower volume
   // 3 is the value used by pulseaudio, which Barteks2x figured out this gist here: https://gist.github.com/Barteks2x/a4e189a36a10c159bb1644ffca21c02a
   // 0.05 (or 5%) is the lowest you can select in the UI which with an exponent of 3 becomes 0.000125 or 0.0125%

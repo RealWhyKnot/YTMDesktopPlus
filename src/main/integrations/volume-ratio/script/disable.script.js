@@ -10,4 +10,6 @@
       set: window.HTMLMediaElement_volume.set
     });
   }
+
+  window.__ytmdVolumeRatio = false;
 });
