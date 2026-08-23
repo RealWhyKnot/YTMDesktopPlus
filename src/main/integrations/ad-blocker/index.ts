@@ -1,4 +1,4 @@
-import type { Session } from "electron";
+import type { BrowserView, Session } from "electron";
 import log from "electron-log";
 import fs from "fs/promises";
 import path from "path";
@@ -8,6 +8,9 @@ import { ElectronBlocker, adsAndTrackingLists } from "@ghostery/adblocker-electr
 import IIntegration from "../integration";
 import { isCacheStale, LEGACY_CACHE_FILES } from "./cache";
 
+import enableScript from "./script/enable.script?raw";
+import disableScript from "./script/disable.script?raw";
+
 export default class AdBlocker implements IIntegration {
   private session: Session | null = null;
   private cachePath: string | null = null;
@@ -15,6 +18,9 @@ export default class AdBlocker implements IIntegration {
   private loading: Promise<ElectronBlocker | null> | null = null;
   private isEnabled = false;
   private blockedRequests = 0;
+  private ytmView: BrowserView | null = null;
+  private hasInjected = false;
+  private waitForYTMView = true;
 
   public provide(session: Session, cachePath: string): void {
     this.session = session;
@@ -27,8 +33,32 @@ export default class AdBlocker implements IIntegration {
     }
   }
 
+  public provideView(ytmView: BrowserView): void {
+    if (ytmView !== this.ytmView) {
+      this.hasInjected = false;
+      this.waitForYTMView = true;
+    }
+    this.ytmView = ytmView;
+  }
+
+  public ytmViewLoaded(): void {
+    this.waitForYTMView = false;
+    // Every document the view loads is a fresh main world, so whatever was
+    // injected into the last one is gone. Signing in navigates away and back.
+    this.hasInjected = false;
+    if (this.isEnabled) this.injectAdSkip();
+  }
+
+  public getYTMScripts(): { name: string; script: string }[] {
+    return [
+      { name: "enable", script: enableScript },
+      { name: "disable", script: disableScript }
+    ];
+  }
+
   public enable(): void {
     this.isEnabled = true;
+    this.injectAdSkip();
     if (this.session === null) return;
 
     if (this.blocker !== null) {
@@ -46,11 +76,31 @@ export default class AdBlocker implements IIntegration {
 
   public disable(): void {
     this.isEnabled = false;
+    if (this.hasInjected) {
+      this.sendToView("disable");
+      this.hasInjected = false;
+    }
+
     if (this.blocker === null || this.session === null) return;
     if (!this.blocker.isBlockingEnabled(this.session)) return;
 
     this.blocker.disableBlockingInSession(this.session);
     log.info(`Ad blocker stopped after blocking ${this.blockedRequests} requests`);
+  }
+
+  private injectAdSkip(): void {
+    if (this.hasInjected || this.waitForYTMView || this.ytmView === null) return;
+
+    this.sendToView("enable");
+    this.hasInjected = true;
+  }
+
+  // A destroyed window leaves webContents undefined rather than destroyed, so
+  // reading through it without the optional chain throws.
+  private sendToView(script: string): void {
+    if (!this.ytmView?.webContents || this.ytmView.webContents.isDestroyed()) return;
+
+    this.ytmView.webContents.send("ytmView:executeScript", "adBlock", script);
   }
 
   private startBlocking(blocker: ElectronBlocker): void {

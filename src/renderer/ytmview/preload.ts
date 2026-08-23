@@ -21,6 +21,7 @@ import {
   storeHookProbeSource
 } from "~shared/hook-probes";
 import { mergeScript, type ScriptTable } from "./script-table";
+import { installAdPrune } from "./ad-prune";
 
 import playerBarControlsScript from "./scripts/playerbarcontrols.script?raw";
 import hookPlayerApiEventsScript from "./scripts/hookplayerapievents.script?raw";
@@ -57,6 +58,7 @@ contextBridge.exposeInMainWorld("ytmd", {
   // Page scripts push to their addon's main-process half; delivery lands on
   // the addon's ctx.ytmview.onMessage(name) callbacks.
   postAddonMessage: (addonId: string, name: string, payload?: unknown) => ipcRenderer.send("ytmView:addonMessage", addonId, name, payload),
+  sendAdBlockEvent: (kind: string, detail?: unknown) => ipcRenderer.send("ytmView:adBlockEvent", kind, detail),
   ...(YTMD_DEV_TOOLS ? { sendDevProbe: (batch: unknown[]) => ipcRenderer.send("ytmView:devProbe", batch) } : {})
 });
 
@@ -214,6 +216,11 @@ function getYTMTextRun(runs: { text: string }[]) {
   }
   return final;
 }
+
+// Read synchronously: resolving the store over ipcRenderer.invoke is the race
+// this install exists to avoid.
+const adBlockEnabled: boolean = ipcRenderer.sendSync("ytmView:adBlockEnabled") === true;
+contextBridge.executeInMainWorld({ func: installAdPrune, args: [adBlockEnabled] });
 
 // This hooks YTM's internal store. YouTube Music defines
 // PolymerFakeBaseClassWithoutHtml itself, so whichever side defines the
@@ -730,6 +737,11 @@ const startHooking = async () => {
   });
 
   store.onDidAnyChange(newState => {
+    // Only the install had to be synchronous; a flag flip can take its time.
+    webFrame
+      .executeJavaScript(`window.__ytmdAdPrune && (window.__ytmdAdPrune.enabled = ${newState.playback.adBlockerEnabled === true});`)
+      .catch((): void => undefined);
+
     if (newState.appearance.alwaysShowVolumeSlider) {
       const volumeSlider = document.querySelector("#volume-slider");
       if (!volumeSlider.classList.contains("ytmd-persist-volume-slider")) {

@@ -26,7 +26,7 @@ The flatpak needs the Flathub remote for its runtime, which SteamOS already has 
 - Discord rich presence
 - Last.fm scrobbling
 - Volume boost: takes the volume slider past 100%. The boosted part of the bar turns a warning colour, and a limiter holds the peaks down
-- Ad blocking: filter lists applied to the player's own traffic, off until you turn it on
+- Ad blocking: ads stripped from the player's own track data, muted and skipped if one still gets through, off until you turn it on
 - Phone playback: while the desktop is idle, the app shows what the same account is playing on your phone, in the player bar and on your Discord presence
 - Native notifications on song change
 - Addons: drop-in folders of CSS, page scripts or code that extend the app, managed from the settings window (see [docs/addons.md](docs/addons.md)). Custom CSS lives here now, still with live reload; the rooms feature itself ships as one

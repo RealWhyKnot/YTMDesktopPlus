@@ -812,6 +812,7 @@ const createYTMView = (): void => {
   companionServer.provide(store, memoryStore, ytmView);
   ratioVolume.provide(ytmView);
   nonStop.provide(ytmView);
+  adBlocker.provideView(ytmView);
   providePlaybackView(() => ytmView);
 
   // Cosmetic filter injection queues a did-stop-loading waiter per scriptlet
@@ -1297,6 +1298,7 @@ app.on("ready", async () => {
       // TODO: this is just a hack fix for ratio volume to run the enable script
       ratioVolume.ytmViewLoaded();
       nonStop.ytmViewLoaded();
+      adBlocker.ytmViewLoaded();
 
       addonManager.notifyYtmViewLoaded();
 
@@ -1320,6 +1322,19 @@ app.on("ready", async () => {
       }
     });
   }
+
+  // Answered synchronously: the page script that prunes ad metadata out of the
+  // player response installs during preload, before YouTube Music can ask for a
+  // track, and it has to know whether it is switched on by then.
+  ipcMain.on("ytmView:adBlockEnabled", event => {
+    event.returnValue = isYtmViewSender(event.sender) && store.get("playback").adBlockerEnabled === true;
+  });
+
+  ipcMain.on("ytmView:adBlockEvent", (event, kind: string, detail: unknown) => {
+    if (!isYtmViewSender(event.sender)) return;
+
+    log.info(detail === undefined || detail === null ? `Ad blocker: ${kind}` : `Ad blocker: ${kind} ${String(detail)}`);
+  });
 
   ipcMain.on("ytmView:hookFailed", (event, stage, detail) => {
     if (!isYtmViewSender(event.sender)) return;
@@ -1728,6 +1743,10 @@ app.on("ready", async () => {
     return map;
   }, {});
   ytmViewIntegrationScripts["nonStop"] = nonStop.getYTMScripts().reduce<{ [name: string]: string }>((map, obj) => {
+    map[obj.name] = obj.script;
+    return map;
+  }, {});
+  ytmViewIntegrationScripts["adBlock"] = adBlocker.getYTMScripts().reduce<{ [name: string]: string }>((map, obj) => {
     map[obj.name] = obj.script;
     return map;
   }, {});

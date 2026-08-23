@@ -40,7 +40,7 @@ const adBlockerEnabled = staged.refs["playback.adBlockerEnabled"];
       v-model="adBlockerEnabled"
       type="checkbox"
       name="Block ads"
-      description="Filters every request the YouTube Music session makes, sign-in included, against the EasyList and EasyPrivacy blocklists. The lists are downloaded on first use"
+      description="Removes ads from the player's own track data before it can schedule them, and mutes and runs through anything that still gets played. Also filters the session's requests against the EasyList and EasyPrivacy blocklists, downloaded on first use"
       @change="stageChanged"
     />
   </div>
