@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readFileSync } from "fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync } from "fs";
 import path from "path";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 
@@ -6,7 +6,7 @@ const appVersion: string = JSON.parse(readFileSync(path.join(__dirname, "package
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { MakerDeb } from "@electron-forge/maker-deb";
-import { MakerFlatpak } from "@electron-forge/maker-flatpak";
+import { MakerFlatpak, flatpakArch } from "@electron-forge/maker-flatpak";
 import { MakerRpm } from "@electron-forge/maker-rpm";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
@@ -40,6 +40,20 @@ const config: ForgeConfig = {
       if (!existsSync(entryPoint)) {
         throw new Error(`Ad blocker preload missing from the package at ${entryPoint}`);
       }
+    },
+    // flatpak-bundler names its bundle <id>_<branch>_<arch>.flatpak, which carries no version and
+    // reads as "stable" on a beta.
+    postMake: async (_forgeConfig, makeResults) => {
+      for (const result of makeResults) {
+        result.artifacts = result.artifacts.map(artifact => {
+          if (path.extname(artifact) !== ".flatpak") return artifact;
+
+          const renamed = path.join(path.dirname(artifact), `YTMDesktopPlus-${result.packageJSON.version}-${flatpakArch(result.arch)}.flatpak`);
+          renameSync(artifact, renamed);
+          return renamed;
+        });
+      }
+      return makeResults;
     }
   },
   packagerConfig: {

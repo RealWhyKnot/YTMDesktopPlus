@@ -13,7 +13,7 @@ On Windows the app can install updates on launch, like Discord does. It asks onc
 On a Steam Deck, or any Linux distribution where the deb and rpm packages do not apply, download the `.flatpak` file from a release and open it in Discover, or install it from a terminal:
 
 ```bash
-flatpak install --user ./dev.whyknot.YTMDesktopPlus_stable_x86_64.flatpak
+flatpak install --user ./YTMDesktopPlus-2026.820.0-beta-x86_64.flatpak
 ```
 
 The flatpak needs the Flathub remote for its runtime, which SteamOS already has set up. One limitation: Discord rich presence from inside the flatpak reaches a normally installed Discord, but not the flatpak build of Discord.
