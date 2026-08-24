@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- tools(steamdeck): run the packaged flatpak on an arch wsl distro
+- build(flatpak): stamp the version and arch onto the bundle name
+- fix(volume-ratio): stop the enable script wrapping its own volume descriptor
+- fix(integrations): re-inject nonstop and volume ratio into every document the view loads
+- feat(playback): block ads in the player response instead of only their telemetry
 
 ## [v2026.820.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.820.0-beta) - 2026-08-20
 - fix(main): quit on native window close instead of lingering headless
