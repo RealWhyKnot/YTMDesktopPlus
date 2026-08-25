@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.825.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.825.0-beta) - 2026-08-25
 - tools(steamdeck): run the packaged flatpak on an arch wsl distro
 - build(flatpak): stamp the version and arch onto the bundle name
 - fix(volume-ratio): stop the enable script wrapping its own volume descriptor
