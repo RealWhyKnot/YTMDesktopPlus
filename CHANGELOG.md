@@ -3,6 +3,10 @@
 ## Unreleased
 
 ## [v2026.909.1](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.909.1) - 2026-09-09
+- fix(ytmview): restore playerApi from the async resolvePlayerApi
+- ci: allow the changelog append to be dispatched manually
+- ci: use the shared changelog-append workflow and a tag-based release input
+- ci: use the shared workflows for wiki sync, version guard and dependabot merges
 
 ## [v2026.909.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.909.1-beta) - 2026-09-09
 - fix(ytmview): restore playerApi from the async resolvePlayerApi
