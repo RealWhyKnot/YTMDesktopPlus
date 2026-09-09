@@ -5,6 +5,12 @@ on:
     branches: [main]
     paths-ignore:
       - CHANGELOG.md
+  workflow_dispatch:
+    inputs:
+      range:
+        description: 'Override commit range, for example abc123..def456.'
+        required: false
+        default: ''
 
 concurrency:
   group: changelog-writes
@@ -18,4 +24,5 @@ jobs:
     if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip changelog]')
     uses: RealWhyKnot/workflows/.github/workflows/changelog-append.yml@v1
     with:
+      range: ${{ inputs.range }}
       script: ./scripts/Update-Changelog.ps1
