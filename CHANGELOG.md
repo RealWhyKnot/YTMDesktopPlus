@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- ci: use the shared changelog-append workflow and a tag-based release input
 - ci: use the shared workflows for wiki sync, version guard and dependabot merges
 
 ## [v2026.825.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.825.0-beta) - 2026-08-25
