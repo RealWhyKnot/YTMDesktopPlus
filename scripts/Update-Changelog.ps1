@@ -8,6 +8,7 @@ param(
   [Parameter(Mandatory = $true)][ValidateSet("Append", "Promote", "Notes")][string]$Mode,
   [string]$Path = "CHANGELOG.md",
   [string[]]$Subjects,
+  [string]$Range,
   [string]$Tag,
   [string]$Date,
   [string]$RepositoryUrl
@@ -26,7 +27,12 @@ function Write-Changelog([string]$text) {
 
 switch ($Mode) {
   "Append" {
-    if (-not $Subjects -or $Subjects.Count -eq 0) { throw "Append requires -Subjects" }
+    if ((-not $Subjects -or $Subjects.Count -eq 0) -and $Range) {
+      $Subjects = @(git log --no-merges --format="%s" $Range | Where-Object {
+        $_ -notmatch "\[skip changelog\]" -and $_ -notmatch "^chore\(release\)"
+      })
+    }
+    if (-not $Subjects -or $Subjects.Count -eq 0) { throw "Append requires -Subjects or -Range" }
     $marker = "## Unreleased"
     $index = $content.IndexOf($marker)
     if ($index -lt 0) { throw "No '## Unreleased' section in $Path" }
