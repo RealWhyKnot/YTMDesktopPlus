@@ -44,7 +44,7 @@ const store = new Store<StoreSchema>();
 // renderer processes (and their argv) can be reused across view recreations.
 const brokenHookStage: string | null = process.argv.includes("--ytmd-test") ? ipcRenderer.sendSync("ytmdTest:getBrokenHookStage") : null;
 const failingBooleanProbeSource = `(function() { return false; })`;
-const failingPlayerBarProbeSource = `(function() { return { playerBarPresent: false, playerApiPresent: false, playerApiReady: false }; })`;
+const failingPlayerBarProbeSource = `(function() { return { playerBarPresent: false, playerApiPresent: false, playerApiReady: false, resolverPresent: false, resolveError: null }; })`;
 
 contextBridge.exposeInMainWorld("ytmd", {
   sendVideoProgress: (volume: number) => ipcRenderer.send("ytmView:videoProgressChanged", volume),

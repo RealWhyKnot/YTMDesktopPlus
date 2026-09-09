@@ -7,7 +7,8 @@
 //
 // Probe sources are evaluated in the YTM page's main world via
 // webFrame.executeJavaScript. They must never throw: they report what they
-// observe so a failure can be logged with enough detail to act on.
+// observe, and repair what they can, so a failure can be logged with enough
+// detail to act on.
 
 export const HOOK_POLL_INTERVAL = 250;
 export const HOOK_POLL_MAX_ATTEMPTS = 120; // 30 seconds per stage
@@ -20,6 +21,8 @@ export type PlayerBarProbeSnapshot = {
   playerBarPresent: boolean;
   playerApiPresent: boolean;
   playerApiReady: boolean;
+  resolverPresent: boolean;
+  resolveError: string | null;
 };
 
 // Stage 1: the store hook installed by the Polymer base class trap.
@@ -33,6 +36,23 @@ export const storeHookProbeSource = `
 export const playerBarProbeSource = `
   (function() {
     const playerBar = document.querySelector("${PLAYER_BAR_SELECTOR}");
+    if (playerBar && !playerBar.playerApi && typeof playerBar.resolvePlayerApi === "function" && !playerBar.__ytmdPlayerApiResolvePending) {
+      playerBar.__ytmdPlayerApiResolvePending = true;
+      try {
+        Promise.resolve(playerBar.resolvePlayerApi()).then(
+          function (api) {
+            if (api && !playerBar.playerApi) playerBar.playerApi = api;
+          },
+          function (error) {
+            playerBar.__ytmdPlayerApiResolveError = String(error);
+            playerBar.__ytmdPlayerApiResolvePending = false;
+          }
+        );
+      } catch (error) {
+        playerBar.__ytmdPlayerApiResolveError = String(error);
+        playerBar.__ytmdPlayerApiResolvePending = false;
+      }
+    }
     const playerApi = playerBar ? playerBar.playerApi : null;
     let ready = false;
     try {
@@ -43,7 +63,9 @@ export const playerBarProbeSource = `
     return {
       playerBarPresent: !!playerBar,
       playerApiPresent: !!playerApi,
-      playerApiReady: ready
+      playerApiReady: ready,
+      resolverPresent: !!(playerBar && typeof playerBar.resolvePlayerApi === "function"),
+      resolveError: playerBar && playerBar.__ytmdPlayerApiResolveError ? String(playerBar.__ytmdPlayerApiResolveError) : null
     };
   })
 `;

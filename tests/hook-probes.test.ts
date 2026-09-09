@@ -27,7 +27,9 @@ describe("playerBarProbeSource", () => {
     expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)()).toEqual({
       playerBarPresent: false,
       playerApiPresent: false,
-      playerApiReady: false
+      playerApiReady: false,
+      resolverPresent: false,
+      resolveError: null
     });
   });
 
@@ -36,7 +38,9 @@ describe("playerBarProbeSource", () => {
     expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)()).toEqual({
       playerBarPresent: true,
       playerApiPresent: false,
-      playerApiReady: false
+      playerApiReady: false,
+      resolverPresent: false,
+      resolveError: null
     });
   });
 
@@ -53,7 +57,9 @@ describe("playerBarProbeSource", () => {
     expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)()).toEqual({
       playerBarPresent: true,
       playerApiPresent: true,
-      playerApiReady: false
+      playerApiReady: false,
+      resolverPresent: false,
+      resolveError: null
     });
   });
 
@@ -62,8 +68,79 @@ describe("playerBarProbeSource", () => {
     expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)()).toEqual({
       playerBarPresent: true,
       playerApiPresent: true,
-      playerApiReady: true
+      playerApiReady: true,
+      resolverPresent: false,
+      resolveError: null
     });
+  });
+
+  it("assigns playerApi from resolvePlayerApi and reports ready on the next poll", async () => {
+    const api = { isReady: () => true };
+    const bar: Record<string, unknown> = { resolvePlayerApi: () => Promise.resolve(api) };
+    vi.stubGlobal("document", { querySelector: () => bar });
+    const probe = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource);
+    expect(probe()).toEqual({
+      playerBarPresent: true,
+      playerApiPresent: false,
+      playerApiReady: false,
+      resolverPresent: true,
+      resolveError: null
+    });
+    await Promise.resolve();
+    expect(bar.playerApi).toBe(api);
+    expect(probe()).toEqual({
+      playerBarPresent: true,
+      playerApiPresent: true,
+      playerApiReady: true,
+      resolverPresent: true,
+      resolveError: null
+    });
+  });
+
+  it("only calls resolvePlayerApi once while a resolution is pending", async () => {
+    let calls = 0;
+    const bar: Record<string, unknown> = {
+      resolvePlayerApi: () => {
+        calls++;
+        return new Promise(() => {});
+      }
+    };
+    vi.stubGlobal("document", { querySelector: () => bar });
+    const probe = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource);
+    probe();
+    probe();
+    expect(calls).toBe(1);
+  });
+
+  it("reports a rejected resolvePlayerApi and retries on the next poll", async () => {
+    let calls = 0;
+    const bar: Record<string, unknown> = {
+      resolvePlayerApi: () => {
+        calls++;
+        return Promise.reject(new Error("player gone"));
+      }
+    };
+    vi.stubGlobal("document", { querySelector: () => bar });
+    const probe = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource);
+    probe();
+    await Promise.resolve();
+    await Promise.resolve();
+    const snapshot = probe();
+    expect(snapshot.resolveError).toContain("player gone");
+    expect(snapshot.playerApiPresent).toBe(false);
+    expect(calls).toBe(2);
+  });
+
+  it("does not clobber an existing synchronous playerApi", () => {
+    const api = { isReady: () => true };
+    const bar: Record<string, unknown> = {
+      playerApi: api,
+      resolvePlayerApi: () => Promise.resolve({ isReady: () => true })
+    };
+    vi.stubGlobal("document", { querySelector: () => bar });
+    const snapshot = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)();
+    expect(snapshot.playerApiReady).toBe(true);
+    expect(bar.playerApi).toBe(api);
   });
 });
 
