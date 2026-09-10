@@ -15,11 +15,7 @@ export type Sample = {
 export type SyncPhase = "idle" | "loading" | "synced" | "suspended";
 
 export type Decision =
-  | { kind: "navigate"; videoId: string }
-  | { kind: "seek"; seconds: number }
-  | { kind: "play" }
-  | { kind: "pause" }
-  | { kind: "suspend"; reason: string };
+  { kind: "navigate"; videoId: string } | { kind: "seek"; seconds: number } | { kind: "play" } | { kind: "pause" } | { kind: "suspend"; reason: string };
 
 // A command we issued and are still expecting to see reflected locally. Used to
 // tell our own effects apart from the user reaching for the controls.

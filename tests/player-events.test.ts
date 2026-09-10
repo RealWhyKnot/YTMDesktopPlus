@@ -15,9 +15,15 @@ function makeQueue(videoIds: string[], repeatMode = RepeatMode.None, selectedIte
     autoplay: false,
     isGenerating: false,
     isInfinite: false,
-    items: videoIds.map(
-      (id): PlayerQueueItem => ({ thumbnails: [], title: id, author: "a", duration: "1:00", selected: false, videoId: id, counterparts: null })
-    ),
+    items: videoIds.map((id): PlayerQueueItem => ({
+      thumbnails: [],
+      title: id,
+      author: "a",
+      duration: "1:00",
+      selected: false,
+      videoId: id,
+      counterparts: null
+    })),
     repeatMode,
     selectedItemIndex
   };
