@@ -6,8 +6,6 @@
 #              two weeks. windows arm64 is excluded to match the publish matrix.
 #   validate - installs the built flatpak, Squirrel setup, and macOS app, then
 #              checks the installed copy actually starts.
-# The end-to-end harness (tools/test-harness) needs a display and live network
-# and runs from nightly-ytm-canary.yml instead of here.
 name: ci
 
 on:
@@ -87,7 +85,7 @@ jobs:
       # The flatpak is built on linux x64 only; cross-arch builds need qemu.
       - name: Cache flatpak runtimes
         if: matrix.os == 'linux' && matrix.arch == 'x64'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/flatpak
           key: flatpak-25.08-v1
@@ -115,7 +113,7 @@ jobs:
           actual=$(od -An -tx1 -j 18 -N 2 "$image" | tr -d ' \n')
           echo "$(basename "$image"): e_machine expected=$expected actual=$actual"
           test "$actual" = "$expected"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
           path: out/make/**
@@ -144,13 +142,13 @@ jobs:
             image: macos-latest
             arch: arm64
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
           path: dist
       - name: Cache flatpak runtimes
         if: matrix.os == 'linux'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/flatpak
           key: flatpak-25.08-v1

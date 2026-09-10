@@ -131,7 +131,7 @@ jobs:
       # The flatpak is built on linux x64 only; cross-arch builds need qemu.
       - name: Cache flatpak runtimes
         if: matrix.os == 'linux' && matrix.arch == 'x64'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/flatpak
           key: flatpak-25.08-v1
@@ -207,7 +207,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Cache flatpak runtimes
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/flatpak
           key: flatpak-25.08-v1
