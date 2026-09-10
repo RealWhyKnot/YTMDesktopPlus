@@ -7,6 +7,7 @@ import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { MakerDeb } from "@electron-forge/maker-deb";
 import { MakerFlatpak, flatpakArch } from "@electron-forge/maker-flatpak";
+import MakerAppImage from "@reforged/maker-appimage";
 import { MakerRpm } from "@electron-forge/maker-rpm";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
@@ -46,9 +47,10 @@ const config: ForgeConfig = {
     postMake: async (_forgeConfig, makeResults) => {
       for (const result of makeResults) {
         result.artifacts = result.artifacts.map(artifact => {
-          if (path.extname(artifact) !== ".flatpak") return artifact;
+          const extension = path.extname(artifact);
+          if (extension !== ".flatpak" && extension !== ".AppImage") return artifact;
 
-          const renamed = path.join(path.dirname(artifact), `YTMDesktopPlus-${result.packageJSON.version}-${flatpakArch(result.arch)}.flatpak`);
+          const renamed = path.join(path.dirname(artifact), `YTMDesktopPlus-${result.packageJSON.version}-${flatpakArch(result.arch)}${extension}`);
           renameSync(artifact, renamed);
           return renamed;
         });
@@ -93,6 +95,7 @@ const config: ForgeConfig = {
       options: {
         categories: ["AudioVideo", "Audio"],
         mimeType: ["x-scheme-handler/ytmdplus"],
+        requires: ["(alsa-lib or libasound2)"],
         icon: "./src/assets/icons/ytmd.png"
       }
     }),
@@ -101,6 +104,14 @@ const config: ForgeConfig = {
         categories: ["AudioVideo", "Audio"],
         mimeType: ["x-scheme-handler/ytmdplus"],
         section: "sound",
+        depends: ["libasound2t64 | libasound2"],
+        icon: "./src/assets/icons/ytmd.png"
+      }
+    }),
+    new MakerAppImage({
+      options: {
+        categories: ["AudioVideo", "Audio"],
+        mimeType: ["x-scheme-handler/ytmdplus"],
         icon: "./src/assets/icons/ytmd.png"
       }
     }),
@@ -140,7 +151,10 @@ const config: ForgeConfig = {
                 "--env=TMPDIR=/var/tmp",
                 "--talk-name=org.kde.StatusNotifierWatcher",
                 "--talk-name=org.freedesktop.Notifications",
-                "--filesystem=xdg-run/discord-ipc-0",
+                "--talk-name=org.freedesktop.secrets",
+                "--talk-name=org.kde.kwalletd5",
+                "--talk-name=org.kde.kwalletd6",
+                ...Array.from({ length: 10 }, (_, id) => `--filesystem=xdg-run/discord-ipc-${id}`),
                 "--filesystem=xdg-run/app/com.discordapp.Discord:create"
               ]
             }

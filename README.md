@@ -10,13 +10,24 @@ Grab the installer for your platform from [releases](https://github.com/RealWhyK
 
 On Windows the app can install updates on launch, like Discord does. It asks once on first run and the choice can be changed in settings at any time. The update channel follows the installed build, so a stable install stays on stable and a nightly install follows nightlies, and you can override the channel in settings; changing it applies the matching update when you save.
 
-On a Steam Deck, or any Linux distribution where the deb and rpm packages do not apply, download the `.flatpak` file from a release and open it in Discover, or install it from a terminal:
+On Debian, Ubuntu and Fedora take the `.deb` or `.rpm`. They are the best-behaved option: they install to `/opt` as root, so Chromium's sandbox works properly without you doing anything.
+
+On a Steam Deck, or anywhere the deb and rpm do not apply, download the `.flatpak` and open it in Discover, or install it from a terminal:
 
 ```bash
-flatpak install --user ./YTMDesktopPlus-2026.820.0-beta-x86_64.flatpak
+flatpak install --user ./YTMDesktopPlus-x86_64.flatpak
 ```
 
-The flatpak needs the Flathub remote for its runtime, which SteamOS already has set up. One limitation: Discord rich presence from inside the flatpak reaches a normally installed Discord, but not the flatpak build of Discord.
+The flatpak needs the Flathub remote for its runtime, which SteamOS already has set up.
+
+There is also an `.AppImage` for x86_64 and aarch64 if you would rather not install anything. Mark it executable and run it. One caveat, and it is not specific to this app: an AppImage cannot ship the root-owned sandbox helper that the deb and rpm rely on, so on Ubuntu 24.04 and Debian 13, where unprivileged user namespaces are restricted by default, it will not start until you install the AppArmor profile from this repo:
+
+```bash
+sudo cp packaging/apparmor/ytmdesktop-plus /etc/apparmor.d/ytmdesktop-plus
+sudo apparmor_parser -r /etc/apparmor.d/ytmdesktop-plus
+```
+
+If you are on one of those distributions, the deb is the easier path.
 
 ## Features
 
@@ -66,7 +77,9 @@ Useful commands:
 - `node tools/test-harness/run.mjs boot-hooks` - end-to-end check that the app still hooks the live YouTube Music page; more scenarios live in `tools/test-harness/scenarios`
 - `yarn make` - build platform installers into `out/make`
 
-On Linux, building the deb and rpm packages needs `fakeroot`, `dpkg`, and `rpm`. The flatpak additionally needs `flatpak`, `flatpak-builder`, `elfutils`, and the Flathub remote (`flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo`).
+On Linux, building the deb and rpm packages needs `fakeroot`, `dpkg`, and `rpm`, and the AppImage needs `mksquashfs` from `squashfs-tools`. The flatpak additionally needs `flatpak`, `flatpak-builder`, `elfutils`, and the Flathub remote (`flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo`).
+
+To build one target rather than all of them, pass its maker name, not the package name: `yarn make --arch x64 --targets flatpak` or `--targets AppImage`. Forge matches `--targets` against the maker's own `name`, so passing `@electron-forge/maker-flatpak` silently builds a default-configured flatpak instead of the one in `forge.config.ts`.
 
 ## License
 

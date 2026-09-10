@@ -22,7 +22,7 @@ function makeResult(artifactNames: string[], arch: string, version: string) {
   return { artifacts, packageJSON: { version }, platform: "linux", arch };
 }
 
-describe("postMake flatpak rename", () => {
+describe("postMake linux artifact rename", () => {
   it("stamps the version and flatpak arch onto the bundle", async () => {
     const result = makeResult(["dev.whyknot.YTMDesktopPlus_stable_x86_64.flatpak"], "x64", "2026.820.0-beta");
 
@@ -38,6 +38,23 @@ describe("postMake flatpak rename", () => {
     const [renamed] = await runPostMake(result);
 
     expect(path.basename(renamed.artifacts[0])).toBe("YTMDesktopPlus-2026.820.0-beta-aarch64.flatpak");
+  });
+
+  it("maps the AppImage forge arch onto the gnu arch", async () => {
+    const result = makeResult(["YTMDesktopPlus-2026.820.0-beta-x64.AppImage"], "x64", "2026.820.0-beta");
+
+    const [renamed] = await runPostMake(result);
+
+    expect(path.basename(renamed.artifacts[0])).toBe("YTMDesktopPlus-2026.820.0-beta-x86_64.AppImage");
+    expect(existsSync(renamed.artifacts[0])).toBe(true);
+  });
+
+  it("maps the arm64 AppImage to aarch64", async () => {
+    const result = makeResult(["YTMDesktopPlus-2026.820.0-beta-arm64.AppImage"], "arm64", "2026.820.0-beta");
+
+    const [renamed] = await runPostMake(result);
+
+    expect(path.basename(renamed.artifacts[0])).toBe("YTMDesktopPlus-2026.820.0-beta-aarch64.AppImage");
   });
 
   it("leaves every other maker's artifacts alone", async () => {

@@ -23,7 +23,7 @@ rsync -a --delete --exclude node_modules --exclude out --exclude .vite \
 cd "$BUILD_DIR"
 yarn=$(ls .yarn/releases/yarn-*.cjs | head -1)
 node "$yarn" install --immutable
-node "$yarn" make --arch x64 --targets @electron-forge/maker-flatpak
+node "$yarn" make --arch x64 --targets flatpak
 
 mkdir -p "$SOURCE/out/make/flatpak"
 cp -r "$BUILD_DIR"/out/make/flatpak/. "$SOURCE/out/make/flatpak/"

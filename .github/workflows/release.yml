@@ -141,6 +141,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder elfutils
           flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - name: Install AppImage toolchain
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools
       - name: Stamp version from tag
         shell: pwsh
         env:
@@ -149,8 +154,25 @@ jobs:
           $package = Get-Content package.json -Raw | ConvertFrom-Json
           $package.version = $env:VERSION
           $package | ConvertTo-Json -Depth 10 | Set-Content package.json
+          $metainfo = "flatpak/dev.whyknot.YTMDesktopPlus.metainfo.xml"
+          $date = Get-Date -Format "yyyy-MM-dd"
+          $xml = Get-Content $metainfo -Raw
+          $stamped = $xml -replace '<release version="[^"]*" date="[^"]*"/>', "<release version=""$env:VERSION"" date=""$date""/>"
+          if ($stamped -eq $xml) { Write-Output "::error::Release stamp did not match in $metainfo"; exit 1 }
+          [System.IO.File]::WriteAllText((Resolve-Path $metainfo), $stamped, (New-Object System.Text.UTF8Encoding($false)))
       - name: Build
         run: yarn publish:dry --arch ${{ matrix.arch }}
+      - name: Check the AppImage runtime matches the target arch
+        if: matrix.os == 'linux'
+        run: |
+          case "${{ matrix.arch }}" in
+            arm64) expected=b700 ;;
+            *) expected=3e00 ;;
+          esac
+          image=$(ls out/make/AppImage/${{ matrix.arch }}/*.AppImage)
+          actual=$(od -An -tx1 -j 18 -N 2 "$image" | tr -d ' \n')
+          echo "$(basename "$image"): e_machine expected=$expected actual=$actual"
+          test "$actual" = "$expected"
       # Uploads can land server-side while the client sees a network error;
       # the retry then dies on already_exists and the leg goes red with its
       # assets half-attached. Clearing this leg's names first makes re-running
@@ -178,11 +200,12 @@ jobs:
   # logging, which packaged builds only write for -beta versions, so the
   # marker wait is skipped for stables and process survival is used instead.
   smoke:
-    name: released flatpak smoke
+    name: released linux smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     needs: [validate, build]
     steps:
+      - uses: actions/checkout@v7
       - name: Cache flatpak runtimes
         uses: actions/cache@v4
         with:
@@ -224,6 +247,37 @@ jobs:
             flatpak ps --columns=application | grep -qx dev.whyknot.YTMDesktopPlus && ok=1
           fi
           flatpak kill dev.whyknot.YTMDesktopPlus || true
+          [ -n "$ok" ]
+      - name: Install, launch, and check the published AppImage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+          REPO: ${{ github.repository }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb apparmor-utils
+          sudo cp packaging/apparmor/ytmdesktop-plus /etc/apparmor.d/ytmdesktop-plus
+          sudo apparmor_parser -r /etc/apparmor.d/ytmdesktop-plus
+          gh release download "$TAG" --repo "$REPO" --pattern "*-x86_64.AppImage" --dir appimage
+          image=$(ls appimage/*.AppImage)
+          chmod +x "$image"
+          dbus-run-session -- xvfb-run -a "$image" --appimage-extract-and-run &
+          logfile=~/.config/YTMDesktopPlus/logs/main.log
+          ok=""
+          if [ "$PRERELEASE" = "true" ]; then
+            for _ in $(seq 1 24); do
+              sleep 5
+              if grep -q "YTM view hook failed\|YTM view failed to load" "$logfile" 2>/dev/null; then break; fi
+              if grep -q "YTM view loaded" "$logfile" 2>/dev/null; then ok=1; break; fi
+            done
+            echo "--- main.log tail"
+            tail -n 40 "$logfile" || true
+          else
+            sleep 60
+            pgrep -f "appimage_extracted_.*ytmdesktop-plus" > /dev/null && ok=1
+          fi
+          pkill -f "appimage_extracted_.*ytmdesktop-plus" || true
           [ -n "$ok" ]
 
   notes:
@@ -301,6 +355,10 @@ jobs:
           $bundle = Get-ChildItem assets -Filter "*.flatpak" | Select-Object -First 1
           if ($bundle) {
             $install += "`n`nSteam Deck and other Linux: download [$($bundle.Name)](https://github.com/$env:REPO/releases/download/$env:TAG/$($bundle.Name)), then open it in Discover or run ``flatpak install --user ./$($bundle.Name)``."
+          }
+          $image = Get-ChildItem assets -Filter "*-x86_64.AppImage" | Select-Object -First 1
+          if ($image) {
+            $install += "`n`nAny other Linux, no install: download [$($image.Name)](https://github.com/$env:REPO/releases/download/$env:TAG/$($image.Name)), mark it executable and run it. On Ubuntu 24.04 and Debian 13 you will also need the AppArmor profile, see the README."
           }
           $table = "| Asset | Size | SHA-256 |`n| --- | --- | --- |"
           Get-ChildItem assets -File | Sort-Object Name | ForEach-Object {

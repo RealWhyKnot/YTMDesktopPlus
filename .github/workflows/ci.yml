@@ -97,8 +97,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder elfutils
           flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - name: Install AppImage toolchain
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools
       - name: Build distributables
         run: yarn make --arch ${{ matrix.arch }}
+      - name: Check the AppImage runtime matches the target arch
+        if: matrix.os == 'linux'
+        run: |
+          case "${{ matrix.arch }}" in
+            arm64) expected=b700 ;;
+            *) expected=3e00 ;;
+          esac
+          image=$(ls out/make/AppImage/${{ matrix.arch }}/*.AppImage)
+          actual=$(od -An -tx1 -j 18 -N 2 "$image" | tr -d ' \n')
+          echo "$(basename "$image"): e_machine expected=$expected actual=$actual"
+          test "$actual" = "$expected"
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}

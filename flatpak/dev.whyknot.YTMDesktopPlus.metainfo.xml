@@ -25,4 +25,7 @@
   <url type="homepage">https://github.com/RealWhyKnot/YTMDesktopPlus</url>
   <url type="bugtracker">https://github.com/RealWhyKnot/YTMDesktopPlus/issues</url>
   <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.0.0" date="1970-01-01"/>
+  </releases>
 </component>
