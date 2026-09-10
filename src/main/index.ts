@@ -1353,6 +1353,12 @@ app.on("ready", async () => {
     log.warn(`YTM view optional module '${name}' failed`, detail);
   });
 
+  ipcMain.on("ytmView:contractMiss", (event, what, detail) => {
+    if (!isYtmViewSender(event.sender)) return;
+
+    log.warn(`YTM contract miss: ${what}`, detail);
+  });
+
   ipcMain.on("ytmView:videoProgressChanged", (event, progress) => {
     if (!isYtmViewSender(event.sender)) return;
 

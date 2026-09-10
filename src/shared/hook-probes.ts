@@ -10,6 +10,8 @@
 // observe, and repair what they can, so a failure can be logged with enough
 // detail to act on.
 
+import { KNOWN_PLAYER_API_RESOLVER, PLAYER_API_DUCK_TYPE, PLAYER_API_MEMBERS, PLAYER_API_RESOLVER_PATTERN } from "./ytm-contract";
+
 export const HOOK_POLL_INTERVAL = 250;
 export const HOOK_POLL_MAX_ATTEMPTS = 120; // 30 seconds per stage
 
@@ -17,12 +19,17 @@ export const HOOK_POLL_MAX_ATTEMPTS = 120; // 30 seconds per stage
 // (enforced by tests/player-bar-selector.test.ts).
 export const PLAYER_BAR_SELECTOR = "ytmusic-app-layout>ytmusic-player-bar";
 
+export type PlayerApiSource = "property" | "scan" | "resolver" | "movie-player";
+
 export type PlayerBarProbeSnapshot = {
   playerBarPresent: boolean;
   playerApiPresent: boolean;
   playerApiReady: boolean;
   resolverPresent: boolean;
   resolveError: string | null;
+  resolvedVia: PlayerApiSource | null;
+  candidateKeys: string[];
+  missingMembers: string[];
 };
 
 // Stage 1: the store hook installed by the Polymer base class trap.
@@ -35,37 +42,126 @@ export const storeHookProbeSource = `
 // Stage 2: the player bar element and its player API.
 export const playerBarProbeSource = `
   (function() {
-    const playerBar = document.querySelector("${PLAYER_BAR_SELECTOR}");
-    if (playerBar && !playerBar.playerApi && typeof playerBar.resolvePlayerApi === "function" && !playerBar.__ytmdPlayerApiResolvePending) {
-      playerBar.__ytmdPlayerApiResolvePending = true;
+    const DUCK_TYPE = ${JSON.stringify([...PLAYER_API_DUCK_TYPE])};
+    const MEMBERS = ${JSON.stringify([...PLAYER_API_MEMBERS])};
+    const RESOLVER = ${PLAYER_API_RESOLVER_PATTERN};
+    const KNOWN_RESOLVER = ${JSON.stringify(KNOWN_PLAYER_API_RESOLVER)};
+    const INTERESTING = /player|api/i;
+    const MAX_CANDIDATE_KEYS = 20;
+
+    function read(target, key) {
       try {
-        Promise.resolve(playerBar.resolvePlayerApi()).then(
-          function (api) {
-            if (api && !playerBar.playerApi) playerBar.playerApi = api;
-          },
-          function (error) {
-            playerBar.__ytmdPlayerApiResolveError = String(error);
-            playerBar.__ytmdPlayerApiResolvePending = false;
-          }
-        );
-      } catch (error) {
-        playerBar.__ytmdPlayerApiResolveError = String(error);
-        playerBar.__ytmdPlayerApiResolvePending = false;
+        return target[key];
+      } catch {
+        return undefined;
       }
     }
-    const playerApi = playerBar ? playerBar.playerApi : null;
+
+    function ducks(value) {
+      if (!value || (typeof value !== "object" && typeof value !== "function")) return false;
+      for (let i = 0; i < DUCK_TYPE.length; i++) {
+        if (typeof read(value, DUCK_TYPE[i]) !== "function") return false;
+      }
+      return true;
+    }
+
+    function interestingKeys(target) {
+      const found = [];
+      let node = target;
+      let depth = 0;
+      while (node && depth < 6) {
+        let names = [];
+        try {
+          names = Object.getOwnPropertyNames(node);
+        } catch {
+          names = [];
+        }
+        for (let i = 0; i < names.length; i++) {
+          if (INTERESTING.test(names[i]) && found.indexOf(names[i]) === -1) found.push(names[i]);
+        }
+        node = Object.getPrototypeOf(node);
+        depth++;
+      }
+      return found.slice(0, MAX_CANDIDATE_KEYS);
+    }
+
+    const playerBar = document.querySelector("${PLAYER_BAR_SELECTOR}");
+    let playerApi = playerBar ? read(playerBar, "playerApi") : null;
+    let resolvedVia = playerApi ? read(playerBar, "__ytmdPlayerApiVia") || "property" : null;
+    let candidateKeys = [];
+    let resolverKey = null;
+
+    if (playerBar && !playerApi) {
+      candidateKeys = interestingKeys(playerBar);
+      for (let i = 0; i < candidateKeys.length; i++) {
+        const key = candidateKeys[i];
+        const value = read(playerBar, key);
+        if (typeof value === "function" && value.length === 0 && RESOLVER.test(key)) {
+          if (resolverKey === null || key === KNOWN_RESOLVER) resolverKey = key;
+        }
+        if (!playerApi && ducks(value)) {
+          playerApi = value;
+          resolvedVia = "scan";
+        }
+      }
+
+      if (!playerApi) {
+        const moviePlayer = document.querySelector("#movie_player");
+        if (moviePlayer && moviePlayer !== playerBar && ducks(moviePlayer)) {
+          playerApi = moviePlayer;
+          resolvedVia = "movie-player";
+        }
+      }
+
+      if (playerApi) {
+        playerBar.playerApi = playerApi;
+        playerBar.__ytmdPlayerApiVia = resolvedVia;
+      } else if (resolverKey !== null && !playerBar.__ytmdPlayerApiResolvePending) {
+        const trusted = resolverKey === KNOWN_RESOLVER;
+        playerBar.__ytmdPlayerApiResolvePending = true;
+        try {
+          Promise.resolve(read(playerBar, resolverKey).call(playerBar)).then(
+            function (api) {
+              if (api && (trusted || ducks(api)) && !playerBar.playerApi) {
+                playerBar.playerApi = api;
+                playerBar.__ytmdPlayerApiVia = "resolver";
+              }
+            },
+            function (error) {
+              playerBar.__ytmdPlayerApiResolveError = String(error);
+              playerBar.__ytmdPlayerApiResolvePending = false;
+            }
+          );
+        } catch (error) {
+          playerBar.__ytmdPlayerApiResolveError = String(error);
+          playerBar.__ytmdPlayerApiResolvePending = false;
+        }
+      }
+    }
+
     let ready = false;
     try {
       ready = !!(playerApi && playerApi.isReady());
     } catch {
       ready = false;
     }
+
+    const missingMembers = [];
+    if (playerApi) {
+      for (let i = 0; i < MEMBERS.length; i++) {
+        if (typeof read(playerApi, MEMBERS[i]) !== "function") missingMembers.push(MEMBERS[i]);
+      }
+    }
+
     return {
       playerBarPresent: !!playerBar,
       playerApiPresent: !!playerApi,
       playerApiReady: ready,
-      resolverPresent: !!(playerBar && typeof playerBar.resolvePlayerApi === "function"),
-      resolveError: playerBar && playerBar.__ytmdPlayerApiResolveError ? String(playerBar.__ytmdPlayerApiResolveError) : null
+      resolverPresent: resolverKey !== null,
+      resolveError: playerBar && playerBar.__ytmdPlayerApiResolveError ? String(playerBar.__ytmdPlayerApiResolveError) : null,
+      resolvedVia: resolvedVia,
+      candidateKeys: candidateKeys,
+      missingMembers: missingMembers
     };
   })
 `;

@@ -44,7 +44,17 @@ const store = new Store<StoreSchema>();
 // renderer processes (and their argv) can be reused across view recreations.
 const brokenHookStage: string | null = process.argv.includes("--ytmd-test") ? ipcRenderer.sendSync("ytmdTest:getBrokenHookStage") : null;
 const failingBooleanProbeSource = `(function() { return false; })`;
-const failingPlayerBarProbeSource = `(function() { return { playerBarPresent: false, playerApiPresent: false, playerApiReady: false, resolverPresent: false, resolveError: null }; })`;
+const failingPlayerBarProbeSource = `(function() { return { playerBarPresent: false, playerApiPresent: false, playerApiReady: false, resolverPresent: false, resolveError: null, resolvedVia: null, candidateKeys: [], missingMembers: [] }; })`;
+
+const MAX_CONTRACT_MISSES = 50;
+const reportedContractMisses = new Set<string>();
+
+const reportContractMiss = (what: string, detail?: unknown) => {
+  const key = String(what);
+  if (reportedContractMisses.has(key) || reportedContractMisses.size >= MAX_CONTRACT_MISSES) return;
+  reportedContractMisses.add(key);
+  ipcRenderer.send("ytmView:contractMiss", key, detail === undefined ? undefined : String(detail));
+};
 
 contextBridge.exposeInMainWorld("ytmd", {
   sendVideoProgress: (volume: number) => ipcRenderer.send("ytmView:videoProgressChanged", volume),
@@ -59,6 +69,7 @@ contextBridge.exposeInMainWorld("ytmd", {
   // the addon's ctx.ytmview.onMessage(name) callbacks.
   postAddonMessage: (addonId: string, name: string, payload?: unknown) => ipcRenderer.send("ytmView:addonMessage", addonId, name, payload),
   sendAdBlockEvent: (kind: string, detail?: unknown) => ipcRenderer.send("ytmView:adBlockEvent", kind, detail),
+  reportContractMiss: (what: string, detail?: unknown) => reportContractMiss(what, detail),
   ...(YTMD_DEV_TOOLS ? { sendDevProbe: (batch: unknown[]) => ipcRenderer.send("ytmView:devProbe", batch) } : {})
 });
 
@@ -344,10 +355,19 @@ const startHooking = async () => {
     HOOK_POLL_INTERVAL,
     HOOK_POLL_MAX_ATTEMPTS
   );
-  console.debug(`[ytmd] hook stage player-api: done=${playerBar.done} attempts=${playerBar.attempts} lastError=${playerBar.lastError}`);
+  console.debug(
+    `[ytmd] hook stage player-api: done=${playerBar.done} attempts=${playerBar.attempts} resolvedVia=${playerBar.last?.resolvedVia} lastError=${playerBar.lastError}`
+  );
   if (!playerBar.done) {
     ipcRenderer.send("ytmView:hookFailed", "player-api", { attempts: playerBar.attempts, lastError: playerBar.lastError, ...playerBar.last });
     return;
+  }
+
+  if (playerBar.last && playerBar.last.resolvedVia !== "property" && playerBar.last.resolvedVia !== "resolver") {
+    reportContractMiss(`playerApi resolved via ${playerBar.last.resolvedVia}`, playerBar.last.candidateKeys.join(","));
+  }
+  if (playerBar.last && playerBar.last.missingMembers.length > 0) {
+    reportContractMiss(`playerApi missing ${playerBar.last.missingMembers.join(",")}`);
   }
 
   // Serving scripts has to be ready before hookPlayerApiEvents starts feeding
@@ -742,30 +762,14 @@ const startHooking = async () => {
       .executeJavaScript(`window.__ytmdAdPrune && (window.__ytmdAdPrune.enabled = ${newState.playback.adBlockerEnabled === true});`)
       .catch((): void => undefined);
 
-    if (newState.appearance.alwaysShowVolumeSlider) {
-      const volumeSlider = document.querySelector("#volume-slider");
-      if (!volumeSlider.classList.contains("ytmd-persist-volume-slider")) {
-        volumeSlider.classList.add("ytmd-persist-volume-slider");
-      }
+    const volumeSlider = document.querySelector(`${PLAYER_BAR_SELECTOR} #volume-slider`);
+    if (!volumeSlider) {
+      reportContractMiss(`${PLAYER_BAR_SELECTOR} #volume-slider`);
+    } else if (newState.appearance.alwaysShowVolumeSlider) {
+      volumeSlider.classList.add("ytmd-persist-volume-slider");
     } else {
-      const volumeSlider = document.querySelector("#volume-slider");
-      if (volumeSlider.classList.contains("ytmd-persist-volume-slider")) {
-        volumeSlider.classList.remove("ytmd-persist-volume-slider");
-      }
+      volumeSlider.classList.remove("ytmd-persist-volume-slider");
     }
-  });
-
-  ipcRenderer.on("ytmView:refitPopups", async () => {
-    // Update 4/14/2024: Broken until a hook is provided for this
-    /*
-    (
-      await webFrame.executeJavaScript(`
-        (function() {
-          document.querySelector("ytmusic-popup-container").refitPopups_();
-        })
-      `)
-    )();
-    */
   });
 
   if (YTMD_DEV_TOOLS) {

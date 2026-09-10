@@ -10,9 +10,11 @@ const scriptFiles = readdirSync("src", { recursive: true })
   .filter(name => name.endsWith(".script.js"))
   .map(name => join("src", name));
 
-// Bare "ytmusic-player-bar" appears legitimately (class adds, broader addon
-// selectors); only the layout-prefixed form must stay canonical.
-const referencing = scriptFiles.filter(path => readFileSync(path, "utf8").includes("ytmusic-app-layout")).map(path => ({ path }));
+const BARE_SELECTOR_ALLOWLIST = new Set(["ytmusic-player-bar #volume-slider"]);
+
+const referencing = scriptFiles.filter(path => readFileSync(path, "utf8").includes("ytmusic-player-bar")).map(path => ({ path }));
+
+const selectorsIn = (source: string): string[] => [...source.matchAll(/querySelector(?:All)?\(\s*"([^"]*ytmusic-player-bar[^"]*)"/g)].map(match => match[1]);
 
 describe("player bar selector", () => {
   it("is referenced by at least one raw script", () => {
@@ -23,6 +25,13 @@ describe("player bar selector", () => {
     const source = readFileSync(path, "utf8");
     for (const match of source.matchAll(/ytmusic-app-layout\s*>?\s*ytmusic-player-bar/g)) {
       expect(match[0]).toBe(PLAYER_BAR_SELECTOR);
+    }
+  });
+
+  it.each(referencing)("$path queries the player bar canonically", ({ path }) => {
+    for (const selector of selectorsIn(readFileSync(path, "utf8"))) {
+      if (BARE_SELECTOR_ALLOWLIST.has(selector)) continue;
+      expect(selector.startsWith(PLAYER_BAR_SELECTOR)).toBe(true);
     }
   });
 

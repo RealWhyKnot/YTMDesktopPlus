@@ -1,13 +1,11 @@
 (function () {
-  function isExperimentEnabled(experimentFlag) {
-    const flag = window.ytcfg.data_.EXPERIMENT_FLAGS[experimentFlag];
-    if (flag && typeof flag === "string") return flag === "false" ? false : true;
-    return !!flag;
-  }
-
   const ytmStore = window.__YTMD_HOOK__.ytmStore;
 
-  let ytmdControlButtons = {};
+  function miss(what) {
+    window.ytmd?.reportContractMiss?.(what);
+  }
+
+  const playerBar = document.querySelector("ytmusic-app-layout>ytmusic-player-bar");
 
   let currentVideoId = "";
 
@@ -68,10 +66,9 @@
     iconName: "yt-sys-icons:library_add",
     data: libraryButtonData
   };
-  document
-    .querySelector("ytmusic-app-layout>ytmusic-player-bar")
-    .querySelector("ytmusic-like-button-renderer")
-    .insertAdjacentElement("afterend", libraryButton);
+  const likeButtonRenderer = playerBar.querySelector("ytmusic-like-button-renderer");
+  if (likeButtonRenderer) likeButtonRenderer.insertAdjacentElement("afterend", libraryButton);
+  else miss("ytmusic-like-button-renderer");
 
   let playlistButton = document.createElement("yt-button-shape");
   playlistButton.classList.add("ytmd-player-bar-control");
@@ -156,11 +153,14 @@
 
   document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.addEventListener("onVideoDataChange", event => {
     if (event.playertype === 1 && (event.type === "dataloaded" || event.type === "dataupdated")) {
-      currentVideoId = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.getPlayerResponse().videoDetails.videoId;
+      const response = playerBar.playerApi.getPlayerResponse();
+      const videoId = response?.videoDetails?.videoId;
+      if (videoId) currentVideoId = videoId;
+      else if (response) miss("playerBarControls: getPlayerResponse().videoDetails");
     }
   });
 
-  let rightControls = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").querySelector(".right-controls-buttons");
+  const rightControls = playerBar.querySelector(".right-controls-buttons");
   let sleepTimerButton = document.createElement("yt-icon-button");
 
   let sleepTimerIcon = document.createElement("yt-icon");
@@ -337,7 +337,9 @@
       })
     );
   };
-  rightControls.querySelector(".shuffle").insertAdjacentElement("afterend", sleepTimerButton);
+  const shuffleButton = rightControls ? rightControls.querySelector(".shuffle") : null;
+  if (shuffleButton) shuffleButton.insertAdjacentElement("afterend", sleepTimerButton);
+  else miss(rightControls ? ".right-controls-buttons .shuffle" : ".right-controls-buttons");
 
   const humanizeTime = time => {
     // This is just a hacked together function to provide a humanization for the sleep timer. It serves no purpose outside that and isn't some complicated humanizer
@@ -563,6 +565,4 @@
       }
     }
   });
-
-  ytmdControlButtons.libraryButton = libraryButton;
 });
