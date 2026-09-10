@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- feat(test-harness): measure runtime memory and build size
+- fix(test-harness): mute audio by default and stop seeding stale logs
+- fix(last-fm): guard scrobble prep against an absent queue
 - docs(readme): shorten setup and feature descriptions
 - fix(flatpak): let the sandbox own the mpris bus name
 - docs(readme): rewrite
