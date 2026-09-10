@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- feat(linux): report newer releases instead of staying silent
+- feat(linux): add appimage target and close flatpak sandbox gaps
+- chore(deps): move to electron 44 and current releases
 - fix(ytmview): resolve the player api by discovery instead of a pinned name
 
 ## [v2026.909.1](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.909.1) - 2026-09-09
