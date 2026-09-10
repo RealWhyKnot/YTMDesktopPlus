@@ -104,10 +104,10 @@ onBeforeMount(async () => {
 }
 
 .deny {
-  background-color: #d32f2f;
+  background-color: var(--danger);
 }
 
 .deny:hover {
-  background-color: #c62828;
+  background-color: var(--danger-hover);
 }
 </style>

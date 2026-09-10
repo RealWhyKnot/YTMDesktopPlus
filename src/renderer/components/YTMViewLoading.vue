@@ -85,12 +85,12 @@ function retry() {
   border: 1px solid var(--text-faint);
   border-radius: 16px;
   background: none;
-  color: #ffffff;
+  color: var(--text);
   cursor: pointer;
 }
 
 .ytmview-loading-retry:hover {
-  border-color: #ffffff;
+  border-color: var(--text);
 }
 
 .fade-enter-active,
@@ -120,7 +120,7 @@ function retry() {
   width: 12px;
   height: 4px;
   border-radius: 10px;
-  background-color: #ffffff;
+  background-color: var(--text);
   animation: musicloader 1.5s ease-in-out infinite;
 }
 

@@ -117,7 +117,7 @@ const scrobblePercent = staged.refs["lastfm.scrobblePercent"];
         <p class="description">
           User is Authenticated:
           <span v-if="lastFMSessionKey" style="color: var(--success)">Yes</span>
-          <span v-else style="color: #ff1100">No</span>
+          <span v-else style="color: var(--danger)">No</span>
         </p>
       </div>
       <button v-if="lastFMSessionKey" @click="logoutLastFM">Logout</button>

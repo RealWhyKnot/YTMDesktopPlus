@@ -197,7 +197,7 @@ if (props.isMainWindow) {
 }
 
 .title-text {
-  font-family: "Open Sans", sans-serif;
+  font-family: var(--font-title);
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -230,7 +230,7 @@ if (props.isMainWindow) {
 
 .app-button > .material-symbols-outlined {
   font-size: 20px;
-  color: #b4b4b4;
+  color: var(--titlebar-symbol);
 }
 
 .app-buttons .divider {
@@ -246,7 +246,7 @@ if (props.isMainWindow) {
 .app-buttons .divider:after {
   content: "";
   position: absolute;
-  border-left: 1px solid #666666;
+  border-left: 1px solid var(--titlebar-separator);
   right: 0;
   height: 100%;
 }
@@ -286,7 +286,7 @@ if (props.isMainWindow) {
 }
 
 .window-close:hover {
-  background-color: #e81123;
+  background-color: var(--danger);
 }
 
 .update-button {
@@ -302,10 +302,10 @@ if (props.isMainWindow) {
 }
 
 .badge-text {
-  font-family: "Open Sans", sans-serif;
+  font-family: var(--font-title);
   font-size: 12px;
   line-height: 1;
-  color: #b4b4b4;
+  color: var(--titlebar-symbol);
 }
 
 .badge-button.active > .material-symbols-outlined,

@@ -48,11 +48,11 @@ const value = computed({
   z-index: 2;
   width: 28px;
   height: 28px;
-  background: #fff;
+  background: var(--knob);
   left: 2px;
   top: 2px;
   border-radius: 50%;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow);
   transition: all ease 0.3s;
 }
 

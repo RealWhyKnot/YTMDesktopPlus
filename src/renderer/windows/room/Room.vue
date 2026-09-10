@@ -283,7 +283,7 @@ button {
 }
 
 button:disabled {
-  color: #888888;
+  color: var(--text-faint);
   cursor: not-allowed;
 }
 
@@ -354,7 +354,7 @@ button:disabled {
 }
 
 .room-code {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 22px;
   letter-spacing: 0.18em;
   background-color: var(--bg-raised);
@@ -420,7 +420,7 @@ button:disabled {
   align-items: center;
   gap: 8px;
   padding: 6px 0;
-  border-bottom: 1px solid #1a1a1a;
+  border-bottom: 1px solid var(--border);
 }
 
 .member-name {

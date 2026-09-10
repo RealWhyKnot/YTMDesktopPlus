@@ -113,7 +113,7 @@ const releaseUrl = computed(() => `https://github.com/RealWhyKnot/YTMDesktopPlus
   display: flex;
   align-items: center;
   background-color: transparent;
-  border: 1px solid #ffffff;
+  border: 1px solid var(--text);
   border-radius: 4px;
   padding: 4px 8px;
   margin-bottom: 8px;
@@ -129,7 +129,7 @@ const releaseUrl = computed(() => `https://github.com/RealWhyKnot/YTMDesktopPlus
 .no-update {
   display: flex;
   align-items: center;
-  color: #888888;
+  color: var(--text-faint);
   margin: 0 0 8px 0;
 }
 
@@ -151,7 +151,7 @@ const releaseUrl = computed(() => `https://github.com/RealWhyKnot/YTMDesktopPlus
 .no-auto-updater {
   display: flex;
   align-items: center;
-  color: #888888;
+  color: var(--text-faint);
   margin: 0 0 8px 0;
 }
 
