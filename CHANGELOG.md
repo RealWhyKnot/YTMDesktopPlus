@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- ci: move actions off the deprecated node 20 runtime
+- fix(linux): defer the update check until the app is ready
 - feat(linux): report newer releases instead of staying silent
 - feat(linux): add appimage target and close flatpak sandbox gaps
 - chore(deps): move to electron 44 and current releases
