@@ -513,8 +513,10 @@ if (updatesSupported()) {
     1000 * 60 * 15
   );
 } else if (updateNoticeSupported()) {
-  checkUpdateNotice();
-  setInterval(() => checkUpdateNotice(), 1000 * 60 * 60);
+  app.whenReady().then(() => {
+    checkUpdateNotice();
+    setInterval(() => checkUpdateNotice(), 1000 * 60 * 60);
+  });
 }
 
 const integrationRegistrations: IntegrationRegistration[] = [
