@@ -85,8 +85,9 @@ export default class LastFM implements IIntegration {
       }
 
       // Store all the IDs of videos for this song.
-      this.possibleVideoIds = state.queue.items[state.queue.selectedItemIndex]?.counterparts?.map(item => item.videoId) || [];
-      this.possibleVideoIds.push(state.queue.items[state.queue.selectedItemIndex]?.videoId);
+      const selectedItem = state.queue?.items[state.queue.selectedItemIndex];
+      this.possibleVideoIds = selectedItem?.counterparts?.map(item => item.videoId) || [];
+      this.possibleVideoIds.push(selectedItem?.videoId ?? state.videoDetails.id);
 
       if (!this.lastfmDetails || !this.lastfmDetails.sessionKey) {
         this.getSession();
