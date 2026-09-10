@@ -1,0 +1,13 @@
+{
+  "id": "neon-drive",
+  "name": "Neon Drive",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "Indigo night, magenta and cyan glow, straight off a chrome sunset.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "appStyles": ["app.css"],
+  "ytmStyles": ["ytm.css"],
+  "titleBarOverlay": { "color": "#0f0722", "symbolColor": "#22d3ee" }
+}

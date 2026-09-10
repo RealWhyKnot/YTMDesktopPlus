@@ -1,13 +1,32 @@
 import path from "node:path";
+import log from "electron-log";
 import { BrowserWindow, shell, type BrowserWindowConstructorOptions } from "electron";
 
-// Mirrors --bg/--text-muted in src/assets/app.css; the main process cannot
-// read CSS.
 export const TITLE_BAR_OVERLAY = {
   color: "#000000",
   symbolColor: "#BBBBBB",
   height: 36
 };
+
+type TitleBarOverlay = { color: string; symbolColor: string; height: number };
+
+let titleBarOverlayProvider: () => TitleBarOverlay = () => TITLE_BAR_OVERLAY;
+
+export function setTitleBarOverlayProvider(provider: () => TitleBarOverlay): void {
+  titleBarOverlayProvider = provider;
+}
+
+export function refreshTitleBarOverlays(): void {
+  if (process.platform !== "win32") return;
+  const overlay = titleBarOverlayProvider();
+  for (const window of BrowserWindow.getAllWindows()) {
+    try {
+      window.setTitleBarOverlay(overlay);
+    } catch (error) {
+      log.debug("Window does not carry a title bar overlay", error);
+    }
+  }
+}
 
 type AppWindowOptions = BrowserWindowConstructorOptions & {
   // window.open targets opened in the system browser; everything else is denied.
@@ -19,7 +38,7 @@ export function createAppWindow(options: AppWindowOptions): BrowserWindow {
   const window = new BrowserWindow({
     frame: false,
     titleBarStyle: "hidden",
-    titleBarOverlay: TITLE_BAR_OVERLAY,
+    titleBarOverlay: titleBarOverlayProvider(),
     webPreferences: {
       sandbox: true,
       contextIsolation: true,

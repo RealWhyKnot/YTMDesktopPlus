@@ -3,6 +3,10 @@ import Store from "../store-ipc/store";
 import { StoreSchema, MemoryStoreSchema } from "~shared/store/schema";
 import MemoryStore from "../store-ipc/memory-store";
 import { AddonDescriptor } from "~shared/addons/types";
+import { ThemeDescriptor } from "~shared/themes/sdk";
+import { ThemeBridge } from "../windows/theme-bridge";
+
+type ThemeActionResult = { ok: true; id?: string } | { ok: false; reason: string };
 
 declare global {
   interface Window {
@@ -26,6 +30,15 @@ declare global {
         invokeAction(id: string, key: string): void;
         openHomepage(id: string): void;
         getRecentLog(id: string): Promise<string[]>;
+      };
+      theme?: ThemeBridge;
+      themes?: {
+        getAll(): Promise<ThemeDescriptor[]>;
+        setActive(id: string | null): Promise<ThemeActionResult>;
+        duplicate(id: string): Promise<ThemeActionResult>;
+        exportTheme(id: string): Promise<ThemeActionResult>;
+        installFromFile(): Promise<ThemeActionResult>;
+        openFolder(): void;
       };
       addonBadgeClick?(addonId: string): void;
       restartApplication(): void;

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { createThemeBridge } from "../theme-bridge";
 import Store from "../../store-ipc/store";
 import MemoryStore from "../../store-ipc/memory-store";
 import { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
@@ -7,6 +8,7 @@ const store = new Store<StoreSchema>();
 const memoryStore = new MemoryStore<MemoryStoreSchema>();
 
 contextBridge.exposeInMainWorld("ytmd", {
+  theme: createThemeBridge(),
   isDarwin: process.platform === "darwin",
   isLinux: process.platform === "linux",
   isWindows: process.platform === "win32",

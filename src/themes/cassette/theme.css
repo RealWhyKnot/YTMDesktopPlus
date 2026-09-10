@@ -1,0 +1,31 @@
+@font-face {
+  font-family: "Oswald";
+  src: url("fonts/Oswald.woff2") format("woff2");
+  font-weight: 400 600;
+  font-display: swap;
+}
+
+:root {
+  --bg: #1a1918;
+  --bg-raised: #232120;
+  --bg-control: #2e2b29;
+  --bg-control-hover: #3a3634;
+  --border: #3a3634;
+  --border-strong: #6d6560;
+  --text: #efe6d5;
+  --text-muted: #b8ab95;
+  --text-faint: #8a7f6d;
+  --accent: #ffb347;
+  --on-accent: #241a08;
+  --success: #9ccc65;
+  --danger: #e35d4f;
+  --danger-hover: #bc4739;
+  --knob: #ffb347;
+  --overlay: rgba(10, 9, 8, 0.7);
+  --scrollbar-thumb: #4a4542;
+  --titlebar-symbol: #ffb347;
+  --titlebar-separator: #3a3634;
+  --radius: 0px;
+  --radius-lg: 2px;
+  --font-title: "Oswald", "Arial Narrow", sans-serif;
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { registerWindowControlIpc, type WindowControlIpcDeps } from "../src/main/ipc/window-controls";
 import { registerStoreBridgeIpc, type StoreBridgeIpcDeps } from "../src/main/ipc/store-bridge";
+import { registerThemeIpc, type ThemeIpcDeps } from "../src/main/ipc/themes";
 import type { IpcRegistrar } from "../src/main/ipc/registrar";
 
 // Renderer preloads hardcode these channel names; a rename here must be a
@@ -69,6 +70,32 @@ describe("ipc channel names", () => {
       "settings:reset",
       "settings:set",
       "settings:setMany"
+    ]);
+  });
+
+  it("theme channels stay stable", () => {
+    const deps: ThemeIpcDeps = {
+      descriptors: () => [],
+      getCss: () => ({ app: "", ytm: "", addonWindow: "" }),
+      setActive: () => ({ ok: true }),
+      duplicate: () => ({ ok: true, id: "x", dir: "" }),
+      exportTo: () => ({ ok: true }),
+      install: () => ({ ok: true, id: "x" }),
+      openThemesFolder: () => {},
+      revealPath: () => {},
+      pickArchive: async () => null,
+      pickExportDestination: async () => null,
+      isSettingsSender: () => false
+    };
+
+    expect(capture(ipc => registerThemeIpc(ipc, deps))).toEqual([
+      "themes:duplicate",
+      "themes:export",
+      "themes:getActiveCss",
+      "themes:getAll",
+      "themes:installFromFile",
+      "themes:openFolder",
+      "themes:setActive"
     ]);
   });
 });

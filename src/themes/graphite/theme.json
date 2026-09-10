@@ -1,0 +1,11 @@
+{
+  "id": "graphite",
+  "name": "Graphite",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "Neutral monochrome, almost no hue at all.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "titleBarOverlay": { "color": "#141414", "symbolColor": "#b0b0b0" }
+}

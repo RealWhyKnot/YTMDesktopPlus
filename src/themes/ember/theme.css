@@ -1,0 +1,21 @@
+:root {
+  --bg: #1a1315;
+  --bg-raised: #241a1d;
+  --bg-control: #302227;
+  --bg-control-hover: #3d2c32;
+  --border: #302227;
+  --border-strong: #8e6b73;
+  --text: #f2e6e6;
+  --text-muted: #c9adaf;
+  --text-faint: #a08589;
+  --accent: #e8927c;
+  --on-accent: #2a1618;
+  --success: #a3c98f;
+  --danger: #e2606b;
+  --danger-hover: #bd4a54;
+  --knob: #f2e6e6;
+  --overlay: rgba(12, 8, 9, 0.65);
+  --scrollbar-thumb: #453137;
+  --titlebar-symbol: #c9adaf;
+  --titlebar-separator: #3d2c32;
+}

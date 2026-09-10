@@ -2,6 +2,7 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
 import { contextBridge, ipcRenderer } from "electron";
+import { createThemeBridge } from "../theme-bridge";
 import { WindowsEventArguments } from "~shared/types";
 import { MemoryStoreSchema } from "~shared/store/schema";
 import MemoryStore from "../../store-ipc/memory-store";
@@ -9,6 +10,7 @@ import MemoryStore from "../../store-ipc/memory-store";
 const memoryStore = new MemoryStore<MemoryStoreSchema>();
 
 contextBridge.exposeInMainWorld("ytmd", {
+  theme: createThemeBridge(),
   minimizeWindow: () => ipcRenderer.send("mainWindow:minimize"),
   maximizeWindow: () => ipcRenderer.send("mainWindow:maximize"),
   restoreWindow: () => ipcRenderer.send("mainWindow:restore"),

@@ -1,0 +1,14 @@
+ytmusic-player-bar {
+  background: linear-gradient(to bottom, #262321 0%, #1a1918 100%) !important;
+  border-top: 1px solid #0d0c0b !important;
+}
+
+ytmusic-player-bar .title,
+ytmusic-nav-bar .title {
+  font-family: "Oswald", "Arial Narrow", sans-serif !important;
+  letter-spacing: 0.06em;
+}
+
+ytmusic-player-bar #sliderBar #primaryProgress {
+  box-shadow: 0 0 8px rgba(255, 179, 71, 0.55) !important;
+}

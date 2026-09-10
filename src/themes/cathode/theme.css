@@ -1,0 +1,33 @@
+@font-face {
+  font-family: "VT323";
+  src: url("fonts/VT323.woff2") format("woff2");
+  font-display: swap;
+}
+
+:root {
+  --bg: #060a06;
+  --bg-raised: #0b120b;
+  --bg-control: #101a10;
+  --bg-control-hover: #16241a;
+  --border: #1c3320;
+  --border-strong: #33ff88;
+  --text: #b6ffd0;
+  --text-muted: #62c98c;
+  --text-faint: #3f8f61;
+  --accent: #33ff88;
+  --on-accent: #041008;
+  --success: #33ff88;
+  --danger: #ff5f5f;
+  --danger-hover: #d64545;
+  --knob: #33ff88;
+  --overlay: rgba(0, 12, 4, 0.75);
+  --scrollbar-thumb: #1c3320;
+  --titlebar-symbol: #33ff88;
+  --titlebar-separator: #1c3320;
+  --radius: 0px;
+  --radius-lg: 0px;
+  --font-ui: "VT323", "Courier New", monospace;
+  --font-title: "VT323", "Courier New", monospace;
+  --font-mono: "VT323", "Courier New", monospace;
+  --ytmd-font: "VT323", "Courier New", monospace;
+}

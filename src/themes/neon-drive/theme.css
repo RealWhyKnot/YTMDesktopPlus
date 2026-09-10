@@ -1,0 +1,30 @@
+@font-face {
+  font-family: "Orbitron";
+  src: url("fonts/Orbitron.woff2") format("woff2");
+  font-weight: 500 800;
+  font-display: swap;
+}
+
+:root {
+  --bg: #0f0722;
+  --bg-raised: #180d33;
+  --bg-control: #241247;
+  --bg-control-hover: #321c5e;
+  --border: #321c5e;
+  --border-strong: #ff2e97;
+  --text: #f0e9ff;
+  --text-muted: #b8a6e8;
+  --text-faint: #8b78c0;
+  --accent: #ff2e97;
+  --on-accent: #12061f;
+  --success: #22d3ee;
+  --danger: #ff4d6d;
+  --danger-hover: #d63a56;
+  --knob: #22d3ee;
+  --overlay: rgba(8, 3, 20, 0.72);
+  --scrollbar-thumb: #3a2170;
+  --titlebar-symbol: #22d3ee;
+  --titlebar-separator: #321c5e;
+  --radius-lg: 10px;
+  --font-title: "Orbitron", sans-serif;
+}

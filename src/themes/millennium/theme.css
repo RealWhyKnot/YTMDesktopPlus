@@ -1,0 +1,33 @@
+@font-face {
+  font-family: "Pixelify Sans";
+  src: url("fonts/PixelifySans.woff2") format("woff2");
+  font-weight: 400 600;
+  font-display: swap;
+}
+
+:root {
+  --bg: #c0c0c0;
+  --bg-raised: #d4d0c8;
+  --bg-control: #d4d0c8;
+  --bg-control-hover: #e2dfd8;
+  --border: #808080;
+  --border-strong: #404040;
+  --text: #000000;
+  --text-muted: #303030;
+  --text-faint: #585858;
+  --accent: #000080;
+  --on-accent: #ffffff;
+  --success: #006000;
+  --danger: #800000;
+  --danger-hover: #a52020;
+  --knob: #d4d0c8;
+  --overlay: rgba(0, 0, 0, 0.4);
+  --scrollbar-thumb: #808080;
+  --titlebar-symbol: #ffffff;
+  --titlebar-separator: #808080;
+  --radius: 0px;
+  --radius-lg: 0px;
+  --font-title: "Pixelify Sans", Tahoma, sans-serif;
+  --font-ui: Tahoma, Verdana, "DejaVu Sans", sans-serif;
+  --font-mono: "Courier New", monospace;
+}

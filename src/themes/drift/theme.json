@@ -1,0 +1,11 @@
+{
+  "id": "drift",
+  "name": "Drift",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "Cool blue grey, low contrast, easy on a long listen.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "titleBarOverlay": { "color": "#12171d", "symbolColor": "#a9b6c4" }
+}

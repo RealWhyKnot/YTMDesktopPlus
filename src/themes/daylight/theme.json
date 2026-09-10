@@ -1,0 +1,11 @@
+{
+  "id": "daylight",
+  "name": "Daylight",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "Warm paper light, ink text and a muted red accent.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "titleBarOverlay": { "color": "#faf8f5", "symbolColor": "#55504a" }
+}

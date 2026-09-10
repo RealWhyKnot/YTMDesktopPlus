@@ -2,6 +2,7 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
 import { contextBridge, ipcRenderer } from "electron";
+import { createThemeBridge } from "../theme-bridge";
 import { WindowsEventArguments } from "~shared/types";
 
 const requestId = process.argv[process.argv.length - 3];
@@ -9,6 +10,7 @@ const appName = process.argv[process.argv.length - 2];
 const code = process.argv[process.argv.length - 1];
 
 contextBridge.exposeInMainWorld("ytmd", {
+  theme: createThemeBridge(),
   sendResult: (result: boolean) => ipcRenderer.send(`companionAuthorization:result:${requestId}`, result),
   getAppName: async () => appName,
   getCode: async () => code,

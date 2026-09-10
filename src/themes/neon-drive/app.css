@@ -1,0 +1,15 @@
+.titlebar {
+  background: linear-gradient(to right, #1b0b3a 0%, #2c1160 55%, #3d1a5e 100%) !important;
+  border-bottom: 1px solid #ff2e97;
+}
+
+.title-text {
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(255, 46, 151, 0.55);
+}
+
+.sidebar li.active,
+button.primary {
+  box-shadow: 0 0 12px rgba(255, 46, 151, 0.45);
+}

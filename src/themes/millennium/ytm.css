@@ -1,0 +1,12 @@
+ytmusic-player-bar {
+  border-top: 2px solid #ffffff !important;
+  border-bottom: 2px solid #404040 !important;
+}
+
+ytmusic-player-bar .title {
+  font-family: "Pixelify Sans", Tahoma, sans-serif !important;
+}
+
+ytmusic-player-bar #sliderBar #primaryProgress {
+  border-radius: 0 !important;
+}

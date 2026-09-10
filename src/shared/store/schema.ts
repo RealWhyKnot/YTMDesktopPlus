@@ -1,4 +1,5 @@
 import type { AddonDescriptor, AddonTitlebarBadge } from "../addons/types";
+import type { ThemeDescriptor } from "../themes/sdk";
 
 export enum TrayIconStyle {
   Auto = 0,
@@ -85,12 +86,16 @@ export type StoreSchema = {
     states: Record<string, { enabled: boolean; riskAcknowledged?: boolean }>;
     settings: Record<string, Record<string, unknown>>;
   };
+  themes: {
+    active: string | null;
+  };
 };
 
 export type ListenAlongStatus = "disabled" | "pairing" | "connecting" | "connected" | "loading" | "synced" | "suspended" | "failed";
 
 export type MemoryStoreSchema = {
   addonsRuntime: AddonDescriptor[];
+  themesRuntime: ThemeDescriptor[];
   addonMemory: Record<string, Record<string, unknown>>;
   addonTitlebarBadges: AddonTitlebarBadge[];
   discordPresenceConnectionFailed: boolean;

@@ -1,0 +1,13 @@
+{
+  "id": "cassette",
+  "name": "Cassette",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "Amber on brushed graphite, squared off like the front of a tape deck.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "appStyles": ["app.css"],
+  "ytmStyles": ["ytm.css"],
+  "titleBarOverlay": { "color": "#1a1918", "symbolColor": "#ffb347" }
+}

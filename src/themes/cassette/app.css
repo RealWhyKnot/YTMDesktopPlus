@@ -1,0 +1,16 @@
+.titlebar {
+  background: linear-gradient(to bottom, #2b2825 0%, #1d1b1a 55%, #151312 100%) !important;
+  border-bottom: 1px solid #0d0c0b;
+}
+
+.title-text {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-weight: 500;
+}
+
+button,
+.tab-label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}

@@ -1,0 +1,13 @@
+{
+  "id": "millennium",
+  "name": "Millennium",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "Grey bevels, a navy title bar and a pixel font, like a media player from 1999.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "appStyles": ["app.css"],
+  "ytmStyles": ["ytm.css"],
+  "titleBarOverlay": { "color": "#000080", "symbolColor": "#ffffff" }
+}

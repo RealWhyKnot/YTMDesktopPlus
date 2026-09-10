@@ -74,6 +74,24 @@ contextBridge.exposeInMainWorld("ytmd", {
   ...(YTMD_DEV_TOOLS ? { sendDevProbe: (batch: unknown[]) => ipcRenderer.send("ytmView:devProbe", batch) } : {})
 });
 
+const THEME_STYLE_ID = "ytmd-theme";
+
+function applyThemeStyle(css: string) {
+  let element = document.getElementById(THEME_STYLE_ID);
+  if (element === null) {
+    element = document.createElement("style");
+    element.id = THEME_STYLE_ID;
+    document.head.appendChild(element);
+  }
+  element.textContent = css;
+}
+
+function createThemeStyleSheet() {
+  const css = ipcRenderer.sendSync("themes:getActiveCss") as { ytm: string };
+  applyThemeStyle(css.ytm);
+  ipcRenderer.on("themes:changed", (_event, next: { ytm: string }) => applyThemeStyle(next.ytm));
+}
+
 function createStyleSheet() {
   const css = document.createElement("style");
   css.appendChild(
@@ -422,6 +440,7 @@ const startHooking = async () => {
   );
 
   await optionalModule("style-sheet", () => createStyleSheet());
+  await optionalModule("theme", () => createThemeStyleSheet());
   await optionalModule("navigation-arrows", () => createNavigationMenuArrows());
   await optionalModule("keyboard-navigation", () => createKeyboardNavigation());
   await optionalModule("player-bar-controls", () => createAdditionalPlayerBarControls());

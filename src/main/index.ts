@@ -47,7 +47,10 @@ import { migrateLegacyProfile } from "./profile-migration";
 import { cancelCue, cueTrack, getPlaylists, providePlaybackView, sendPlaybackCommand } from "./playback";
 import { createLaunchPause } from "./playback/launch-pause";
 import { createSenderGuards, senderIsView } from "./ipc/sender-guards";
-import { createAppWindow, loadWindowEntry } from "./windows/window-factory";
+import { createAppWindow, loadWindowEntry, refreshTitleBarOverlays, setTitleBarOverlayProvider } from "./windows/window-factory";
+import { ThemeManager } from "./themes/manager";
+import { registerThemeIpc } from "./ipc/themes";
+import type { ThemeCss } from "~shared/themes/sdk";
 import { createAppStore } from "./store/create-store";
 import { createStoreBroadcaster } from "./windows/broadcast";
 import { createDeepLinkRouter, findProtocolUrl } from "./deep-links";
@@ -190,6 +193,7 @@ const ytmViewIntegrationScripts: { [name: string]: { [name: string]: string } } 
 let mainWindow: BrowserWindow = null;
 let settingsWindow: BrowserWindow = null;
 let ytmView: BrowserView = null;
+let themeManager: ThemeManager = null;
 
 // These variables tend to be changed often so we store it in memory and write on close (less disk usage)
 let lastUrl = "";
@@ -468,7 +472,9 @@ const addonManager: AddonManager = new AddonManager({
         preload: options.filePath
           ? path.join(__dirname, "../renderer/windows/addon/preload.js")
           : path.join(__dirname, `../renderer/windows/${options.entry}/preload.js`),
-        additionalArguments: options.filePath ? [`--ytmd-addon-id=${options.addonId}`] : undefined,
+        additionalArguments: options.filePath
+          ? [`--ytmd-addon-id=${options.addonId}`, `--ytmd-addon-theme=${options.themed === false ? "0" : "1"}`]
+          : undefined,
         devTools: store.get("developer").enableDevTools,
         // A window created hidden is doing background work; throttled timers
         // would starve it.
@@ -494,6 +500,10 @@ const addonManager: AddonManager = new AddonManager({
   },
   deepLinks: {
     register: deepLinks.registerDeepLink
+  },
+  theme: {
+    get: () => themeManager?.activeTheme() ?? { id: null, name: "None", tokens: {} },
+    subscribe: listener => (themeManager === null ? () => undefined : themeManager.onChange(listener))
   }
 });
 addonManager.registerBundled(BUNDLED_ADDONS);
@@ -1720,6 +1730,63 @@ app.on("ready", async () => {
     store.delete("integrations.listenAlongAudioStreamEnabled" as keyof StoreSchema);
     store.delete("integrations.listenAlongAutoRoomEnabled" as keyof StoreSchema);
   }
+
+  const bundledThemesDirPath = process.env.NODE_ENV === "development" ? path.join(app.getAppPath(), "src/themes") : path.join(process.resourcesPath, "themes");
+  const userThemesDirPath = path.join(app.getPath("userData"), "themes");
+  await fs.mkdir(userThemesDirPath, { recursive: true });
+
+  const broadcastTheme = (css: ThemeCss) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send("themes:changed", css);
+    }
+    ytmView?.webContents.send("themes:changed", css);
+    refreshTitleBarOverlays();
+  };
+
+  themeManager = new ThemeManager({
+    bundledThemesDir: bundledThemesDirPath,
+    userThemesDir: userThemesDirPath,
+    appVersion: app.getVersion(),
+    getActiveId: () => store.get("themes").active,
+    setActiveId: id => store.set("themes", { active: id }),
+    onChanged: css => {
+      broadcastTheme(css);
+      memoryStore.set("themesRuntime", themeManager.descriptors());
+    },
+    log
+  });
+
+  setTitleBarOverlayProvider(() => themeManager.titleBarOverlay());
+  themeManager.refresh();
+  log.info(`Themes loaded (${themeManager.descriptors().length} available, active: ${themeManager.activeTheme().id ?? "none"})`);
+
+  registerThemeIpc(ipcMain, {
+    descriptors: () => themeManager.descriptors(),
+    getCss: () => themeManager.getCss(),
+    setActive: id => themeManager.setActive(id),
+    duplicate: id => themeManager.duplicate(id),
+    exportTo: (id, destination) => themeManager.exportTo(id, destination),
+    install: zipPath => themeManager.install(zipPath),
+    openThemesFolder: () => shell.openPath(userThemesDirPath),
+    revealPath: target => shell.openPath(target),
+    pickArchive: async () => {
+      const result = await dialog.showOpenDialog({
+        title: "Install a theme",
+        filters: [{ name: "Theme archive", extensions: ["zip"] }],
+        properties: ["openFile"]
+      });
+      return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+    },
+    pickExportDestination: async suggestedName => {
+      const result = await dialog.showSaveDialog({
+        title: "Export theme",
+        defaultPath: suggestedName,
+        filters: [{ name: "Theme archive", extensions: ["zip"] }]
+      });
+      return result.canceled || !result.filePath ? null : result.filePath;
+    },
+    isSettingsSender
+  });
 
   const externalAddonScans = scanExternalAddons(addonsDirPath);
   addonManager.registerExternal(externalAddonScans);

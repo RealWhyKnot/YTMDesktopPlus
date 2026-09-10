@@ -1,0 +1,29 @@
+.titlebar {
+  background: linear-gradient(to right, #000080 0%, #1084d0 100%) !important;
+  border-bottom: 1px solid #808080;
+}
+
+.title-text {
+  color: #ffffff;
+  letter-spacing: 0.04em;
+}
+
+button,
+.ytmd-button {
+  border-style: outset;
+  border-width: 2px;
+  border-color: #ffffff #404040 #404040 #ffffff;
+  background-color: var(--bg-raised);
+}
+
+button:active {
+  border-style: inset;
+  border-color: #404040 #ffffff #ffffff #404040;
+}
+
+.window-content,
+.card {
+  border-style: inset;
+  border-width: 2px;
+  border-color: #808080 #ffffff #ffffff #808080;
+}

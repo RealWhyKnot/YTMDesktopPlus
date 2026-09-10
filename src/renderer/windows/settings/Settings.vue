@@ -3,6 +3,7 @@ import { computed, provide, ref, type Component } from "vue";
 import { StoreSchema } from "~shared/store/schema";
 import { AuthToken } from "~shared/integrations/companion-server/types";
 import { AddonDescriptor } from "~shared/addons/types";
+import { ThemeDescriptor } from "~shared/themes/sdk";
 import { createStagedSettings, stagedSettingsKey } from "./useStagedSettings";
 import { settingsShellKey } from "./context";
 import GeneralTab from "./tabs/GeneralTab.vue";
@@ -11,6 +12,7 @@ import PlaybackTab from "./tabs/PlaybackTab.vue";
 import IntegrationsTab from "./tabs/IntegrationsTab.vue";
 import ShortcutsTab from "./tabs/ShortcutsTab.vue";
 import AddonsTab from "./tabs/AddonsTab.vue";
+import ThemesTab from "./tabs/ThemesTab.vue";
 import AboutTab from "./tabs/AboutTab.vue";
 
 declare const YTMD_GIT_COMMIT_HASH: string;
@@ -107,6 +109,36 @@ function openAddonsFolder() {
   window.ytmd.addons?.openFolder();
 }
 
+const themesSupported = window.ytmd.themes !== undefined;
+const themes = ref<ThemeDescriptor[]>(window.ytmd.themes ? await window.ytmd.themes.getAll() : []);
+const themeError = ref<string | null>(null);
+
+async function runThemeAction(action: () => Promise<{ ok: boolean; reason?: string }>) {
+  const result = await action();
+  themeError.value = result.ok || result.reason === "cancelled" ? null : (result.reason ?? "that did not work");
+  if (window.ytmd.themes) themes.value = await window.ytmd.themes.getAll();
+}
+
+async function setActiveTheme(id: string | null) {
+  await runThemeAction(() => window.ytmd.themes!.setActive(id));
+}
+
+async function duplicateTheme(id: string) {
+  await runThemeAction(() => window.ytmd.themes!.duplicate(id));
+}
+
+async function exportTheme(id: string) {
+  await runThemeAction(() => window.ytmd.themes!.exportTheme(id));
+}
+
+async function installThemeFromFile() {
+  await runThemeAction(() => window.ytmd.themes!.installFromFile());
+}
+
+function openThemesFolder() {
+  window.ytmd.themes?.openFolder();
+}
+
 memoryStore.onStateChanged(async newState => {
   discordPresenceConnectionFailed.value = newState.discordPresenceConnectionFailed;
 
@@ -124,6 +156,10 @@ memoryStore.onStateChanged(async newState => {
 
   autoUpdaterDisabled.value = newState.autoUpdaterDisabled;
   updateLatestVersion.value = newState.appUpdateLatestVersion;
+
+  if (newState.themesRuntime) {
+    themes.value = newState.themesRuntime;
+  }
 
   if (newState.addonsRuntime) {
     addons.value = newState.addonsRuntime;
@@ -231,6 +267,13 @@ provide(settingsShellKey, {
   addons,
   setAddonEnabled,
   openAddonsFolder,
+  themes,
+  themeError,
+  setActiveTheme,
+  duplicateTheme,
+  exportTheme,
+  installThemeFromFile,
+  openThemesFolder,
   memorySettingsChanged,
   restartDiscordPresence,
   deleteCompanionAuthToken,
@@ -244,6 +287,7 @@ const tabs: TabDefinition[] = [
   { id: "playback", icon: "music_note", label: "Playback", component: PlaybackTab },
   { id: "integrations", icon: "wifi_tethering", label: "Integrations", component: IntegrationsTab },
   { id: "shortcuts", icon: "keyboard", label: "Shortcuts", component: ShortcutsTab },
+  ...(themesSupported ? [{ id: "themes", icon: "palette", label: "Themes", component: ThemesTab }] : []),
   ...(addonsSupported ? [{ id: "addons", icon: "extension", label: "Addons", component: AddonsTab }] : []),
   { id: "about", icon: "info", label: "About", component: AboutTab, bottom: true }
 ];
@@ -348,7 +392,7 @@ function saveAndClose() {
 }
 
 .settings-container .setting.disabled {
-  color: #c6c6c6;
+  color: var(--text-muted);
 }
 
 .settings-container .name-with-description .name {
@@ -396,7 +440,7 @@ function saveAndClose() {
 }
 
 .tab-panels::-webkit-scrollbar-thumb {
-  background-color: #414141;
+  background-color: var(--scrollbar-thumb);
 }
 
 .sidebar {
@@ -524,7 +568,7 @@ function saveAndClose() {
 .close-confirm-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.6);
+  background-color: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;

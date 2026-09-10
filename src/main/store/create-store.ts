@@ -91,6 +91,9 @@ export function createAppStore(): Conf<StoreSchema> {
       addons: {
         states: {},
         settings: {}
+      },
+      themes: {
+        active: null
       }
     },
     beforeEachMigration: (store, context) => {
@@ -146,6 +149,9 @@ export function createAppStore(): Conf<StoreSchema> {
   }
   if (store.get("addons") === undefined) {
     store.set("addons", { states: {}, settings: {} });
+  }
+  if (store.get("themes") === undefined) {
+    store.set("themes", { active: null });
   }
 
   return store;

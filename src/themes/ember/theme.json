@@ -1,0 +1,11 @@
+{
+  "id": "ember",
+  "name": "Ember",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "Warm dark plum with a rose accent.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "titleBarOverlay": { "color": "#1a1315", "symbolColor": "#c9adaf" }
+}

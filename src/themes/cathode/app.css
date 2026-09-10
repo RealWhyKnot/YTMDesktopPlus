@@ -1,0 +1,16 @@
+html,
+body,
+#app {
+  font-size: 17px;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 6px rgba(51, 255, 136, 0.3);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0) 0 2px, rgba(0, 0, 0, 0.16) 2px 3px);
+}

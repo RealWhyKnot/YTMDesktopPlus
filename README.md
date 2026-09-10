@@ -36,6 +36,7 @@ sudo apparmor_parser -r /etc/apparmor.d/ytmdesktop-plus
 - Ad blocking, off by default
 - Listen Along rooms with synchronised playback
 - Phone playback shown in the player bar and Discord presence when the desktop is idle, using the same account
+- [Themes](docs/themes.md) that restyle the app and the music page together, eight of them bundled, switched without a restart
 - [Addons](docs/addons.md) for CSS, page scripts and code, managed in settings. Custom CSS and Listen Along rooms use addons
 - A REST and WebSocket companion server on port 9863 for remote controls, with one-time authorization
 - `ytmdplus://play/<videoId>` links and a Listen Along button on Discord to join at your playback position

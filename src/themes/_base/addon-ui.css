@@ -1,0 +1,67 @@
+html,
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+}
+
+.ytmd-card {
+  background-color: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+}
+
+.ytmd-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) 0;
+}
+
+.ytmd-button {
+  background-color: var(--bg-control);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-sm) var(--space-md);
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.ytmd-button:hover {
+  background-color: var(--bg-control-hover);
+}
+
+.ytmd-button.primary {
+  background-color: var(--accent);
+  color: var(--on-accent);
+  border-color: transparent;
+}
+
+.ytmd-input {
+  background-color: var(--bg-control);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-sm);
+  font-family: inherit;
+  font-size: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ytmd-muted {
+  color: var(--text-muted);
+}
+
+.ytmd-drag {
+  -webkit-app-region: drag;
+}
+
+.ytmd-no-drag {
+  -webkit-app-region: no-drag;
+}

@@ -1,0 +1,13 @@
+{
+  "id": "cathode",
+  "name": "Cathode",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "Phosphor green on a dark tube, with scanlines and a little glow.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "appStyles": ["app.css"],
+  "ytmStyles": ["ytm.css"],
+  "titleBarOverlay": { "color": "#060a06", "symbolColor": "#33ff88" }
+}

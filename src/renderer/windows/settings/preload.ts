@@ -2,6 +2,7 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { createThemeBridge } from "../theme-bridge";
 import Store from "../../store-ipc/store";
 import { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
 import { WindowsEventArguments } from "~shared/types";
@@ -11,6 +12,7 @@ const store = new Store<StoreSchema>();
 const memoryStore = new MemoryStore<MemoryStoreSchema>();
 
 contextBridge.exposeInMainWorld("ytmd", {
+  theme: createThemeBridge(),
   isDarwin: process.platform === "darwin",
   isLinux: process.platform === "linux",
   isWindows: process.platform === "win32",
@@ -37,6 +39,14 @@ contextBridge.exposeInMainWorld("ytmd", {
     invokeAction: (id: string, key: string) => ipcRenderer.send("addons:invokeAction", id, key),
     openHomepage: (id: string) => ipcRenderer.send("addons:openHomepage", id),
     getRecentLog: async (id: string) => await ipcRenderer.invoke("addons:getRecentLog", id)
+  },
+  themes: {
+    getAll: async () => await ipcRenderer.invoke("themes:getAll"),
+    setActive: async (id: string | null) => await ipcRenderer.invoke("themes:setActive", id),
+    duplicate: async (id: string) => await ipcRenderer.invoke("themes:duplicate", id),
+    exportTheme: async (id: string) => await ipcRenderer.invoke("themes:export", id),
+    installFromFile: async () => await ipcRenderer.invoke("themes:installFromFile"),
+    openFolder: () => ipcRenderer.send("themes:openFolder")
   },
   restartApplication: () => ipcRenderer.send("settingsWindow:restartapplication"),
   openRoomWindow: () => ipcRenderer.send("addon:rooms:openWindow"),

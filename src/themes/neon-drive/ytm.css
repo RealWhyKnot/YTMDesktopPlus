@@ -1,0 +1,16 @@
+ytmusic-app {
+  background-image: linear-gradient(to bottom, #0f0722 0%, #1a0b3d 100%) !important;
+}
+
+ytmusic-player-bar {
+  border-top: 1px solid #ff2e97 !important;
+  box-shadow: 0 -6px 24px rgba(255, 46, 151, 0.22) !important;
+}
+
+ytmusic-player-bar #sliderBar #primaryProgress {
+  box-shadow: 0 0 10px rgba(255, 46, 151, 0.7) !important;
+}
+
+ytmusic-pivot-bar-item-renderer[selected] {
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.6) !important;
+}

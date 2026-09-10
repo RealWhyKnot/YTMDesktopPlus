@@ -64,6 +64,8 @@ const config: ForgeConfig = {
     executableName: "ytmdesktop-plus",
     icon: "./src/assets/icons/ytmd",
     extraResource: [
+      "./src/themes",
+
       "./src/assets/icons/tray.ico",
       "./src/assets/icons/trayTemplate.png",
       "./src/assets/icons/trayTemplate@2x.png",
