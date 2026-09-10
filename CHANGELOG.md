@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- fix(flatpak): let the sandbox own the mpris bus name
 - docs(readme): rewrite
 - ci: move actions off the deprecated node 20 runtime
 - fix(linux): defer the update check until the app is ready
