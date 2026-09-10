@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- fix(ytmview): resolve the player api by discovery instead of a pinned name
 
 ## [v2026.909.1](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.909.1) - 2026-09-09
 - fix(ytmview): restore playerApi from the async resolvePlayerApi
