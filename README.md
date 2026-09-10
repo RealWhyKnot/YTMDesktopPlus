@@ -1,66 +1,64 @@
 # YTMDesktop+
 
-A desktop app for YouTube Music. It wraps the real music.youtube.com player, so the interface always matches the current web version, and adds the things a browser tab can't do: media keys and global shortcuts, Discord rich presence, Last.fm scrobbling, native notifications, volume past 100%, ad blocking, and a remote control API for companion apps.
+A desktop app for YouTube Music. It wraps the real music.youtube.com player, so the interface is whatever YouTube Music ships today, and adds what a browser tab can't: media keys, Discord presence, scrobbling, volume past 100%, and a local API for remote controls.
 
 ![YTMDesktop+](.github/images/readme_main_app.png)
 
 ## Download
 
-Grab the installer for your platform from [releases](https://github.com/RealWhyKnot/YTMDesktopPlus/releases). Nightly beta builds are published when there are new changes and ship with debug logging enabled by default; stable builds keep logging off unless you turn it on in settings.
+Everything is on the [releases page](https://github.com/RealWhyKnot/YTMDesktopPlus/releases). Nightly betas go out whenever there are new changes, with debug logging on. Stable builds default to off.
 
-On Windows the app can install updates on launch, like Discord does. It asks once on first run and the choice can be changed in settings at any time. The update channel follows the installed build, so a stable install stays on stable and a nightly install follows nightlies, and you can override the channel in settings; changing it applies the matching update when you save.
+On Windows the app can update itself on launch, the way Discord does. It asks once and you can change your mind later in settings. A stable install stays on stable, a nightly follows nightlies, and you can override the channel if you want to move between them.
 
-On Debian, Ubuntu and Fedora take the `.deb` or `.rpm`. They are the best-behaved option: they install to `/opt` as root, so Chromium's sandbox works properly without you doing anything.
+On Debian, Ubuntu or Fedora, take the `.deb` or `.rpm`. They install to `/opt` as root, which is what lets Chromium's sandbox work, so start there if you can.
 
-On a Steam Deck, or anywhere the deb and rpm do not apply, download the `.flatpak` and open it in Discover, or install it from a terminal:
+For a Steam Deck, or anywhere the deb and rpm don't fit, there's a `.flatpak`. Open it in Discover, or:
 
 ```bash
 flatpak install --user ./YTMDesktopPlus-x86_64.flatpak
 ```
 
-The flatpak needs the Flathub remote for its runtime, which SteamOS already has set up.
+It pulls its runtime from Flathub, which SteamOS already has set up.
 
-There is also an `.AppImage` for x86_64 and aarch64 if you would rather not install anything. Mark it executable and run it. One caveat, and it is not specific to this app: an AppImage cannot ship the root-owned sandbox helper that the deb and rpm rely on, so on Ubuntu 24.04 and Debian 13, where unprivileged user namespaces are restricted by default, it will not start until you install the AppArmor profile from this repo:
+If you'd rather not install anything, there's an `.AppImage` for x86_64 and aarch64. Mark it executable and run it. Ubuntu 24.04 and Debian 13 need one extra step. An AppImage can't carry the setuid sandbox helper the deb and rpm rely on, and both of those releases block the fallback, so the app won't start until you add the AppArmor profile:
 
 ```bash
 sudo cp packaging/apparmor/ytmdesktop-plus /etc/apparmor.d/ytmdesktop-plus
 sudo apparmor_parser -r /etc/apparmor.d/ytmdesktop-plus
 ```
 
-If you are on one of those distributions, the deb is the easier path.
+On those two, the deb is less hassle.
 
 ## Features
 
-- The full YouTube Music web player with your existing account
-- Listen Along rooms: friends follow your playback in sync over the internet
-- Global shortcuts and media key support
+- The full YouTube Music player, signed in to your own account
+- Listen Along rooms, so friends hear what you hear in sync
 - Discord rich presence
 - Last.fm scrobbling
-- Volume boost: takes the volume slider past 100%. The boosted part of the bar turns a warning colour, and a limiter holds the peaks down
-- Ad blocking: ads stripped from the player's own track data, muted and skipped if one still gets through, off until you turn it on
-- Phone playback: while the desktop is idle, the app shows what the same account is playing on your phone, in the player bar and on your Discord presence
-- Native notifications on song change
-- Addons: drop-in folders of CSS, page scripts or code that extend the app, managed from the settings window (see [docs/addons.md](docs/addons.md)). Custom CSS lives here now, still with live reload; the rooms feature itself ships as one
-- Companion server: a local REST and WebSocket API on port 9863 that remote control apps can use after a one-time authorization
-- `ytmdplus://play/<videoId>` protocol links, including a Listen Along button on your Discord presence that opens the track where you are in it
+- Media keys and global shortcuts
+- Notifications on song change
+- Volume past 100%, with a limiter holding the peaks down. The boosted part of the slider turns a warning colour
+- Ad blocking, off by default
+- Phone playback: while the desktop sits idle, the player bar and your Discord presence show what the same account is playing on your phone
+- Addons, which are folders of CSS, page scripts or code you drop in and manage from settings. Custom CSS lives here now, and rooms ship as one. See [docs/addons.md](docs/addons.md)
+- A companion server on port 9863, REST and WebSocket, for remote control apps. Needs a one-time authorization
+- `ytmdplus://play/<videoId>` links, including a Listen Along button on your presence that drops people in where you are
 
-Settings apply when you save them, and the window tells you when there are unsaved changes.
-
-Settings from a previous YouTube Music Desktop App installation, including your sign-in, are picked up automatically on first launch.
+Settings from an older YouTube Music Desktop App install carry over on first launch, sign-in included.
 
 ## Listen Along rooms
 
-Start a room from the tray menu and share the link; it also appears as a Join Room button on your Discord presence while you host. Friends join by link or by typing the 8 letter room code, so it works without Discord too. Everyone joins as a listener and follows your playback in sync; you can promote anyone to controller, which lets them skip, seek, pause, and change the track for the room.
+Start a room from the tray menu and share the link. While you host it also shows up as a Join Room button on your Discord presence, and there's an 8 letter code for anyone not on Discord. Everyone arrives as a listener and follows your playback. Promote someone and they can skip, seek, pause and change the track for the room.
 
-Friends without the app are not left out: the room link opens a web player that streams your audio live, with the track title and artwork, in any current browser. Web listeners are anonymous and never appear in the roster. Streaming is on while you host and can be turned off in settings; your local volume never affects what the room hears, but muting the app mutes the stream too.
+The same link opens a web player that streams your audio live with the title and artwork, in any current browser. Web listeners stay anonymous and never appear in the roster. Your local volume doesn't change what the room hears, though muting the app mutes them too.
 
-While Discord presence is on, a room opens by itself so the buttons on your profile always lead somewhere; the app tells you when that happens, the room stays anonymous unless you saved a display name, and the profile shows no Listen Along buttons at all when no room is live. Leaving the room keeps it closed for the rest of the session, and a setting turns automatic rooms off entirely.
+While Discord presence is on, the app opens a room by itself so the buttons on your profile lead somewhere. It says so when that happens, and a setting turns it off.
 
-You pick a display name before hosting or joining. It is never taken from your account, and the room service keeps no record of names, members, or rooms once they close. Turning the Listen Along toggle off in settings means the app opens no connection to the room service at all and removes the Listen Along button from your Discord presence.
+You pick a display name before hosting or joining, and it never comes from your account. The room service keeps no record of names, members or rooms once they close. Switch Listen Along off in settings and the app opens no connection to it at all.
 
 ## Developing
 
-Requirements: Node.js 22.12 or newer and Git.
+You'll need Node.js 22.12 or newer, and Git.
 
 ```bash
 git clone https://github.com/RealWhyKnot/YTMDesktopPlus.git
@@ -70,16 +68,14 @@ yarn install
 yarn start
 ```
 
-Useful commands:
-
 - `yarn lint`, `yarn typecheck`, `yarn prettier` - static checks
 - `yarn test` - unit tests
-- `node tools/test-harness/run.mjs boot-hooks` - end-to-end check that the app still hooks the live YouTube Music page; more scenarios live in `tools/test-harness/scenarios`
-- `yarn make` - build platform installers into `out/make`
+- `node tools/test-harness/run.mjs boot-hooks` - checks the app still hooks the live YouTube Music page. More scenarios in `tools/test-harness/scenarios`
+- `yarn make` - builds installers into `out/make`
 
-On Linux, building the deb and rpm packages needs `fakeroot`, `dpkg`, and `rpm`, and the AppImage needs `mksquashfs` from `squashfs-tools`. The flatpak additionally needs `flatpak`, `flatpak-builder`, `elfutils`, and the Flathub remote (`flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo`).
+Building on Linux needs `fakeroot`, `dpkg` and `rpm` for the deb and rpm, and `mksquashfs` from `squashfs-tools` for the AppImage. The flatpak wants `flatpak`, `flatpak-builder`, `elfutils` and the Flathub remote (`flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo`).
 
-To build one target rather than all of them, pass its maker name, not the package name: `yarn make --arch x64 --targets flatpak` or `--targets AppImage`. Forge matches `--targets` against the maker's own `name`, so passing `@electron-forge/maker-flatpak` silently builds a default-configured flatpak instead of the one in `forge.config.ts`.
+For a single target, pass the maker's name rather than its package name: `yarn make --arch x64 --targets flatpak`, or `--targets AppImage`. Forge matches `--targets` against the maker's own `name`, so `@electron-forge/maker-flatpak` quietly builds a default flatpak instead of the configured one.
 
 ## License
 
