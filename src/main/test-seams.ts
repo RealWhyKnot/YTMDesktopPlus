@@ -8,6 +8,8 @@ import path from "path";
 
 export type BreakableHookStage = "store-hook" | "player-api";
 
+export const AUDIO_MUTED_MARKER = "test-seams: audio output muted";
+
 let breakHooks: { stage: BreakableHookStage; once: boolean } | null = null;
 
 export function initializeTestSeams() {
@@ -18,19 +20,19 @@ export function initializeTestSeams() {
     app.setAppLogsPath(path.join(profile, "logs"));
   }
 
+  if (!process.env.YTMD_TEST_ALLOW_AUDIO && (profile || process.env.YTMD_TEST)) {
+    app.commandLine.appendSwitch("mute-audio");
+    app.on("web-contents-created", (_event, contents) => {
+      contents.setAudioMuted(true);
+      contents.on("did-finish-load", () => contents.setAudioMuted(true));
+    });
+    console.log(AUDIO_MUTED_MARKER);
+  }
+
   if (!app.isPackaged) {
     const cdpPort = process.env.YTMD_TEST_CDP_PORT;
     if (cdpPort) {
       app.commandLine.appendSwitch("remote-debugging-port", cdpPort);
-    }
-
-    if (process.env.YTMD_TEST_MUTED) {
-      // Hard mute for test runs: nothing any renderer does, page audio and
-      // Web Audio alike, reaches the speakers. Capture and analysis paths
-      // keep working; only the output device is cut.
-      app.on("web-contents-created", (_event, contents) => {
-        contents.setAudioMuted(true);
-      });
     }
 
     const breakSpec = process.env.YTMD_TEST_BREAK_HOOKS;

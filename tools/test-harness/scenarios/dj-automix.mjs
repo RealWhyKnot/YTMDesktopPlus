@@ -6,9 +6,9 @@ import { hooksReadyStep, playbackFixture } from "./lib.mjs";
 //
 // dj-crossfade force-mutes the media element, which makes startOverlap open the
 // shadow at gain 0 - the code path runs but nothing overlaps. Here the element
-// stays unmuted and silence comes from YTMD_TEST_MUTED, which mutes the
-// webContents output while leaving the Web Audio graph running, so the shadow
-// gain is a real measured level.
+// stays unmuted and silence comes from the test-seams audio mute, which cuts
+// output at the audio device while leaving the Web Audio graph running, so the
+// shadow gain is a real measured level.
 //
 // Every seek goes through the track clock. YTM appends consecutive tracks into
 // one MediaSource, so the element's currentTime and duration span the whole
@@ -41,7 +41,7 @@ export default async function djAutomix(ctx) {
 
   await ctx.step("output silenced at the process, not the element", async () => {
     // The element must stay unmuted or the shadow opens at gain 0 and there is
-    // nothing to measure. YTMD_TEST_MUTED keeps the speakers quiet.
+    // nothing to measure. The test-seams audio mute keeps the speakers quiet.
     await ctx.evalYtm(`${PLAYER_BAR}?.playerApi?.setVolume?.(5)`);
   });
 

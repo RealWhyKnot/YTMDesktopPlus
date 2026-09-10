@@ -18,7 +18,7 @@
 // environment blocked (companion port busy, consent wall), 6 teardown could
 // not verify a clean process table.
 
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createEmitter } from "./events.mjs";
@@ -122,6 +122,7 @@ if (scenario.needsCompanion && (await companion.portInUse())) {
 const seedProfile = process.env.YTMD_SEED_PROFILE;
 if (seedProfile) {
   cpSync(seedProfile, profileDir, { recursive: true });
+  rmSync(path.join(profileDir, "logs"), { recursive: true, force: true });
   const configPath = path.join(profileDir, "config.json");
   let seededConfig = {};
   try {
@@ -178,6 +179,7 @@ const ctx = {
   profileDir,
   mainLog,
   cdpPort,
+  appPid: child.pid,
   companion,
   patterns: { MAIN_WINDOW, YTM_VIEW },
   environmentBlocked: reason => {
@@ -246,6 +248,20 @@ try {
       }
     },
     125000
+  );
+
+  phase = "audio-mute";
+  await ctx.step(
+    "audio output is muted",
+    async () => {
+      const deadline = Date.now() + 30000;
+      while (Date.now() < deadline) {
+        if (grepFile(forgeLog, /test-seams: audio output muted/)) return;
+        await new Promise(r => setTimeout(r, 500));
+      }
+      throw new Error("app never confirmed the audio mute; refusing to run so nothing plays at full volume");
+    },
+    35000
   );
 
   phase = "main-window";
