@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- feat(playback): report player response ad keys the ad blocker does not know
 - feat(test-harness): measure runtime memory and build size
 - fix(test-harness): mute audio by default and stop seeding stale logs
 - fix(last-fm): guard scrobble prep against an absent queue
