@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CACHE_MAX_AGE_MS, isCacheStale, LEGACY_CACHE_FILES } from "../src/main/integrations/ad-blocker/cache";
+import { ElectronBlocker, Request } from "@ghostery/adblocker-electron";
+import type { RequestType } from "@ghostery/adblocker-electron";
+import { CACHE_MAX_AGE_MS, ENGINE_CONFIG, isCacheStale, LEGACY_CACHE_FILES } from "../src/main/integrations/ad-blocker/cache";
 import { installAdPrune } from "../src/renderer/ytmview/ad-prune";
+import { AD_PRUNE_CONTRACT } from "../src/shared/ad-contract";
 import AdBlocker from "../src/main/integrations/ad-blocker";
 import type { BrowserView } from "electron";
 
@@ -41,6 +44,7 @@ describe("LEGACY_CACHE_FILES", () => {
 describe("installAdPrune", () => {
   const nativeParse = JSON.parse;
   let events: Array<[string, unknown]>;
+  let misses: string[];
 
   // The measured shape of a real break on music.youtube.com: the ad arrives in
   // adSlots while adPlacements is empty, so a fixture that only carries
@@ -60,8 +64,12 @@ describe("installAdPrune", () => {
 
   beforeEach(() => {
     events = [];
+    misses = [];
     (globalThis as { window?: unknown }).window = {
-      ytmd: { sendAdBlockEvent: (kind: string, detail: unknown) => events.push([kind, detail]) }
+      ytmd: {
+        sendAdBlockEvent: (kind: string, detail: unknown) => events.push([kind, detail]),
+        reportContractMiss: (what: string) => misses.push(what)
+      }
     };
   });
 
@@ -71,7 +79,7 @@ describe("installAdPrune", () => {
   });
 
   it("takes the ad keys out of a player response", () => {
-    installAdPrune(true);
+    installAdPrune(true, AD_PRUNE_CONTRACT);
 
     const parsed = JSON.parse(JSON.stringify(playerResponse()));
 
@@ -83,7 +91,7 @@ describe("installAdPrune", () => {
   });
 
   it("takes them out of a nested playerResponse too", () => {
-    installAdPrune(true);
+    installAdPrune(true, AD_PRUNE_CONTRACT);
 
     const parsed = JSON.parse(JSON.stringify({ playerResponse: playerResponse() }));
 
@@ -92,7 +100,7 @@ describe("installAdPrune", () => {
   });
 
   it("leaves a payload with no ad keys exactly as it was", () => {
-    installAdPrune(true);
+    installAdPrune(true, AD_PRUNE_CONTRACT);
 
     const payload = { contents: { rows: [1, 2, 3] }, header: null as null };
 
@@ -101,20 +109,20 @@ describe("installAdPrune", () => {
   });
 
   it("prunes nothing while the setting is off", () => {
-    installAdPrune(false);
+    installAdPrune(false, AD_PRUNE_CONTRACT);
 
     expect(JSON.parse(JSON.stringify(playerResponse()))).toHaveProperty("adSlots");
   });
 
   it("prunes again once the setting is flipped back on", () => {
-    installAdPrune(false);
-    installAdPrune(true);
+    installAdPrune(false, AD_PRUNE_CONTRACT);
+    installAdPrune(true, AD_PRUNE_CONTRACT);
 
     expect(JSON.parse(JSON.stringify(playerResponse()))).not.toHaveProperty("adSlots");
   });
 
   it("keeps the reviver working", () => {
-    installAdPrune(true);
+    installAdPrune(true, AD_PRUNE_CONTRACT);
 
     const parsed = JSON.parse('{"a":1,"b":2}', (key, value) => (typeof value === "number" ? value * 10 : value));
 
@@ -122,7 +130,7 @@ describe("installAdPrune", () => {
   });
 
   it("hands back the payload untouched rather than half pruned when a delete throws", () => {
-    installAdPrune(true);
+    installAdPrune(true, AD_PRUNE_CONTRACT);
 
     const frozen = Object.freeze({ adPlacements: [], adSlots: [{}] });
     const parsed = JSON.parse("{}", () => frozen);
@@ -132,21 +140,208 @@ describe("installAdPrune", () => {
   });
 
   it("reports the first prune of the page load and no others", () => {
-    installAdPrune(true);
+    installAdPrune(true, AD_PRUNE_CONTRACT);
 
     JSON.parse(JSON.stringify(playerResponse()));
     JSON.parse(JSON.stringify(playerResponse()));
 
-    expect(events).toEqual([["pruned", ["adSlots", "playerAds", "adPlacements"]]]);
+    expect(events).toEqual([["pruned", ["adPlacements", "adSlots", "playerAds"]]]);
     expect((globalThis as unknown as { window: { __ytmdAdPrune: { count: number } } }).window.__ytmdAdPrune.count).toBe(2);
   });
 
   it("does not wrap JSON.parse twice", () => {
-    installAdPrune(true);
+    installAdPrune(true, AD_PRUNE_CONTRACT);
     const wrapped = JSON.parse;
-    installAdPrune(true);
+    installAdPrune(true, AD_PRUNE_CONTRACT);
 
     expect(JSON.parse).toBe(wrapped);
+  });
+
+  it("prunes the root and one playerResponse below it, no deeper", () => {
+    installAdPrune(true, AD_PRUNE_CONTRACT);
+
+    const parsed = JSON.parse(JSON.stringify({ response: { playerResponse: playerResponse() }, playerResponse: { playerResponse: playerResponse() } }));
+
+    expect(parsed.response.playerResponse).toHaveProperty("adSlots");
+    expect(parsed.playerResponse.playerResponse).toHaveProperty("adSlots");
+  });
+
+  it("lets a parse error through rather than swallowing it", () => {
+    installAdPrune(true, AD_PRUNE_CONTRACT);
+
+    expect(() => JSON.parse("{not json")).toThrow();
+  });
+
+  it("hands back results that are not plain objects untouched", () => {
+    installAdPrune(true, AD_PRUNE_CONTRACT);
+
+    expect(JSON.parse("[1,2,3]")).toEqual([1, 2, 3]);
+    expect(JSON.parse('"text"')).toBe("text");
+    expect(JSON.parse("7")).toBe(7);
+    expect(JSON.parse("null")).toBe(null);
+  });
+});
+
+describe("ad key drift", () => {
+  const nativeParse = JSON.parse;
+  let misses: string[];
+  let events: Array<[string, unknown]>;
+
+  const pruneState = (): { count: number; unknown: string[] } =>
+    (globalThis as unknown as { window: { __ytmdAdPrune: { count: number; unknown: string[] } } }).window.__ytmdAdPrune;
+
+  const known = (): Record<string, unknown> => ({
+    adPlacements: [],
+    adSlots: [{ slotType: "SLOT_TYPE_PLAYER_BYTES" }],
+    playerAds: [{ playerLegacyDesktopWatchAdsRenderer: {} }]
+  });
+
+  const response = (extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+    playabilityStatus: { status: "OK" },
+    streamingData: { formats: [{ itag: 251 }], adaptiveFormats: [{ itag: 140 }] },
+    videoDetails: { videoId: "dQw4w9WgXcQ" },
+    ...extra
+  });
+
+  beforeEach(() => {
+    misses = [];
+    events = [];
+    (globalThis as { window?: unknown }).window = {
+      ytmd: {
+        sendAdBlockEvent: (kind: string, detail: unknown) => events.push([kind, detail]),
+        reportContractMiss: (what: string) => misses.push(what)
+      }
+    };
+  });
+
+  afterEach(() => {
+    JSON.parse = nativeParse;
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it("names an ad key it does not recognise", () => {
+    installAdPrune(true, AD_PRUNE_CONTRACT);
+
+    JSON.parse(JSON.stringify(response({ adBreakHeartbeatParams: "x" })));
+
+    expect(misses).toEqual(["player response ad key adBreakHeartbeatParams"]);
+    expect(pruneState().unknown).toEqual(["adBreakHeartbeatParams"]);
+  });
+
+  it("names it once a page load rather than once a parse", () => {
+    installAdPrune(true, AD_PRUNE_CONTRACT);
+
+    JSON.parse(JSON.stringify(response({ adBreakHeartbeatParams: "x" })));
+    JSON.parse(JSON.stringify(response({ adBreakHeartbeatParams: "x" })));
+
+    expect(misses).toHaveLength(1);
+  });
+
+  it("reports a renamed playerAds key too", () => {
+    installAdPrune(true, AD_PRUNE_CONTRACT);
+
+    JSON.parse(JSON.stringify(response({ playerAdsV2: [] })));
+
+    expect(misses).toEqual(["player response ad key playerAdsV2"]);
+  });
+
+  it("stays quiet on an ad free player response", () => {
+    installAdPrune(true, AD_PRUNE_CONTRACT);
+
+    JSON.parse(JSON.stringify(response()));
+
+    expect(misses).toEqual([]);
+  });
+
+  it("stays quiet on the keys it already prunes", () => {
+    installAdPrune(true, AD_PRUNE_CONTRACT);
+
+    JSON.parse(JSON.stringify(response(known())));
+
+    expect(misses).toEqual([]);
+  });
+
+  it("reports a new key that arrives beside the known ones", () => {
+    installAdPrune(true, AD_PRUNE_CONTRACT);
+
+    JSON.parse(JSON.stringify(response({ ...known(), adBreaks: [{}] })));
+
+    expect(misses).toEqual(["player response ad key adBreaks"]);
+    expect(events).toEqual([["pruned", ["adPlacements", "adSlots", "playerAds"]]]);
+  });
+
+  it("ignores ad shaped keys on payloads that are not player responses", () => {
+    installAdPrune(true, AD_PRUNE_CONTRACT);
+
+    JSON.parse(JSON.stringify({ contents: { rows: [] }, adBreaks: [{}] }));
+
+    expect(misses).toEqual([]);
+  });
+
+  it("looks inside a nested playerResponse", () => {
+    installAdPrune(true, AD_PRUNE_CONTRACT);
+
+    JSON.parse(JSON.stringify({ playerResponse: response({ adBreaks: [{}] }) }));
+
+    expect(misses).toEqual(["player response ad key adBreaks"]);
+  });
+
+  it("stays quiet while the setting is off", () => {
+    installAdPrune(false, AD_PRUNE_CONTRACT);
+
+    JSON.parse(JSON.stringify(response({ adBreaks: [{}] })));
+
+    expect(misses).toEqual([]);
+  });
+
+  it("still records the prune when the drift report throws", () => {
+    (globalThis as unknown as { window: { ytmd: { reportContractMiss: () => void } } }).window.ytmd.reportContractMiss = () => {
+      throw new Error("ipc unavailable");
+    };
+
+    installAdPrune(true, AD_PRUNE_CONTRACT);
+
+    const parsed = JSON.parse(JSON.stringify(response({ ...known(), adBreaks: [{}] })));
+
+    expect(parsed).not.toHaveProperty("adSlots");
+    expect(events).toEqual([["pruned", ["adPlacements", "adSlots", "playerAds"]]]);
+    expect(pruneState().count).toBe(1);
+  });
+});
+
+describe("engine options", () => {
+  const FILTERS = ["music.youtube.com##ytmusic-popup-container", "||googleads.g.doubleclick.net^"];
+
+  const build = (): ElectronBlocker => ElectronBlocker.parse(FILTERS.join("\n"), ENGINE_CONFIG);
+
+  const matches = (engine: ElectronBlocker, url: string, type: RequestType): boolean =>
+    engine.match(Request.fromRawDetails({ url, type, sourceUrl: "https://music.youtube.com/" })).match;
+
+  it("keeps cosmetic filtering off", () => {
+    expect(ENGINE_CONFIG.loadCosmeticFilters).toBe(false);
+    expect(build().config.loadCosmeticFilters).toBe(false);
+  });
+
+  it("hands music.youtube.com no cosmetic rules to inject", () => {
+    const cosmetics = build().getCosmeticsFilters({ url: "https://music.youtube.com/", hostname: "music.youtube.com", domain: "youtube.com" });
+
+    expect(cosmetics.scripts).toEqual([]);
+    expect(cosmetics.styles).toBe("");
+  });
+
+  it("still blocks network requests with cosmetics off", () => {
+    expect(matches(build(), "https://googleads.g.doubleclick.net/pagead/id", "script")).toBe(true);
+  });
+
+  it("leaves the player endpoint and the media host alone", () => {
+    const engine = build();
+
+    expect(matches(engine, "https://music.youtube.com/youtubei/v1/player", "xhr")).toBe(false);
+    expect(matches(engine, "https://rr3---sn-example.googlevideo.com/videoplayback?itag=251", "media")).toBe(false);
+  });
+
+  it("comes back off cosmetics after a cache round trip", () => {
+    expect(ElectronBlocker.deserialize(build().serialize()).config.loadCosmeticFilters).toBe(false);
   });
 });
 

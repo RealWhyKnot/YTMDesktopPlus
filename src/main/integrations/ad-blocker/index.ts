@@ -6,7 +6,7 @@ import path from "path";
 import { ElectronBlocker, adsAndTrackingLists } from "@ghostery/adblocker-electron";
 
 import IIntegration from "../integration";
-import { isCacheStale, LEGACY_CACHE_FILES } from "./cache";
+import { ENGINE_CONFIG, isCacheStale, LEGACY_CACHE_FILES } from "./cache";
 
 import enableScript from "./script/enable.script?raw";
 import disableScript from "./script/disable.script?raw";
@@ -133,16 +133,11 @@ export default class AdBlocker implements IIntegration {
       // watch page, while YouTube Music renders ytmusic-* ones. It also broke the
       // song context menu, whose service item rows overflowed the stack while
       // Polymer stamped them and rendered as blank gaps.
-      const blocker = await ElectronBlocker.fromLists(
-        fetch,
-        adsAndTrackingLists,
-        { enableCompression: true, loadCosmeticFilters: false },
-        {
-          path: cachePath,
-          read: fs.readFile,
-          write: fs.writeFile
-        }
-      );
+      const blocker = await ElectronBlocker.fromLists(fetch, adsAndTrackingLists, ENGINE_CONFIG, {
+        path: cachePath,
+        read: fs.readFile,
+        write: fs.writeFile
+      });
 
       // Counting is cheap; logging every request is not, and debug logging is
       // on by default for beta builds.

@@ -10,6 +10,7 @@
 
 import { contextBridge, ipcRenderer, webFrame } from "electron";
 import Store from "../store-ipc/store";
+import { AD_PRUNE_CONTRACT } from "~shared/ad-contract";
 import { StoreSchema } from "~shared/store/schema";
 import {
   HOOK_POLL_INTERVAL,
@@ -231,7 +232,7 @@ function getYTMTextRun(runs: { text: string }[]) {
 // Read synchronously: resolving the store over ipcRenderer.invoke is the race
 // this install exists to avoid.
 const adBlockEnabled: boolean = ipcRenderer.sendSync("ytmView:adBlockEnabled") === true;
-contextBridge.executeInMainWorld({ func: installAdPrune, args: [adBlockEnabled] });
+contextBridge.executeInMainWorld({ func: installAdPrune, args: [adBlockEnabled, AD_PRUNE_CONTRACT] });
 
 // This hooks YTM's internal store. YouTube Music defines
 // PolymerFakeBaseClassWithoutHtml itself, so whichever side defines the
