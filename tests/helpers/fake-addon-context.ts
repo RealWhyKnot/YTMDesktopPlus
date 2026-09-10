@@ -257,6 +257,10 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
         return unsubscribe;
       })
     },
+    theme: {
+      get: vi.fn(() => ({ id: null, name: "None", tokens: {} })),
+      onChanged: vi.fn(() => unsubscribe)
+    },
     discord: {
       isEnabled: vi.fn(() => options.discordEnabled ?? false),
       onEnabledChanged: vi.fn(() => unsubscribe),

@@ -216,6 +216,12 @@ the addon stays active.
   window's title bar. The badge's `icon` is a Material Symbols ligature name.
 - `ctx.tray` - `setMenuItems(items)` for entries in the app's tray menu; each
   item is `{ label, click, enabled? }`, and an empty list removes the section.
+- `ctx.theme` - the theme the user has picked: `get()` returns its id, name and
+  resolved CSS tokens (`--bg`, `--accent`, `--font-ui` and the rest), and
+  `onChanged` fires when they switch. Reach for it whenever you draw your own
+  UI, so it follows the theme instead of freezing one set of colours. Styles
+  you inject with `ctx.ytmview.insertCSS` can use the tokens directly, because
+  the theme layer defines them in the page. See [themes.md](themes.md).
 - `ctx.notifications.show` - desktop notifications.
 
 ## Page-script cookbook
@@ -309,6 +315,13 @@ The window is frameless, so your HTML supplies its own drag region
 (`-webkit-app-region: drag`) and a close control that calls
 `ytmdAddon.closeWindow()`. The handle returned by `create` has `show`,
 `close`, `isOpen`, `webContents` and `send(channel, ...args)`.
+
+A `file` window is themed for you: it gets the active theme's tokens plus a
+few ready-made classes (`ytmd-card`, `ytmd-row`, `ytmd-button`, `ytmd-input`,
+`ytmd-muted`, `ytmd-drag`, `ytmd-no-drag`), so a panel looks like the rest of
+the app without you styling anything. Build on those and your window follows
+whatever theme the user picks. Pass `themed: false` to `create` if you would
+rather style the whole thing yourself.
 
 Channel namespacing avoids collisions between addons; it is not a security
 boundary between them, since every addon runs with full app access anyway.

@@ -47,3 +47,27 @@ const bridge: AddonWindowBridge = {
 };
 
 contextBridge.exposeInMainWorld("ytmdAddon", bridge);
+
+const THEME_STYLE_ID = "ytmd-theme";
+
+function applyAddonWindowTheme(css: string) {
+  let element = document.getElementById(THEME_STYLE_ID);
+  if (element === null) {
+    element = document.createElement("style");
+    element.id = THEME_STYLE_ID;
+    document.head.insertBefore(element, document.head.firstChild);
+  }
+  element.textContent = css;
+}
+
+if (!process.argv.includes("--ytmd-addon-theme=0")) {
+  try {
+    const initial = ipcRenderer.sendSync("themes:getActiveCss") as { addonWindow: string };
+    const paint = () => applyAddonWindowTheme(initial.addonWindow);
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", paint);
+    else paint();
+    ipcRenderer.on("themes:changed", (_event, next: { addonWindow: string }) => applyAddonWindowTheme(next.addonWindow));
+  } catch (error) {
+    console.warn("Addon window theme could not be applied", error);
+  }
+}

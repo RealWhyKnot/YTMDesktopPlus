@@ -44,6 +44,14 @@ export type AddonManifest = {
   defaultEnabled?: boolean;
 };
 
+export type AddonThemeTokens = Record<string, string>;
+
+export type AddonActiveTheme = {
+  id: string | null;
+  name: string;
+  tokens: AddonThemeTokens;
+};
+
 export type AddonOrigin = "bundled" | "external";
 
 /** What actually happened to the addon this boot, as opposed to the persisted intent */
@@ -305,6 +313,7 @@ export type AddonWindowOptions = {
   title?: string;
   /** false keeps the window hidden and unthrottled, for background work; handle.show() reveals it */
   show?: boolean;
+  themed?: boolean;
 };
 
 export type AddonWindowHandle = {
@@ -427,6 +436,10 @@ export interface AddonContext {
   ipc: {
     handle(channel: string, listener: (event: AddonIpcInvokeEvent, ...args: unknown[]) => unknown): Unsubscribe;
     on(channel: string, listener: (event: AddonIpcEvent, ...args: unknown[]) => void): Unsubscribe;
+  };
+  theme: {
+    get(): AddonActiveTheme;
+    onChanged(callback: (theme: AddonActiveTheme) => void): Unsubscribe;
   };
   notifications: {
     show(options: { title: string; body?: string; onClick?: () => void }): void;

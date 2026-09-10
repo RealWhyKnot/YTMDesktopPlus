@@ -9,13 +9,13 @@ const BOOST_CSS = `
   ytmusic-player-bar #volume-slider.ytmd-boosted #sliderBar #primaryProgress {
     background: linear-gradient(
       to right,
-      #ffffff 0 var(--ytmd-boost-split, 100%),
-      #ff5252 var(--ytmd-boost-split, 100%) 100%
+      var(--ytmd-text) 0 var(--ytmd-boost-split, 100%),
+      var(--danger) var(--ytmd-boost-split, 100%) 100%
     ) !important;
   }
 
   ytmusic-player-bar #volume-slider.ytmd-boosted .slider-knob-inner {
-    background-color: #ff5252 !important;
+    background-color: var(--danger) !important;
   }
 `;
 

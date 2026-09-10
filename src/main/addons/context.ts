@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import type {
+  AddonActiveTheme,
   AddonContext,
   AddonManifest,
   AddonSettingsSection,
@@ -91,6 +92,10 @@ export type AddonHostServices = {
   };
   deepLinks: {
     register(command: string, handler: (segments: string[], params: URLSearchParams) => void): () => void;
+  };
+  theme: {
+    get(): AddonActiveTheme;
+    subscribe(listener: (theme: AddonActiveTheme) => void): () => void;
   };
 };
 
@@ -393,6 +398,17 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
     deepLinks: {
       register(command, handler) {
         const unsubscribe = services.deepLinks.register(command, guard(`deepLinks(${command})`, handler));
+        bridge.addCleanup(unsubscribe);
+        return unsubscribe;
+      }
+    },
+
+    theme: {
+      get() {
+        return services.theme.get();
+      },
+      onChanged(callback) {
+        const unsubscribe = services.theme.subscribe(guard("theme.onChanged", callback));
         bridge.addCleanup(unsubscribe);
         return unsubscribe;
       }

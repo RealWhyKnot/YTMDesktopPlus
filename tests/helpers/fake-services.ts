@@ -124,6 +124,10 @@ export function fakeServices(persistedStates: Record<string, { enabled: boolean 
     },
     deepLinks: {
       register: vi.fn(() => () => {})
+    },
+    theme: {
+      get: vi.fn(() => ({ id: null, name: "None", tokens: {} })),
+      subscribe: vi.fn(() => () => {})
     }
   };
 

@@ -14,16 +14,16 @@ const BANNER_CSS = `
   align-items: center;
   gap: 10px;
   padding: 8px 14px 8px 8px;
-  background: rgba(20, 20, 20, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  font-family: Roboto, Arial, sans-serif;
-  color: #ffffff;
+  background: var(--ytmd-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font-family: var(--ytmd-font);
+  color: var(--ytmd-text);
 }
 #ytmd-phone-banner .ytmd-phone-banner-art {
   width: 40px;
   height: 40px;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 #ytmd-phone-banner .ytmd-phone-banner-title {
   font-size: 13px;
@@ -35,7 +35,7 @@ const BANNER_CSS = `
 }
 #ytmd-phone-banner .ytmd-phone-banner-subtitle {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ytmd-text-muted);
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -43,7 +43,7 @@ const BANNER_CSS = `
 }
 #ytmd-phone-banner .ytmd-phone-banner-caption {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-faint);
   margin-top: 2px;
 }
 `;
