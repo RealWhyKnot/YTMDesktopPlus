@@ -151,6 +151,7 @@ const config: ForgeConfig = {
                 "--env=TMPDIR=/var/tmp",
                 "--talk-name=org.kde.StatusNotifierWatcher",
                 "--talk-name=org.freedesktop.Notifications",
+                "--own-name=org.mpris.MediaPlayer2.chromium.*",
                 "--talk-name=org.freedesktop.secrets",
                 "--talk-name=org.kde.kwalletd5",
                 "--talk-name=org.kde.kwalletd6",
