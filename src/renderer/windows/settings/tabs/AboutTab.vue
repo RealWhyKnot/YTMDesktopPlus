@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject } from "vue";
+import { computed, inject } from "vue";
 import { settingsShellKey } from "../context";
 import logo from "~assets/icons/ytmd.png";
 
@@ -9,6 +9,7 @@ const {
   ytmdBranch,
   ytmdCommitHash,
   autoUpdaterDisabled,
+  updateLatestVersion,
   checkingForUpdate,
   updateAvailable,
   updateNotAvailable,
@@ -16,6 +17,8 @@ const {
   checkForUpdates,
   restartApplicationForUpdate
 } = shell;
+
+const releaseUrl = computed(() => `https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/${updateLatestVersion.value}`);
 </script>
 
 <template>
@@ -42,8 +45,10 @@ const {
       <p v-if="updateNotAvailable" class="no-update">Update not available</p>
     </template>
     <template v-if="autoUpdaterDisabled">
-      <button disabled class="update-check-button"><span class="material-symbols-outlined">update</span>Check for updates</button>
-      <p class="no-auto-updater">Auto updater disabled</p>
+      <a v-if="updateLatestVersion" class="update-link" :href="releaseUrl" target="_blank">
+        <span class="material-symbols-outlined">upgrade</span>{{ updateLatestVersion }} is available
+      </a>
+      <p class="no-auto-updater">Updates install through your package manager</p>
     </template>
     <span class="version-info">
       <p class="version">Version: {{ ytmdVersion }}</p>
@@ -126,6 +131,21 @@ const {
   align-items: center;
   color: #888888;
   margin: 0 0 8px 0;
+}
+
+.update-link {
+  display: flex;
+  align-items: center;
+  background-color: var(--accent);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 8px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.update-link .material-symbols-outlined {
+  margin-right: 4px;
 }
 
 .no-auto-updater {

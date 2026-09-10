@@ -8,7 +8,7 @@ import { settingsShellKey } from "../context";
 const staged = inject(stagedSettingsKey);
 const shell = inject(settingsShellKey);
 const stageChanged = staged.stageChanged;
-const { isDarwin, autoUpdaterDisabled } = shell;
+const { isDarwin, isLinux, autoUpdaterDisabled } = shell;
 
 const hideToTrayOnClose = staged.refs["general.hideToTrayOnClose"];
 const showNotificationOnSongChange = staged.refs["general.showNotificationOnSongChange"];
@@ -23,7 +23,7 @@ const updateChannel = staged.refs["updates.channel"];
   <div class="general-tab">
     <YTMDSetting v-if="!isDarwin" v-model="hideToTrayOnClose" type="checkbox" name="Hide to tray on close" @change="stageChanged" />
     <YTMDSetting v-model="showNotificationOnSongChange" type="checkbox" name="Show notification on song change" @change="stageChanged" />
-    <YTMDSetting v-model="startOnBoot" type="checkbox" name="Start on boot" @change="stageChanged" />
+    <YTMDSetting v-if="!isLinux" v-model="startOnBoot" type="checkbox" name="Start on boot" @change="stageChanged" />
     <YTMDSetting v-model="disableHardwareAcceleration" type="checkbox" restart-required name="Disable hardware acceleration" @change="stageChanged" />
     <YTMDSetting v-model="debugLogging" type="checkbox" name="Debug logging" @change="stageChanged" />
     <YTMDSetting

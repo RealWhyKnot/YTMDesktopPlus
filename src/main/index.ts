@@ -10,6 +10,7 @@ import {
   Menu,
   MenuItemConstructorOptions,
   nativeTheme,
+  net,
   Notification,
   safeStorage,
   screen,
@@ -56,7 +57,7 @@ import { setupTaskbarFeatures } from "./taskbar";
 import { enableIntegrationsAtBoot, syncIntegrations, type IntegrationRegistration } from "./integrations/lifecycle";
 import { registerWindowControlIpc } from "./ipc/window-controls";
 import { registerStoreBridgeIpc } from "./ipc/store-bridge";
-import { buildUpdateFeedUrl, isNewerVersion } from "../shared/update-feed";
+import { buildUpdateFeedUrl, isNewerVersion, newerVersionFromFeed } from "../shared/update-feed";
 
 // Injected by Forge's Vite plugin; empty in packaged builds.
 declare const ALL_WINDOWS_VITE_DEV_SERVER_URL: string;
@@ -99,7 +100,7 @@ if (migratedLegacyProfile) {
 // Handle logs and errors
 log.errorHandler.startCatching({
   showDialog: false,
-  onError({ error, processType, versions }) {
+  async onError({ error, processType, versions }) {
     if (applicationExited) return;
     if (processType === "renderer") return;
 
@@ -140,7 +141,11 @@ log.errorHandler.startCatching({
 
       // Copy to Clipboard
       if (result === 0 || result === 2) {
-        clipboard.writeText(`YTMDesktop+ Crashed\n\n${dialogMessage}`);
+        try {
+          await clipboard.writeText(`YTMDesktop+ Crashed\n\n${dialogMessage}`);
+        } catch (clipboardError) {
+          log.error(clipboardError);
+        }
       }
     }
 
@@ -275,6 +280,24 @@ function shouldDisableUpdates() {
 
 function updatesSupported() {
   return app.isPackaged && !shouldDisableUpdates() && !YTMD_DISABLE_UPDATES;
+}
+
+function updateNoticeSupported() {
+  return app.isPackaged && process.platform === "linux" && !YTMD_LOCAL_BUILD && !YTMD_DISABLE_UPDATES;
+}
+
+async function checkUpdateNotice() {
+  try {
+    const response = await net.fetch(buildUpdateFeedUrl(store.get("updates").channel, app.getVersion(), process.platform, process.arch));
+    if (!response.ok) return;
+    const latest = newerVersionFromFeed(await response.json(), app.getVersion());
+    if (latest === null) return;
+    log.info(`Application update available: ${latest}`);
+    memoryStore.set("appUpdateLatestVersion", latest);
+    memoryStore.set("appUpdateAvailable", true);
+  } catch (error) {
+    log.error(error);
+  }
 }
 
 // Set when a saved channel change triggers a check so the resulting download
@@ -489,6 +512,9 @@ if (updatesSupported()) {
     },
     1000 * 60 * 15
   );
+} else if (updateNoticeSupported()) {
+  checkUpdateNotice();
+  setInterval(() => checkUpdateNotice(), 1000 * 60 * 60);
 }
 
 const integrationRegistrations: IntegrationRegistration[] = [

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { UpdateChannel } from "../src/shared/store/schema";
-import { buildUpdateFeedUrl, compareVersions, isNewerVersion, resolveUpdateChannel } from "../src/shared/update-feed";
+import { buildUpdateFeedUrl, compareVersions, isNewerVersion, newerVersionFromFeed, resolveUpdateChannel } from "../src/shared/update-feed";
 
 describe("resolveUpdateChannel", () => {
   it("follows the installed build on Auto", () => {
@@ -48,5 +48,22 @@ describe("isNewerVersion", () => {
     expect(isNewerVersion("", "2026.803.1")).toBe(false);
     expect(isNewerVersion("not a version", "2026.803.1")).toBe(false);
     expect(isNewerVersion("../evil", "2026.803.1")).toBe(false);
+  });
+});
+
+describe("newerVersionFromFeed", () => {
+  it("returns the version when the feed is ahead", () => {
+    expect(newerVersionFromFeed({ channel: "stable", latest: "v2026.909.1" }, "2026.803.1")).toBe("v2026.909.1");
+  });
+
+  it("returns null when the feed matches or trails the running build", () => {
+    expect(newerVersionFromFeed({ latest: "v2026.803.1" }, "2026.803.1")).toBe(null);
+    expect(newerVersionFromFeed({ latest: "v2026.800.0" }, "2026.803.1")).toBe(null);
+  });
+
+  it("treats an unusable payload as nothing newer", () => {
+    for (const body of [null, undefined, "v2026.909.1", 42, {}, { latest: 1 }, { latest: "../evil" }]) {
+      expect(newerVersionFromFeed(body, "2026.803.1")).toBe(null);
+    }
   });
 });

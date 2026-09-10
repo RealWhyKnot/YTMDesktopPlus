@@ -21,6 +21,7 @@ export type SettingsShell = {
 
   safeStorageAvailable: Ref<boolean>;
   autoUpdaterDisabled: Ref<boolean>;
+  updateLatestVersion: Ref<string>;
   discordPresenceConnectionFailed: Ref<boolean>;
   shortcutRegisterFailed: Record<string, Ref<boolean>>;
   companionServerAuthWindowEnabled: Ref<boolean>;

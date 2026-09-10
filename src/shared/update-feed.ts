@@ -41,6 +41,13 @@ export function compareVersions(a: string, b: string): number {
   return left.prerelease < right.prerelease ? -1 : 1;
 }
 
+export function newerVersionFromFeed(body: unknown, currentVersion: string): string | null {
+  if (typeof body !== "object" || body === null) return null;
+  const latest = (body as { latest?: unknown }).latest;
+  if (typeof latest !== "string") return null;
+  return isNewerVersion(latest, currentVersion) ? latest.trim() : null;
+}
+
 // Guards the install path: an update is only ever applied when it is strictly
 // newer than what is running, so a feed serving an older or equal release can
 // never roll the app backwards.

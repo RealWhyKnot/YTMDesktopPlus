@@ -93,6 +93,7 @@ const shortcutRegisterFailed = {
 const companionServerAuthWindowEnabled = ref<boolean>(await memoryStore.get("companionServerAuthWindowEnabled"));
 
 const autoUpdaterDisabled = ref<boolean>(await memoryStore.get("autoUpdaterDisabled"));
+const updateLatestVersion = ref<string>(await memoryStore.get("appUpdateLatestVersion"));
 
 const addonsSupported = window.ytmd.addons !== undefined;
 const addons = ref<AddonDescriptor[]>(initialAddons);
@@ -122,6 +123,7 @@ memoryStore.onStateChanged(async newState => {
   safeStorageAvailable.value = newState.safeStorageAvailable;
 
   autoUpdaterDisabled.value = newState.autoUpdaterDisabled;
+  updateLatestVersion.value = newState.appUpdateLatestVersion;
 
   if (newState.addonsRuntime) {
     addons.value = newState.addonsRuntime;
@@ -220,6 +222,7 @@ provide(settingsShellKey, {
   restartApplicationForUpdate,
   safeStorageAvailable,
   autoUpdaterDisabled,
+  updateLatestVersion,
   discordPresenceConnectionFailed,
   shortcutRegisterFailed,
   companionServerAuthWindowEnabled,

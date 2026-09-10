@@ -115,4 +115,5 @@ export type MemoryStoreSchema = {
   ytmViewUnresponsive: boolean;
   appUpdateAvailable: boolean;
   appUpdateDownloaded: boolean;
+  appUpdateLatestVersion: string;
 };
