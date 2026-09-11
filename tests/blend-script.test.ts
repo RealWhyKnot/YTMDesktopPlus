@@ -29,6 +29,7 @@ class FakeAudio {
   src = "";
   error: { code: number } | null = null;
   played: number[] = [];
+  refusePlay = false;
   private handlers = new Map<string, ((...args: unknown[]) => void)[]>();
 
   constructor() {
@@ -43,6 +44,7 @@ class FakeAudio {
     this.paused = true;
   }
   play() {
+    if (this.refusePlay) return Promise.reject(new Error("NotAllowedError"));
     this.paused = false;
     this.played.push(this.currentTime);
     return Promise.resolve();
@@ -346,6 +348,17 @@ describe("blend script", () => {
     advance(1000);
     dispatch("timeupdate");
     expect(outGain.calls.some(call => call.method === "curve")).toBe(false);
+  });
+
+  it("stands down when the shadow loaded but was never allowed to play", () => {
+    run();
+    armAt(30);
+    audios[0].refusePlay = true;
+    audios[0].paused = true;
+
+    armAt(195.5);
+    expect(nextVideo).not.toHaveBeenCalled();
+    expect(diags().find(diag => diag.event === "suppressed")).toMatchObject({ reason: "shadow not ready" });
   });
 
   it("blends a skip before the incoming track reports its length", () => {

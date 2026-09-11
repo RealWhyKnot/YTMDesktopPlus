@@ -264,6 +264,8 @@
     }
   };
 
+  const shadowSounding = () => !!state.shadow && state.shadow.readyState >= 2 && !state.shadow.paused;
+
   const loadInProgress = () => {
     const api = playerApi();
     const playerState = api && api.getPlayerState ? api.getPlayerState() : null;
@@ -283,7 +285,7 @@
       if (!state.video.paused) beginFadeIn();
       return;
     }
-    const ready = state.shadow && state.shadowVideoId === previous && state.shadow.readyState >= 2;
+    const ready = state.shadowVideoId === previous && shadowSounding();
     if (previous && ready && !gated()) {
       startBlend(earLevel(state.video), false);
       report("blend", { kind: "skip", seconds: state.config.seconds });
@@ -325,7 +327,7 @@
       reportOnce("suppressed", "suppressed", { reason: "no next track" });
       return;
     }
-    if (!state.shadow || state.shadow.readyState < 2) {
+    if (!shadowSounding()) {
       reportOnce("suppressed", "suppressed", { reason: "shadow not ready" });
       return;
     }
