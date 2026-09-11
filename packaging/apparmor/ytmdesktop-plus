@@ -1,6 +1,6 @@
 include <tunables/global>
 
-profile ytmdesktop-plus /tmp/{.mount_*,appimage_extracted_*}/ytmdesktop-plus flags=(unconfined) {
+profile ytmdesktop-plus /tmp/{.mount_*,appimage_extracted_*}/{,usr/bin/,usr/lib/ytmdesktop-plus/}ytmdesktop-plus flags=(unconfined) {
   userns,
 
   include if exists <local/ytmdesktop-plus>
