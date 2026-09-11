@@ -228,6 +228,17 @@ export class AudioPublisher {
     this.publishUpdate(false, 0);
   }
 
+  private fail(message: string, ...args: unknown[]) {
+    this.deps.log(message, ...args);
+    this.phase = "failed";
+    this.deps.stopCapture();
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.transport?.close();
+    this.transport = null;
+    this.publishUpdate(false, 0);
+  }
+
   private dial() {
     if (!this.creds) return;
     this.transport?.close();
@@ -264,11 +275,7 @@ export class AudioPublisher {
         return;
       }
       case "e": {
-        if (FATAL_AUDIO_ERRORS.includes(frame.m)) {
-          this.deps.log("audio publisher refused by the relay", frame.m);
-          this.phase = "failed";
-          this.publishUpdate(false, 0);
-        }
+        if (FATAL_AUDIO_ERRORS.includes(frame.m)) this.fail("audio publisher refused by the relay", frame.m);
         return;
       }
     }
@@ -279,8 +286,7 @@ export class AudioPublisher {
     this.phase = "connecting";
     this.publishUpdate(false, this.webListeners);
     if (this.attempts >= MAX_CONNECTION_ATTEMPTS) {
-      this.deps.log("audio publisher gave up reconnecting");
-      this.phase = "failed";
+      this.fail("audio publisher gave up reconnecting");
       return;
     }
     const delay = BACKOFF_MS[Math.min(this.attempts, BACKOFF_MS.length - 1)];

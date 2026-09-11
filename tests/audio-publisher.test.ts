@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AudioPublisher, type AudioTransport, type AudioTransportHandlers } from "../src/main/integrations/listen-along/audio-publisher";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
@@ -151,6 +151,52 @@ describe("AudioPublisher lifecycle", () => {
 
     h.current().handlers.onClose();
     expect(h.transports).toHaveLength(1);
+  });
+
+  it("tears the capture down when the relay refuses the room", () => {
+    const h = makeHarness();
+    h.publisher.setCredentials(CREDS);
+    h.open();
+    h.ready(3);
+    const stoppedBefore = h.capture.stopped;
+    h.current().handlers.onFrame({ t: "e", m: "room closed" });
+
+    expect(h.capture.stopped).toBe(stoppedBefore + 1);
+    expect(h.current().closed).toBe(true);
+    expect(h.updates[h.updates.length - 1]).toEqual({ streaming: false, webListeners: 0 });
+  });
+
+  it("does not redial the room it was refused from", () => {
+    const h = makeHarness();
+    h.publisher.setCredentials(CREDS);
+    h.open();
+    h.ready();
+    h.current().handlers.onFrame({ t: "e", m: "room closed" });
+
+    h.publisher.setCredentials(CREDS);
+    expect(h.transports).toHaveLength(1);
+    expect(h.capture.started).toBe(1);
+  });
+
+  it("tears the capture down once it runs out of reconnect attempts", () => {
+    vi.useFakeTimers();
+    try {
+      const h = makeHarness();
+      h.publisher.setCredentials(CREDS);
+      h.open();
+      h.ready();
+      const stoppedBefore = h.capture.stopped;
+
+      for (let attempt = 0; attempt <= 30; attempt++) {
+        h.current().handlers.onClose();
+        vi.advanceTimersByTime(30_000);
+      }
+
+      expect(h.capture.stopped).toBe(stoppedBefore + 1);
+      expect(h.updates[h.updates.length - 1]).toEqual({ streaming: false, webListeners: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
