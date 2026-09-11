@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- fix(linux): attach the apparmor profile to the real appimage binary
 - fix(blend): stand down when the shadow loaded but never started playing
 - feat(addons)!: replace the dj addon with blend
 - fix(rooms): clear the capture flag even when teardown fails
