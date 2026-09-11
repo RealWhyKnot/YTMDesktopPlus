@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.911.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.911.0-beta) - 2026-09-11
 - fix(linux): attach the apparmor profile to the real appimage binary
 - fix(blend): stand down when the shadow loaded but never started playing
 - feat(addons)!: replace the dj addon with blend
