@@ -14,10 +14,16 @@ const REFERENCED_TOKEN = /var\(\s*(--[a-zA-Z0-9-]+)/g;
 
 const baseVocabulary = () => {
   const tokens = new Set<string>();
-  for (const file of ["app.css", "ytm.css"]) {
+  for (const file of ["app.css", "ytm-tokens.css"]) {
     const css = fs.readFileSync(path.join(BASE_DIR, file), "utf8");
     for (const token of Object.keys(parseTokens(css))) tokens.add(token);
     for (const match of css.matchAll(REFERENCED_TOKEN)) tokens.add(match[1]);
+  }
+  for (const file of ["ytm.css", "addon-ui.css"]) {
+    const css = fs.readFileSync(path.join(BASE_DIR, file), "utf8");
+    for (const match of css.matchAll(REFERENCED_TOKEN)) {
+      if (tokens.has(match[1]) || match[1].startsWith("--ytmd-")) tokens.add(match[1]);
+    }
   }
   return tokens;
 };
@@ -114,6 +120,33 @@ describe("bundled themes", () => {
 
     expect(themes.activeTheme().id).toBeNull();
     expect(themes.getCss().app).toContain("--bg");
+    themes.dispose();
+  });
+
+  for (const activeId of [null, "does-not-exist"]) {
+    it(`leaves YouTube Music alone when the active theme is ${activeId ?? "none"}`, () => {
+      const themes = manager(activeId);
+      themes.refresh();
+      const ytm = themes.getCss().ytm;
+
+      expect(ytm).not.toContain("ytmusic-app");
+      expect(ytm).not.toContain("--ytmusic-");
+      expect(ytm).not.toContain("color-scheme");
+      expect(ytm).toContain("--ytmd-text");
+      expect(ytm).toContain("--ytmd-surface");
+      themes.dispose();
+    });
+  }
+
+  it("repaints YouTube Music through its own tokens when a theme is active", () => {
+    const themes = manager("daylight");
+    themes.refresh();
+    const ytm = themes.getCss().ytm;
+
+    expect(ytm).toContain("--ytmusic-text-primary: var(--ytmd-text)");
+    expect(ytm).toContain("--ytmusic-overlay-text-secondary: var(--ytmd-text-muted)");
+    expect(ytm).toContain("--ytmusic-icon-inactive: var(--ytmd-icon)");
+    expect(ytm).toContain("background-color: var(--ytmd-bg) !important");
     themes.dispose();
   });
 });

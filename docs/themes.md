@@ -129,10 +129,20 @@ usually do not touch these:
 | Token | What it colours |
 | --- | --- |
 | `--ytmd-bg` | Page background |
-| `--ytmd-surface` | Player bar, nav bar, sidebar |
+| `--ytmd-surface` | Player bar and raised shelves |
+| `--ytmd-elevated` | Search field and menu surfaces |
+| `--ytmd-hover` | Hover and pressed fills, chip backgrounds |
+| `--ytmd-border` | Dividers, outlines, the progress track |
 | `--ytmd-text` | Page text |
-| `--ytmd-text-muted` | Secondary page text |
+| `--ytmd-text-muted` | Secondary page text, card subtitles |
+| `--ytmd-text-faint` | Disabled text |
+| `--ytmd-icon` | Icons |
+| `--ytmd-icon-muted` | Disabled icons |
 | `--ytmd-accent` | Progress bar and selected items |
+| `--ytmd-on-accent` | Text drawn on top of the accent |
+| `--ytmd-danger` | Warnings on the page, such as the boosted part of the volume bar |
+| `--ytmd-overlay` | Scrims over artwork |
+| `--ytmd-scheme` | `light` or `dark`; drives native scrollbars and form controls |
 | `--ytmd-font` | Page font; leave it alone to keep YouTube's own |
 
 A palette theme is one `:root` block setting the ones it cares about:

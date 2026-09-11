@@ -10,7 +10,8 @@ function writeBase(dir: string): void {
   const base = path.join(dir, "_base");
   fs.mkdirSync(base, { recursive: true });
   fs.writeFileSync(path.join(base, "app.css"), ":root{--bg:#000000;--accent:#f44336;--bg-control:#212121}");
-  fs.writeFileSync(path.join(base, "ytm.css"), ":root{--ytmd-bg:var(--bg)}\nytmusic-app{background:var(--ytmd-bg)}");
+  fs.writeFileSync(path.join(base, "ytm-tokens.css"), ":root{--ytmd-bg:var(--bg)}");
+  fs.writeFileSync(path.join(base, "ytm.css"), "ytmusic-app{background:var(--ytmd-bg)}");
   fs.writeFileSync(path.join(base, "addon-ui.css"), ".ytmd-button{background:var(--bg-control)}");
 }
 

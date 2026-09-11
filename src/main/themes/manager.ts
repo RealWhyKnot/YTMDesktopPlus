@@ -162,9 +162,11 @@ export class ThemeManager {
     }
 
     const baseTokens = this.baseFile("app.css");
+    const ytmTokens = this.baseFile("ytm-tokens.css");
+    const ytmPaint = active ? this.baseFile("ytm.css") : "";
     this.css = {
       app: [baseTokens, shared.css, app.css].filter(Boolean).join("\n"),
-      ytm: [baseTokens, this.baseFile("ytm.css"), shared.css, ytm.css].filter(Boolean).join("\n"),
+      ytm: [baseTokens, ytmTokens, ytmPaint, shared.css, ytm.css].filter(Boolean).join("\n"),
       addonWindow: [baseTokens, this.baseFile("addon-ui.css"), shared.css, app.css].filter(Boolean).join("\n")
     };
     this.tokens = parseTokens(this.css.app);

@@ -11,17 +11,26 @@ const documented = new Set((doc.match(/`--[a-zA-Z0-9-]+`/g) ?? []).map(match => 
 
 const REFERENCED_TOKEN = /var\(\s*(--[a-zA-Z0-9-]+)/g;
 
-function baseVocabulary(files: string[]): Set<string> {
+const OWN_FILES = ["app.css", "ytm-tokens.css"];
+const PAINT_FILES = ["ytm.css", "addon-ui.css"];
+
+function baseVocabulary(): Set<string> {
   const tokens = new Set<string>();
-  for (const file of files) {
+  for (const file of OWN_FILES) {
     const css = fs.readFileSync(path.join(BASE_DIR, file), "utf8");
     for (const token of Object.keys(parseTokens(css))) tokens.add(token);
     for (const match of css.matchAll(REFERENCED_TOKEN)) tokens.add(match[1]);
   }
+  for (const file of PAINT_FILES) {
+    const css = fs.readFileSync(path.join(BASE_DIR, file), "utf8");
+    for (const match of css.matchAll(REFERENCED_TOKEN)) {
+      if (tokens.has(match[1]) || match[1].startsWith("--ytmd-")) tokens.add(match[1]);
+    }
+  }
   return tokens;
 }
 
-const vocabulary = baseVocabulary(["app.css", "ytm.css"]);
+const vocabulary = baseVocabulary();
 
 describe("themes documentation", () => {
   it("documents every token the base layer defines", () => {

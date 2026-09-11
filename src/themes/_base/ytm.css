@@ -1,35 +1,72 @@
 :root {
-  --ytmd-bg: var(--bg);
-  --ytmd-surface: var(--bg-raised);
-  --ytmd-text: var(--text);
-  --ytmd-text-muted: var(--text-muted);
-  --ytmd-accent: var(--accent);
+  --ytmusic-background: var(--ytmd-bg);
+  --ytmusic-general-background-a: var(--ytmd-surface);
+  --ytmusic-general-background-c: var(--ytmd-bg);
+  --ytmusic-nav-bar: var(--ytmd-bg);
+  --ytmusic-detail-header: var(--ytmd-bg);
+  --ytmusic-player-page-background: var(--ytmd-bg);
+  --ytmusic-player-bar-background: var(--ytmd-surface);
+  --ytmusic-search-background: var(--ytmd-elevated);
+
+  --ytmusic-text-primary: var(--ytmd-text);
+  --ytmusic-text-secondary: var(--ytmd-text-muted);
+  --ytmusic-text-disabled: var(--ytmd-text-faint);
+  --ytmusic-text-primary-inverse: var(--ytmd-bg);
+  --ytmusic-overlay-text-primary: var(--ytmd-text);
+  --ytmusic-overlay-text-secondary: var(--ytmd-text-muted);
+  --ytmusic-overlay-text-disabled: var(--ytmd-text-faint);
+  --ytmusic-search-box-text-secondary: var(--ytmd-text-muted);
+  --ytmusic-search-suggestion-text-secondary: var(--ytmd-text-muted);
+  --ytmusic-guide-signin-promo-text-secondary: var(--ytmd-text-muted);
+  --ytmusic-inactive-tab: var(--ytmd-text-muted);
+
+  --ytmusic-icon-inactive: var(--ytmd-icon);
+  --ytmusic-icon-disabled: var(--ytmd-icon-muted);
+  --disabled-text-color: var(--ytmd-icon-muted);
+  --ytmusic-search-suggestion-icon-color: var(--ytmd-icon);
+  --ytmusic-setting-item-toggle-inactive-button: var(--ytmd-icon);
+
+  --ytmusic-call-to-action: var(--ytmd-accent);
+  --ytmusic-focus-active: var(--ytmd-accent);
+  --ytmusic-search-suggestion-focus-active: var(--ytmd-accent);
+  --ytmusic-setting-item-toggle-active: var(--ytmd-accent);
+
+  --ytmusic-divider: var(--ytmd-border);
+  --ytmusic-guide-divider: var(--ytmd-border);
+  --ytmusic-search-border: var(--ytmd-border);
+  --ytmusic-search-bar-border-bauhaus: var(--ytmd-border);
+  --ytmusic-player-bar-container-color: var(--ytmd-border);
+  --ytmusic-progress-container: var(--ytmd-border);
+
+  --ytmusic-ten-percent-layer: var(--ytmd-hover);
+  --ytmusic-guide-hover: var(--ytmd-hover);
+  --ytmusic-menu-item-hover-background-color: var(--ytmd-hover);
+  --ytmusic-menu-item-focus-background-color: var(--ytmd-hover);
+  --ytmusic-badge-chip-background: var(--ytmd-hover);
+  --ytmusic-badge-chip-inactive-hover: var(--ytmd-hover);
+  --ytmusic-explore-chip-background: var(--ytmd-hover);
+  --ytmusic-search-suggestion-focus-active-background: var(--ytmd-hover);
+  --ytmusic-search-bar-background-bauhaus: var(--ytmd-hover);
+
+  --ytmusic-player-bar-ink-color: var(--ytmd-text-muted);
+  --ytmusic-player-bar-disabled-secondary-color: var(--ytmd-text-faint);
+  --ytmusic-player-bar-repeat-disabled: var(--ytmd-text-faint);
+  --ytmusic-play-pause-button-background: var(--ytmd-text);
+  --ytmusic-guide-entry-focus-border: var(--ytmd-text);
+  --ytmusic-setting-item-toggle-inactive-bar: var(--ytmd-text);
 }
 
-ytmusic-app,
-ytmusic-app-layout,
-ytmusic-browse-response,
-ytmusic-player-page,
-ytmusic-tabbed-search-results-renderer,
-ytmusic-search-page {
+html {
+  color-scheme: var(--ytmd-scheme, dark);
+}
+
+html,
+body {
   background-color: var(--ytmd-bg) !important;
-  color: var(--ytmd-text) !important;
 }
 
 ytmusic-app {
   font-family: var(--ytmd-font, inherit);
-}
-
-ytmusic-app-layout > ytmusic-player-bar,
-ytmusic-player-bar,
-ytmusic-nav-bar,
-#nav-bar-background,
-ytmusic-pivot-bar-renderer,
-tp-yt-app-drawer,
-ytmusic-guide-renderer,
-ytmusic-guide-section-renderer {
-  background-color: var(--ytmd-surface) !important;
-  color: var(--ytmd-text) !important;
 }
 
 ytmusic-player-bar #sliderBar #primaryProgress,
@@ -43,7 +80,28 @@ ytmusic-pivot-bar-item-renderer[selected] {
   color: var(--ytmd-accent) !important;
 }
 
-ytmusic-player-bar .subtitle,
-ytmusic-responsive-list-item-renderer .secondary-flex-columns {
+.title.ytmusic-two-row-item-renderer,
+.title.ytmusic-carousel-shelf-basic-header-renderer,
+.content-info-wrapper.ytmusic-player-bar .title.ytmusic-player-bar,
+ytmusic-guide-entry-renderer,
+ytmusic-chip-cloud-chip-renderer[chip-style="STYLE_LARGE_TRANSLUCENT_AND_SELECTED_WHITE"] a.ytmusic-chip-cloud-chip-renderer {
+  color: var(--ytmd-text) !important;
+}
+
+.strapline.ytmusic-carousel-shelf-basic-header-renderer,
+.subtitle.ytmusic-carousel-shelf-basic-header-renderer {
   color: var(--ytmd-text-muted) !important;
+}
+
+.ytSpecButtonShapeNextMono.ytSpecButtonShapeNextText,
+.ytSpecButtonShapeNextMono.ytSpecButtonShapeNextOutline {
+  color: var(--ytmd-text) !important;
+}
+
+yt-icon-button[disabled] {
+  color: var(--ytmd-icon-muted) !important;
+}
+
+.background-gradient.ytmusic-browse-response {
+  background-image: linear-gradient(color-mix(in srgb, var(--ytmd-bg) 70%, transparent), var(--ytmd-bg)) !important;
 }

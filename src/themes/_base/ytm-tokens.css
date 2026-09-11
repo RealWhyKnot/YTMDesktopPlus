@@ -1,0 +1,17 @@
+:root {
+  --ytmd-bg: var(--bg);
+  --ytmd-surface: var(--bg-raised);
+  --ytmd-elevated: var(--bg-control);
+  --ytmd-hover: var(--bg-control-hover);
+  --ytmd-border: var(--border);
+  --ytmd-text: var(--text);
+  --ytmd-text-muted: var(--text-muted);
+  --ytmd-text-faint: var(--text-faint);
+  --ytmd-icon: var(--text-muted);
+  --ytmd-icon-muted: var(--text-faint);
+  --ytmd-accent: var(--accent);
+  --ytmd-on-accent: var(--on-accent);
+  --ytmd-danger: var(--danger);
+  --ytmd-overlay: var(--overlay);
+  --ytmd-scheme: dark;
+}

@@ -8,7 +8,7 @@
   --text: #1c1a17;
   --text-muted: #55504a;
   --text-faint: #7d766e;
-  --accent: #c0392b;
+  --accent: #1668a8;
   --on-accent: #ffffff;
   --success: #2e7d32;
   --danger: #c0392b;
@@ -18,4 +18,5 @@
   --scrollbar-thumb: #c9c1b7;
   --titlebar-symbol: #55504a;
   --titlebar-separator: #ded7cd;
+  --ytmd-scheme: light;
 }
