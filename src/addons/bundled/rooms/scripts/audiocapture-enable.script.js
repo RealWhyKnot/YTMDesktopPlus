@@ -71,20 +71,25 @@
   };
   window.__ytmdAudioStream = state;
 
-  state.encoder = new AudioEncoder({
-    output: chunk => {
-      const data = new ArrayBuffer(chunk.byteLength);
-      chunk.copyTo(data);
-      state.pending.push({ t: chunk.timestamp, d: data });
-    },
-    error: err => {
-      window.ytmd.postAddonMessage("rooms", "captureStatus", { error: String(err) });
-    }
-  });
-  state.encoder.configure({ codec: "opus", sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 });
+  try {
+    state.encoder = new AudioEncoder({
+      output: chunk => {
+        const data = new ArrayBuffer(chunk.byteLength);
+        chunk.copyTo(data);
+        state.pending.push({ t: chunk.timestamp, d: data });
+      },
+      error: err => {
+        window.ytmd.postAddonMessage("rooms", "captureStatus", { error: String(err) });
+      }
+    });
+    state.encoder.configure({ codec: "opus", sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 });
 
-  const processor = new MediaStreamTrackProcessor({ track: bridgeDest.stream.getAudioTracks()[0] });
-  state.reader = processor.readable.getReader();
+    const processor = new MediaStreamTrackProcessor({ track: bridgeDest.stream.getAudioTracks()[0] });
+    state.reader = processor.readable.getReader();
+  } catch (error) {
+    window.ytmd.postAddonMessage("rooms", "captureStatus", { error: String(error) });
+    return "";
+  }
 
   const pump = async () => {
     for (;;) {
