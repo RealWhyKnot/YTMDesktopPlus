@@ -150,6 +150,13 @@ export function createAppStore(): Conf<StoreSchema> {
   if (store.get("addons") === undefined) {
     store.set("addons", { states: {}, settings: {} });
   }
+  const addons = store.get("addons");
+  if (addons.states?.dj !== undefined) {
+    store.delete("addons.states.dj" as keyof StoreSchema);
+  }
+  if (addons.settings?.dj !== undefined) {
+    store.delete("addons.settings.dj" as keyof StoreSchema);
+  }
   if (store.get("themes") === undefined) {
     store.set("themes", { active: null });
   }

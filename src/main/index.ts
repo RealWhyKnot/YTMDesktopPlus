@@ -1788,6 +1788,16 @@ app.on("ready", async () => {
     isSettingsSender
   });
 
+  const retiredAddonDataPath = path.join(app.getPath("userData"), "addon-data", "dj");
+  if (
+    await fs.rm(retiredAddonDataPath, { recursive: true }).then(
+      () => true,
+      () => false
+    )
+  ) {
+    log.info("Removed data left by the retired dj addon");
+  }
+
   const externalAddonScans = scanExternalAddons(addonsDirPath);
   addonManager.registerExternal(externalAddonScans);
 

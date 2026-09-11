@@ -85,7 +85,6 @@
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "vue": "3.5.42",
-    "web-audio-beat-detector": "8.2.39",
     "ws": "8.21.3"
   },
   "lint-staged": {
