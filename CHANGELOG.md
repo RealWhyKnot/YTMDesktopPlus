@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- fix(blend): stand down when the shadow loaded but never started playing
+- feat(addons)!: replace the dj addon with blend
 - fix(rooms): clear the capture flag even when teardown fails
 - fix(rooms): tear the audio capture down when a room fails for good
 - feat(addons): let addons follow the active theme
