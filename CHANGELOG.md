@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- test(harness): measure how YouTube Music paints itself
+- fix(themes): repaint YouTube Music through its own tokens
 
 ## [v2026.911.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.911.0-beta) - 2026-09-11
 - fix(linux): attach the apparmor profile to the real appimage binary
