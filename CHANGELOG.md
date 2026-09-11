@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.911.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.911.1-beta) - 2026-09-11
 - test(harness): measure how YouTube Music paints itself
 - fix(themes): repaint YouTube Music through its own tokens
 
