@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- fix(rooms): clear the capture flag even when teardown fails
+- fix(rooms): tear the audio capture down when a room fails for good
+- feat(addons): let addons follow the active theme
+- feat(themes): add themes, with eight bundled
+- refactor(renderer): move the palette into a shared token layer
 - feat(playback): report player response ad keys the ad blocker does not know
 - feat(test-harness): measure runtime memory and build size
 - fix(test-harness): mute audio by default and stop seeding stale logs
