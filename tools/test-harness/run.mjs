@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 import { createEmitter } from "./events.mjs";
 import { launchApp } from "./launch.mjs";
 import { sweep, listStrays, teardown } from "./teardown.mjs";
-import { listTargets, evalOnTarget, waitForTarget, waitForValue } from "./cdp.mjs";
+import { listTargets, evalOnTarget, matchedStylesOnTarget, screenshotOnTarget, waitForTarget, waitForValue } from "./cdp.mjs";
 import * as companion from "./companion.mjs";
 import { createLogTail, grepFile } from "./log-tail.mjs";
 
@@ -187,6 +187,8 @@ const ctx = {
   },
   evalMain: expr => evalOnTarget(cdpPort, MAIN_WINDOW, expr),
   evalYtm: expr => evalOnTarget(cdpPort, /music\.youtube\.com/, expr),
+  matchedStylesYtm: selectors => matchedStylesOnTarget(cdpPort, YTM_VIEW, selectors),
+  screenshotYtm: () => screenshotOnTarget(cdpPort, YTM_VIEW),
   waitMain: (expr, predicate, timeoutMs) => waitForValue(cdpPort, MAIN_WINDOW, expr, predicate, timeoutMs),
   waitYtm: (expr, predicate, timeoutMs) => waitForValue(cdpPort, /music\.youtube\.com/, expr, predicate, timeoutMs),
   waitTarget: (pattern, timeoutMs) => waitForTarget(cdpPort, pattern, timeoutMs),
