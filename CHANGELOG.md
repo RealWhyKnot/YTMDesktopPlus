@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- feat(tools): script to install the working tree into the local client
 - fix(themes): repaint the light-scheme text YouTube hardcodes
 - fix(themes): loop ambient effects and layer them above every page
 - test(harness): add ytm-contrast-audit scenario
