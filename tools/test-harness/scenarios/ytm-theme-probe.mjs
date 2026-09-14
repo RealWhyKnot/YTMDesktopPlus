@@ -267,6 +267,170 @@ export default async function ytmThemeProbe(ctx) {
     ctx.emit("probe-injected", parsed.injected);
   });
 
+  await ctx.step(
+    "popup surfaces opened and sampled",
+    async () => {
+      const POPUP_SELECTORS = [
+        "ytmusic-menu-popup-renderer",
+        "tp-yt-iron-dropdown",
+        "tp-yt-paper-listbox",
+        "ytmusic-menu-service-item-renderer",
+        "ytmusic-menu-navigation-item-renderer",
+        "ytmusic-menu-popup-renderer yt-formatted-string",
+        "ytmusic-menu-popup-renderer yt-icon"
+      ];
+      const trigger = JSON.parse(
+        await ctx.evalYtm(`JSON.stringify((() => {
+          for (const menu of document.querySelectorAll("ytmusic-player-bar ytmusic-menu-renderer, ytmusic-menu-renderer")) {
+            const button = menu.querySelector("tp-yt-paper-icon-button, yt-icon-button button, yt-icon-button, button");
+            if (!button) continue;
+            button.click();
+            return { clicked: "ytmusic-menu-renderer button", tag: button.tagName.toLowerCase() };
+          }
+          const card = document.querySelector("ytmusic-two-row-item-renderer, ytmusic-responsive-list-item-renderer");
+          if (card) {
+            const box = card.getBoundingClientRect();
+            card.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 }));
+            return { clicked: "contextmenu on card" };
+          }
+          return { clicked: null };
+        })())`)
+      );
+      if (!trigger.clicked) {
+        ctx.emit("probe-popup", { found: false, reason: "no menu trigger in the dom" });
+        return;
+      }
+      const visible = await ctx
+        .waitYtm(
+          `(() => {
+            const dropdown = document.querySelector('tp-yt-iron-dropdown:not([aria-hidden="true"])');
+            if (!dropdown) return false;
+            const box = dropdown.getBoundingClientRect();
+            return box.width > 0 && box.height > 0 && !!dropdown.querySelector("ytmusic-menu-popup-renderer");
+          })()`,
+          open => open === true,
+          15000
+        )
+        .then(
+          () => true,
+          () => false
+        );
+      if (!visible) {
+        ctx.emit("probe-popup", { found: false, reason: "menu never opened", trigger: trigger.clicked });
+        return;
+      }
+      const samples = JSON.parse(
+        await ctx.evalYtm(`JSON.stringify((() => {
+          const PAINT = ${JSON.stringify(PAINT_PROPS)};
+          const BLANK = ["rgba(0, 0, 0, 0)", "transparent", "none", ""];
+          const out = {};
+          for (const selector of ${JSON.stringify(POPUP_SELECTORS)}) {
+            const element = document.querySelector(selector);
+            if (!element) { out[selector] = { found: false }; continue; }
+            const style = getComputedStyle(element);
+            const box = element.getBoundingClientRect();
+            const paint = {};
+            for (const property of PAINT) {
+              const value = style.getPropertyValue(property).trim();
+              if (BLANK.indexOf(value) >= 0) continue;
+              paint[property] = value.slice(0, 90);
+            }
+            out[selector] = {
+              found: true,
+              visible: box.width > 0 && box.height > 0,
+              paint
+            };
+          }
+          return out;
+        })())`)
+      );
+      ctx.emit("probe-popup", { found: true, trigger: trigger.clicked, samples });
+      const matched = await ctx.matchedStylesYtm(POPUP_SELECTORS);
+      ctx.emit("probe-popup-rules", matched);
+      const closed = JSON.parse(
+        await ctx.evalYtm(`JSON.stringify((() => {
+          const dropdown = document.querySelector('tp-yt-iron-dropdown:not([aria-hidden="true"])');
+          if (dropdown && typeof dropdown.close === "function") dropdown.close();
+          document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+          void document.body.offsetHeight;
+          return { stillOpen: !!document.querySelector('tp-yt-iron-dropdown:not([aria-hidden="true"])') };
+        })())`)
+      );
+      ctx.emit("probe-popup-closed", closed);
+    },
+    90000
+  );
+
+  await ctx.step(
+    "list items navigated and sampled",
+    async () => {
+      const navigated = JSON.parse(
+        await ctx.evalYtm(`JSON.stringify((() => {
+          const link = document.querySelector("ytmusic-two-row-item-renderer a");
+          if (!link) return { clicked: false };
+          link.click();
+          return { clicked: true };
+        })())`)
+      );
+      if (!navigated.clicked) {
+        ctx.emit("probe-list-items", { found: false, reason: "no card link to follow" });
+        return;
+      }
+      const appeared = await ctx
+        .waitYtm("!!document.querySelector('ytmusic-responsive-list-item-renderer')", ready => ready === true, 20000)
+        .then(
+          () => true,
+          () => false
+        );
+      if (!appeared) {
+        ctx.emit("probe-list-items", { found: false, reason: "no list items after navigation" });
+        await ctx.evalYtm("history.back(); true");
+        return;
+      }
+      const LIST_SELECTORS = [
+        "ytmusic-responsive-list-item-renderer",
+        "ytmusic-responsive-list-item-renderer .title",
+        "ytmusic-responsive-list-item-renderer .secondary-flex-columns yt-formatted-string",
+        "ytmusic-responsive-list-item-renderer yt-icon",
+        "ytmusic-item-thumbnail-overlay-renderer",
+        "ytmusic-background-overlay-renderer",
+        "ytmusic-play-button-renderer"
+      ];
+      const samples = JSON.parse(
+        await ctx.evalYtm(`JSON.stringify((() => {
+          const PAINT = ${JSON.stringify(PAINT_PROPS)};
+          const BLANK = ["rgba(0, 0, 0, 0)", "transparent", "none", ""];
+          const out = {};
+          for (const selector of ${JSON.stringify(LIST_SELECTORS)}) {
+            const element = document.querySelector(selector);
+            if (!element) { out[selector] = { found: false }; continue; }
+            const style = getComputedStyle(element);
+            const box = element.getBoundingClientRect();
+            const paint = {};
+            for (const property of PAINT) {
+              const value = style.getPropertyValue(property).trim();
+              if (BLANK.indexOf(value) >= 0) continue;
+              paint[property] = value.slice(0, 120);
+            }
+            out[selector] = { found: true, visible: box.width > 0 && box.height > 0, paint };
+          }
+          return out;
+        })())`)
+      );
+      ctx.emit("probe-list-items", { found: true, samples });
+      const matched = await ctx.matchedStylesYtm(LIST_SELECTORS);
+      ctx.emit("probe-list-item-rules", matched);
+      await ctx.evalYtm("history.back(); true");
+      await ctx
+        .waitYtm("!!document.querySelector('ytmusic-carousel-shelf-renderer, ytmusic-two-row-item-renderer')", ready => ready === true, 20000)
+        .then(
+          () => undefined,
+          () => undefined
+        );
+    },
+    120000
+  );
+
   await ctx.step("token vocabulary enumerated", async () => {
     const result = await ctx.evalYtm(`JSON.stringify((() => {
       const api = window.__probeTheme;
