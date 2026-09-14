@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- fix(ytmview): skip the resume video data send while a preroll ad nulls the player response
 
 ## [v2026.914.0](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.914.0) - 2026-09-14
 - fix(tools): copy the whole packaged dir so asar integrity fuses accept it
