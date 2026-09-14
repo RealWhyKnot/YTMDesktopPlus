@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.914.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.914.0-beta) - 2026-09-14
 - feat(addons): manifest warnings on cards, wider dev reload, panel example
 - feat(themes): per-theme warnings, rescan, scaffold and dev live reload
 - feat(themes): bundle eight new themes with their own motion
