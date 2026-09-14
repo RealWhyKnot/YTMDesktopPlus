@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- feat(addons): manifest warnings on cards, wider dev reload, panel example
+- feat(themes): per-theme warnings, rescan, scaffold and dev live reload
+- feat(themes): bundle eight new themes with their own motion
+- feat(themes): add motion tokens and full light-scheme coverage
+- test(harness): sample popup and list item surfaces in the theme probe
 - ci: enforce conventional commit subjects on push and locally
 - ci(nightly): gate betas on functional changes
 
