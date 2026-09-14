@@ -28,8 +28,23 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Check for functional changes
+        id: gate
+        uses: RealWhyKnot/workflows/beta-gate@v1
+        with:
+          tag-glob: 'v20*'
+          ignore-paths: |
+            .husky/**
+            .prettierrc
+            .prettierignore
+            eslint.config.mjs
+            vitest.config.ts
+            tsconfig.tests.json
+            examples/**
+            tools/test-harness/**
       - name: Decide and tag
         id: plan
+        if: steps.gate.outputs.has_changes == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
