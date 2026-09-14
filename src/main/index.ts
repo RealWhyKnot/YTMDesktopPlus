@@ -1589,6 +1589,8 @@ app.on("ready", async () => {
     if (homepage && /^https?:\/\//.test(homepage)) shell.openExternal(homepage);
   });
 
+  const addonsDirPath = path.join(app.getPath("userData"), "addons");
+
   ipcMain.on("addons:invokeAction", (event, id: string, key: string) => {
     if (!isSettingsSender(event.sender)) return;
     if (typeof id !== "string" || typeof key !== "string") return;
@@ -1599,9 +1601,8 @@ app.on("ready", async () => {
   ipcMain.on("addons:openFolder", async event => {
     if (!isSettingsSender(event.sender)) return;
 
-    const addonsDir = path.join(app.getPath("userData"), "addons");
-    await fs.mkdir(addonsDir, { recursive: true });
-    shell.openPath(addonsDir);
+    await fs.mkdir(addonsDirPath, { recursive: true });
+    shell.openPath(addonsDirPath);
   });
 
   // Handle app ipc
@@ -1685,8 +1686,6 @@ app.on("ready", async () => {
 
   log.info("Created tray icon");
 
-  const addonsDirPath = path.join(app.getPath("userData"), "addons");
-
   // The old appearance.customCSSPath setting becomes a styles-only addon
   const appearanceRaw = store.get("appearance") as unknown as Record<string, unknown>;
   if (appearanceRaw.customCSSPath !== undefined || appearanceRaw.customCSSEnabled !== undefined) {
@@ -1753,7 +1752,8 @@ app.on("ready", async () => {
       broadcastTheme(css);
       memoryStore.set("themesRuntime", themeManager.descriptors());
     },
-    log
+    log,
+    watchBundled: !app.isPackaged
   });
 
   setTitleBarOverlayProvider(() => themeManager.titleBarOverlay());
@@ -1763,7 +1763,9 @@ app.on("ready", async () => {
   registerThemeIpc(ipcMain, {
     descriptors: () => themeManager.descriptors(),
     getCss: () => themeManager.getCss(),
+    rescan: () => themeManager.refresh(),
     setActive: id => themeManager.setActive(id),
+    create: () => themeManager.createNew(),
     duplicate: id => themeManager.duplicate(id),
     exportTo: (id, destination) => themeManager.exportTo(id, destination),
     install: zipPath => themeManager.install(zipPath),

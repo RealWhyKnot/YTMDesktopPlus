@@ -42,7 +42,9 @@ contextBridge.exposeInMainWorld("ytmd", {
   },
   themes: {
     getAll: async () => await ipcRenderer.invoke("themes:getAll"),
+    rescan: async () => await ipcRenderer.invoke("themes:rescan"),
     setActive: async (id: string | null) => await ipcRenderer.invoke("themes:setActive", id),
+    create: async () => await ipcRenderer.invoke("themes:create"),
     duplicate: async (id: string) => await ipcRenderer.invoke("themes:duplicate", id),
     exportTheme: async (id: string) => await ipcRenderer.invoke("themes:export", id),
     installFromFile: async () => await ipcRenderer.invoke("themes:installFromFile"),

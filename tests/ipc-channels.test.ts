@@ -77,7 +77,9 @@ describe("ipc channel names", () => {
     const deps: ThemeIpcDeps = {
       descriptors: () => [],
       getCss: () => ({ app: "", ytm: "", addonWindow: "" }),
+      rescan: () => {},
       setActive: () => ({ ok: true }),
+      create: () => ({ ok: true, id: "x", dir: "" }),
       duplicate: () => ({ ok: true, id: "x", dir: "" }),
       exportTo: () => ({ ok: true }),
       install: () => ({ ok: true, id: "x" }),
@@ -89,12 +91,14 @@ describe("ipc channel names", () => {
     };
 
     expect(capture(ipc => registerThemeIpc(ipc, deps))).toEqual([
+      "themes:create",
       "themes:duplicate",
       "themes:export",
       "themes:getActiveCss",
       "themes:getAll",
       "themes:installFromFile",
       "themes:openFolder",
+      "themes:rescan",
       "themes:setActive"
     ]);
   });

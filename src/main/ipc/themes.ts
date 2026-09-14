@@ -5,7 +5,9 @@ import type { IpcRegistrar } from "./registrar";
 export interface ThemeIpcDeps {
   descriptors(): ThemeDescriptor[];
   getCss(): ThemeCss;
+  rescan(): void;
   setActive(id: string | null): { ok: true } | { ok: false; reason: string };
+  create(): { ok: true; id: string; dir: string } | { ok: false; reason: string };
   duplicate(id: string): { ok: true; id: string; dir: string } | { ok: false; reason: string };
   exportTo(id: string, destination: string): { ok: true } | { ok: false; reason: string };
   install(zipPath: string): { ok: true; id: string } | { ok: false; reason: string };
@@ -20,6 +22,19 @@ export function registerThemeIpc(ipc: IpcRegistrar, deps: ThemeIpcDeps): void {
   ipc.handle("themes:getAll", event => {
     if (!deps.isSettingsSender(event.sender)) return [];
     return deps.descriptors();
+  });
+
+  ipc.handle("themes:rescan", event => {
+    if (!deps.isSettingsSender(event.sender)) return [];
+    deps.rescan();
+    return deps.descriptors();
+  });
+
+  ipc.handle("themes:create", event => {
+    if (!deps.isSettingsSender(event.sender)) return { ok: false, reason: "not allowed" };
+    const result = deps.create();
+    if (result.ok) deps.revealPath(result.dir);
+    return result;
   });
 
   ipc.handle("themes:setActive", (event, ...args) => {

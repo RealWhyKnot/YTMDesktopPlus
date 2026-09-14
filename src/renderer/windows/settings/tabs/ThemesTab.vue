@@ -15,7 +15,9 @@ const broken = computed(() => themes.value.filter(theme => theme.state !== "ok")
     <div class="themes-header">
       <p class="count">{{ usable.length }} theme{{ usable.length === 1 ? "" : "s" }} available</p>
       <div class="header-actions">
+        <button @click="shell.createTheme()"><span class="material-symbols-outlined">add</span>New theme</button>
         <button @click="shell.installThemeFromFile()"><span class="material-symbols-outlined">archive</span>Install from file</button>
+        <button @click="shell.rescanThemes()"><span class="material-symbols-outlined">refresh</span>Rescan</button>
         <button @click="shell.openThemesFolder()"><span class="material-symbols-outlined">folder_open</span>Open themes folder</button>
       </div>
     </div>

@@ -34,7 +34,9 @@ declare global {
       theme?: ThemeBridge;
       themes?: {
         getAll(): Promise<ThemeDescriptor[]>;
+        rescan(): Promise<ThemeDescriptor[]>;
         setActive(id: string | null): Promise<ThemeActionResult>;
+        create(): Promise<ThemeActionResult>;
         duplicate(id: string): Promise<ThemeActionResult>;
         exportTheme(id: string): Promise<ThemeActionResult>;
         installFromFile(): Promise<ThemeActionResult>;

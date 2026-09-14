@@ -123,6 +123,14 @@ async function setActiveTheme(id: string | null) {
   await runThemeAction(() => window.ytmd.themes!.setActive(id));
 }
 
+async function createTheme() {
+  await runThemeAction(() => window.ytmd.themes!.create());
+}
+
+async function rescanThemes() {
+  if (window.ytmd.themes) themes.value = await window.ytmd.themes.rescan();
+}
+
 async function duplicateTheme(id: string) {
   await runThemeAction(() => window.ytmd.themes!.duplicate(id));
 }
@@ -270,6 +278,8 @@ provide(settingsShellKey, {
   themes,
   themeError,
   setActiveTheme,
+  createTheme,
+  rescanThemes,
   duplicateTheme,
   exportTheme,
   installThemeFromFile,

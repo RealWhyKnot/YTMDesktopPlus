@@ -215,6 +215,70 @@ describe("ThemeManager", () => {
     manager.dispose();
   });
 
+  it("computes warnings for themes that are not active", () => {
+    const { manager, userThemesDir } = build();
+    writeTheme(userThemesDir, "leaky", {}, ":root{--bg:#fff}\nbody{background:url(https://evil.example/p.png)}");
+    manager.refresh();
+
+    const descriptor = manager.descriptors().find(entry => entry.manifest.id === "leaky");
+    expect(descriptor?.active).toBe(false);
+    expect(descriptor?.warnings.join(" ")).toContain("remote url was removed");
+    manager.dispose();
+  });
+
+  it("warns about low contrast between the tokens a theme sets", () => {
+    const { manager, userThemesDir } = build();
+    writeTheme(userThemesDir, "pale", {}, ":root{--bg:#ffffff;--text:#cccccc;--accent:#c0392b}");
+    manager.refresh();
+
+    const descriptor = manager.descriptors().find(entry => entry.manifest.id === "pale");
+    expect(descriptor?.warnings.join(" ")).toContain("low contrast: --text on --bg");
+    manager.dispose();
+  });
+
+  it("skips contrast checks for values it cannot parse", () => {
+    const { manager, userThemesDir } = build();
+    writeTheme(userThemesDir, "mixed", {}, ":root{--bg:#ffffff;--text:color-mix(in srgb, #000 80%, #fff);--accent:#c0392b}");
+    manager.refresh();
+
+    const descriptor = manager.descriptors().find(entry => entry.manifest.id === "mixed");
+    expect(descriptor?.warnings).toEqual([]);
+    manager.dispose();
+  });
+
+  it("watches a bundled theme when watchBundled is set", async () => {
+    const { manager, bundledThemesDir, onChanged } = build({ watchBundled: true });
+    writeTheme(bundledThemesDir, "stock");
+    manager.refresh();
+    manager.setActive("stock");
+
+    expect(manager.descriptors().find(entry => entry.manifest.id === "stock")?.watching).toBe(true);
+
+    const calls = onChanged.mock.calls.length;
+    fs.writeFileSync(path.join(bundledThemesDir, "stock", "theme.css"), ":root{--bg:#101010;--accent:#c0392b}");
+    await vi.waitFor(() => expect(onChanged.mock.calls.length).toBeGreaterThan(calls), { timeout: 3000 });
+    manager.dispose();
+  });
+
+  it("scaffolds a fresh theme, activates it, and keeps ids free", () => {
+    const { manager } = build();
+    manager.refresh();
+
+    const first = manager.createNew();
+    expect(first.ok && first.id).toBe("my-theme");
+    expect(manager.activeTheme().id).toBe("my-theme");
+
+    const created = manager.descriptors().find(entry => entry.manifest.id === "my-theme");
+    expect(created?.origin).toBe("user");
+    expect(created?.state).toBe("ok");
+    expect(created?.warnings).toEqual([]);
+    expect(created?.watching).toBe(true);
+
+    const second = manager.createNew();
+    expect(second.ok && second.id).toBe("my-theme-2");
+    manager.dispose();
+  });
+
   it("builds a swatch from the theme's own tokens, not the active one", () => {
     const { manager, bundledThemesDir } = build();
     writeTheme(bundledThemesDir, "light");

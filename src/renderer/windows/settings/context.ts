@@ -37,6 +37,8 @@ export type SettingsShell = {
   themes: Ref<ThemeDescriptor[]>;
   themeError: Ref<string | null>;
   setActiveTheme(id: string | null): Promise<void>;
+  createTheme(): Promise<void>;
+  rescanThemes(): Promise<void>;
   duplicateTheme(id: string): Promise<void>;
   exportTheme(id: string): Promise<void>;
   installThemeFromFile(): Promise<void>;

@@ -1,10 +1,11 @@
 import fs from "fs";
 import path from "path";
 import type { ActiveTheme, ThemeCss, ThemeDescriptor, ThemeManifest, ThemeTokens } from "~shared/themes/sdk";
+import { CONTRAST_PAIRS, contrast, resolveToken } from "~shared/themes/contrast";
 import { bundleThemeFile, inlineAsset } from "./css-bundle";
 import { BASE_LAYER_FOLDER, scanThemes, type ThemeScan } from "./loader";
 import { themeApiSupported, themeSatisfiesApp } from "./validate-manifest";
-import { duplicateTheme, exportTheme } from "./scaffold";
+import { createTheme, duplicateTheme, exportTheme } from "./scaffold";
 import { installThemeFromZip } from "./install";
 
 export const DEFAULT_TITLE_BAR_OVERLAY = { color: "#000000", symbolColor: "#BBBBBB", height: 36 };
@@ -23,6 +24,7 @@ export type ThemeManagerServices = {
   setActiveId(id: string | null): void;
   onChanged(css: ThemeCss, active: ActiveTheme): void;
   log: { info(...args: unknown[]): void; warn(...args: unknown[]): void };
+  watchBundled?: boolean;
 };
 
 type LoadedTheme = {
@@ -92,11 +94,39 @@ export class ThemeManager {
       active: false,
       state,
       error: message,
-      warnings: scan.warnings ?? [],
+      warnings: state === "ok" ? this.warningsFor(scan) : (scan.warnings ?? []),
       previewDataUrl: this.previewFor(scan),
       swatch: this.swatchFor(scan),
       watching: false
     };
+  }
+
+  private warningsFor(scan: ThemeScan): string[] {
+    const warnings = [...(scan.warnings ?? [])];
+    if (!scan.manifest) return warnings;
+
+    const tokens: ThemeTokens = {
+      ...parseTokens(this.baseFile("app.css")),
+      ...parseTokens(this.baseFile("ytm-tokens.css"))
+    };
+    for (const field of ["styles", "appStyles", "ytmStyles"] as const) {
+      for (const relative of scan.manifest[field] ?? []) {
+        const bundled = bundleThemeFile(scan.dir, relative);
+        warnings.push(...bundled.warnings);
+        Object.assign(tokens, parseTokens(bundled.css));
+      }
+    }
+
+    for (const [foreground, background, minimum] of CONTRAST_PAIRS) {
+      const front = resolveToken(tokens, foreground);
+      const back = resolveToken(tokens, background);
+      if (front === null || back === null) continue;
+      const ratio = contrast(front, back);
+      if (ratio === null || ratio >= minimum) continue;
+      warnings.push(`low contrast: ${foreground} on ${background} = ${ratio.toFixed(2)}:1 (needs ${minimum}:1)`);
+    }
+
+    return [...new Set(warnings)];
   }
 
   private swatchFor(scan: ThemeScan): string[] {
@@ -156,9 +186,8 @@ export class ThemeManager {
     const ytm = this.collect(active, ["ytmStyles"]);
 
     if (active) {
-      const extra = [...new Set([...shared.warnings, ...app.warnings, ...ytm.warnings])];
-      active.descriptor.warnings = [...(active.scan.warnings ?? []), ...extra];
-      active.descriptor.watching = active.descriptor.origin === "user";
+      active.descriptor.warnings = this.warningsFor(active.scan);
+      active.descriptor.watching = active.descriptor.origin === "user" || this.services.watchBundled === true;
     }
 
     const baseTokens = this.baseFile("app.css");
@@ -190,7 +219,8 @@ export class ThemeManager {
 
   private watchActive(active: LoadedTheme | null): void {
     this.stopWatching();
-    if (!active || active.descriptor.origin !== "user") return;
+    if (!active) return;
+    if (active.descriptor.origin !== "user" && this.services.watchBundled !== true) return;
 
     const schedule = () => {
       if (this.rebuildTimer) clearTimeout(this.rebuildTimer);
@@ -253,6 +283,14 @@ export class ThemeManager {
     this.rebuild();
     this.services.log.info("Theme set to " + (id ?? "none"));
     return { ok: true };
+  }
+
+  public createNew(): { ok: true; id: string; dir: string } | { ok: false; reason: string } {
+    const result = createTheme(this.services.userThemesDir);
+    if ("reason" in result) return { ok: false, reason: result.reason };
+    this.refresh();
+    this.setActive(result.manifest.id);
+    return { ok: true, id: result.manifest.id, dir: result.dir };
   }
 
   public duplicate(id: string): { ok: true; id: string; dir: string } | { ok: false; reason: string } {
