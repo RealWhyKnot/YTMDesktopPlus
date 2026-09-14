@@ -1,5 +1,10 @@
 (function() {
   return new Promise((resolve, reject) => {
+    var videoId = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.getPlayerResponse()?.videoDetails?.videoId;
+    if (!videoId) {
+      reject(new Error("No video loaded"));
+      return;
+    }
     var returnValue = [];
     var serviceRequestEvent = {
       bubbles: true,
@@ -11,7 +16,7 @@
           document.querySelector("ytmusic-app-layout>ytmusic-player-bar"),
           {
             addToPlaylistEndpoint: {
-              videoId: document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.getPlayerResponse().videoDetails.videoId
+              videoId
             }
           }
         ],

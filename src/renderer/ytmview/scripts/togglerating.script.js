@@ -1,7 +1,8 @@
 (function() {
   const ytmStore = window.__YTMD_HOOK__.ytmStore;
 
-  const videoId = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.getPlayerResponse().videoDetails.videoId;
+  const videoId = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.getPlayerResponse()?.videoDetails?.videoId;
+  if (!videoId) return;
   const likeButtonData = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").querySelector("ytmusic-like-button-renderer").data;
 
   let targetServiceEndpoint = null;
