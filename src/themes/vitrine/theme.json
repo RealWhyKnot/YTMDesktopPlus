@@ -1,0 +1,13 @@
+{
+  "id": "vitrine",
+  "name": "Vitrine",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "Smoked glass over slate, surfaces that blur what plays behind them.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "appStyles": ["app.css"],
+  "ytmStyles": ["ytm.css"],
+  "titleBarOverlay": { "color": "#1b2028", "symbolColor": "#aeb8c7" }
+}

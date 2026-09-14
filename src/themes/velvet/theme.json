@@ -1,0 +1,13 @@
+{
+  "id": "velvet",
+  "name": "Velvet",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "After-hours black and brass, album art spinning like a record on the platter.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "appStyles": ["app.css"],
+  "ytmStyles": ["ytm.css"],
+  "titleBarOverlay": { "color": "#151011", "symbolColor": "#d4a24e" }
+}

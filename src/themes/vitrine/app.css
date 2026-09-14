@@ -1,0 +1,15 @@
+.titlebar {
+  background: rgba(27, 32, 40, 0.85) !important;
+  backdrop-filter: blur(12px);
+}
+
+.save-bar,
+.close-confirm {
+  background: rgba(35, 42, 53, 0.85);
+  backdrop-filter: blur(12px);
+}
+
+.sidebar li,
+button {
+  transition: background-color var(--motion-fast) var(--ease);
+}

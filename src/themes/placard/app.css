@@ -1,0 +1,19 @@
+.title-text {
+  animation: stamp var(--motion-fast) steps(2, end) both;
+}
+
+button,
+.app-button {
+  transition: none !important;
+}
+
+button.primary:active {
+  transform: translate(2px, 2px);
+}
+
+@keyframes stamp {
+  from {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+}

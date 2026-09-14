@@ -4,11 +4,10 @@ import { describe, expect, it } from "vitest";
 import { parseTokens, ThemeManager } from "../src/main/themes/manager";
 import { BASE_LAYER_FOLDER, scanThemes } from "../src/main/themes/loader";
 import { makeTempDir } from "./helpers/temp-dir";
+import { BUNDLED_THEME_IDS as EXPECTED_THEMES } from "./helpers/bundled-theme-ids";
 
 const BUNDLED_DIR = path.resolve(__dirname, "../src/themes");
 const BASE_DIR = path.join(BUNDLED_DIR, BASE_LAYER_FOLDER);
-
-const EXPECTED_THEMES = ["cassette", "cathode", "daylight", "drift", "ember", "graphite", "millennium", "neon-drive"];
 
 const REFERENCED_TOKEN = /var\(\s*(--[a-zA-Z0-9-]+)/g;
 

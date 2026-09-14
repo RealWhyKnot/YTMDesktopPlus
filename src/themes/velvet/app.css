@@ -1,0 +1,12 @@
+.title-text {
+  letter-spacing: 0.06em;
+}
+
+.sidebar li,
+button {
+  transition: background-color var(--motion-fast) var(--ease);
+}
+
+.sidebar li.active {
+  box-shadow: 0 0 14px rgba(212, 162, 78, 0.35);
+}

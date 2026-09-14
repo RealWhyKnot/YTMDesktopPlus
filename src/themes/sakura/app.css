@@ -1,0 +1,39 @@
+body::after {
+  content: "";
+  position: fixed;
+  inset: -15% 0 0 0;
+  pointer-events: none;
+  z-index: 1;
+  background:
+    radial-gradient(6px 8px at 12% 10%, rgba(201, 79, 124, 0.5), transparent 70%),
+    radial-gradient(5px 7px at 38% 4%, rgba(201, 79, 124, 0.35), transparent 70%),
+    radial-gradient(7px 9px at 63% 12%, rgba(233, 160, 189, 0.5), transparent 70%),
+    radial-gradient(5px 7px at 85% 6%, rgba(201, 79, 124, 0.4), transparent 70%);
+  animation: petal-fall 5s ease-in-out 1 forwards;
+  opacity: 0;
+}
+
+@keyframes petal-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(-8%) rotate(0deg);
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(70%) rotate(10deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::after {
+    animation: none;
+  }
+}
+
+.sidebar li,
+button {
+  transition: background-color var(--motion-fast) var(--ease);
+}

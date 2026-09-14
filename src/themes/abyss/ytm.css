@@ -1,0 +1,43 @@
+ytmusic-app::after {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  pointer-events: none;
+  z-index: 0;
+  background: repeating-linear-gradient(105deg, transparent 0 120px, rgba(45, 212, 191, 0.05) 120px 140px, transparent 140px 300px);
+  animation: caustic-sway 45s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+@keyframes caustic-sway {
+  from {
+    transform: translateX(-4%) skewX(-2deg);
+    opacity: 0.5;
+  }
+  to {
+    transform: translateX(4%) skewX(2deg);
+    opacity: 0.9;
+  }
+}
+
+ytmusic-shelf,
+ytmusic-carousel-shelf-renderer {
+  animation: abyss-surface var(--motion-slow) var(--ease) both;
+}
+
+@keyframes abyss-surface {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ytmusic-app::after {
+    animation: none;
+  }
+}
+
+ytmusic-app-layout > ytmusic-player-bar {
+  box-shadow: 0 -8px 30px rgba(45, 212, 191, 0.12) !important;
+}

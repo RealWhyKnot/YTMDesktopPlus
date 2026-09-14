@@ -1,0 +1,13 @@
+{
+  "id": "aurora",
+  "name": "Aurora",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "Polar night navy under drifting ribbons of green and violet light.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "appStyles": ["app.css"],
+  "ytmStyles": ["ytm.css"],
+  "titleBarOverlay": { "color": "#0b1120", "symbolColor": "#7ee0b4" }
+}

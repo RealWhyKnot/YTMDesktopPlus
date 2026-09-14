@@ -1,0 +1,31 @@
+@font-face {
+  font-family: "Archivo Black";
+  src: url("fonts/ArchivoBlack.woff2") format("woff2");
+  font-display: swap;
+}
+
+:root {
+  --bg: #f2f0eb;
+  --bg-raised: #ffffff;
+  --bg-control: #e4e1d8;
+  --bg-control-hover: #d6d2c6;
+  --border: #c9c5ba;
+  --border-strong: #111111;
+  --text: #111111;
+  --text-muted: #44443f;
+  --text-faint: #6d6d66;
+  --accent: #111111;
+  --on-accent: #ffffff;
+  --success: #1f7a33;
+  --danger: #d92d20;
+  --danger-hover: #a81e13;
+  --knob: #ffffff;
+  --overlay: rgba(17, 17, 17, 0.5);
+  --scrollbar-thumb: #a9a498;
+  --titlebar-symbol: #111111;
+  --titlebar-separator: #111111;
+  --radius: 0px;
+  --radius-lg: 0px;
+  --ytmd-scheme: light;
+  --font-title: "Archivo Black", sans-serif;
+}

@@ -1,0 +1,27 @@
+ytmusic-two-row-item-renderer,
+tp-yt-paper-icon-button,
+ytmusic-pivot-bar-item-renderer {
+  transition: none !important;
+}
+
+ytmusic-two-row-item-renderer:hover {
+  outline: 3px solid #111111;
+  outline-offset: -3px;
+}
+
+ytmusic-pivot-bar-item-renderer[selected] {
+  background: #111111 !important;
+  color: #f2f0eb !important;
+}
+
+ytmusic-shelf,
+ytmusic-carousel-shelf-renderer {
+  animation: stamp var(--motion-fast) steps(2, end) both;
+}
+
+@keyframes stamp {
+  from {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+}

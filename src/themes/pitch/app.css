@@ -1,0 +1,34 @@
+.sidebar li {
+  position: relative;
+  transition: background-color var(--motion-fast) var(--ease);
+}
+
+.sidebar li.active::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: #4cc9f0;
+  box-shadow: 0 0 8px 1px rgba(76, 201, 240, 0.55);
+  animation: pitch-breathe 3s ease-in-out infinite;
+}
+
+@keyframes pitch-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar li.active::after {
+    animation: none;
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "blueprint",
+  "name": "Blueprint",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "Drafting paper and ink blue, every line drawn on like a plotter pass.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "appStyles": ["app.css"],
+  "ytmStyles": ["ytm.css"],
+  "titleBarOverlay": { "color": "#f4f7fa", "symbolColor": "#46607a" }
+}

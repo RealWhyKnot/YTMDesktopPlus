@@ -1,0 +1,31 @@
+.titlebar {
+  border-bottom: 1px dashed #1e5fbf;
+}
+
+.title-text {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.sidebar li {
+  position: relative;
+  transition: background-color var(--motion-fast) var(--ease);
+}
+
+.sidebar li::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 2px;
+  height: 2px;
+  background: #1e5fbf;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--motion-base) var(--ease);
+}
+
+.sidebar li.active::after,
+.sidebar li:hover::after {
+  transform: scaleX(1);
+}

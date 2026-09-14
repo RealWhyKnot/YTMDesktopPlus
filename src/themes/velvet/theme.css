@@ -1,0 +1,30 @@
+@font-face {
+  font-family: "Cormorant Garamond";
+  src: url("fonts/CormorantGaramond.woff2") format("woff2");
+  font-weight: 500 700;
+  font-display: swap;
+}
+
+:root {
+  --bg: #151011;
+  --bg-raised: #1e1719;
+  --bg-control: #2a2023;
+  --bg-control-hover: #362a2e;
+  --border: #33272b;
+  --border-strong: #d4a24e;
+  --text: #f2e9df;
+  --text-muted: #c4b3a4;
+  --text-faint: #94836f;
+  --accent: #d4a24e;
+  --on-accent: #241505;
+  --success: #7cb47c;
+  --danger: #e04848;
+  --danger-hover: #b93a3a;
+  --knob: #f2e9df;
+  --overlay: rgba(10, 6, 7, 0.72);
+  --scrollbar-thumb: #453338;
+  --titlebar-symbol: #d4a24e;
+  --titlebar-separator: #33272b;
+  --radius-lg: 12px;
+  --font-title: "Cormorant Garamond", serif;
+}

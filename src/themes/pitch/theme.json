@@ -1,0 +1,13 @@
+{
+  "id": "pitch",
+  "name": "Pitch",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "True black for OLED, ice-blue light breathing at the edges.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "appStyles": ["app.css"],
+  "ytmStyles": ["ytm.css"],
+  "titleBarOverlay": { "color": "#000000", "symbolColor": "#4cc9f0" }
+}

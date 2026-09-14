@@ -1,0 +1,41 @@
+body::after {
+  content: "";
+  position: fixed;
+  inset: -60% -20% 40% -20%;
+  pointer-events: none;
+  z-index: 1;
+  background:
+    radial-gradient(60% 40% at 25% 30%, rgba(52, 211, 153, 0.12), transparent 70%),
+    radial-gradient(50% 35% at 70% 20%, rgba(167, 139, 250, 0.1), transparent 70%);
+  animation: aurora-drift 60s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+@keyframes aurora-drift {
+  from {
+    transform: translate3d(-6%, 0, 0) rotate(-2deg);
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+  to {
+    transform: translate3d(6%, 3%, 0) rotate(2deg);
+    opacity: 0.8;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::after {
+    animation: none;
+  }
+}
+
+.sidebar li,
+button {
+  transition: background-color var(--motion-fast) var(--ease);
+}
+
+.sidebar li.active {
+  box-shadow: 0 0 12px rgba(52, 211, 153, 0.35);
+}

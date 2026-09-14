@@ -1,0 +1,13 @@
+{
+  "id": "placard",
+  "name": "Placard",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "Bone white, ink black, no soft edges: motion that cuts instead of eases.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "appStyles": ["app.css"],
+  "ytmStyles": ["ytm.css"],
+  "titleBarOverlay": { "color": "#f2f0eb", "symbolColor": "#111111" }
+}

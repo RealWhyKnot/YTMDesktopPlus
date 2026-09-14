@@ -1,0 +1,30 @@
+ytmusic-player-bar .image {
+  border-radius: 50% !important;
+  animation: vinyl-spin 12s linear infinite;
+  will-change: transform;
+}
+
+@keyframes vinyl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ytmusic-player-bar .image {
+    animation: none;
+  }
+}
+
+ytmusic-two-row-item-renderer,
+ytmusic-responsive-list-item-renderer {
+  transition: box-shadow var(--motion-base) var(--ease);
+}
+
+ytmusic-two-row-item-renderer:hover {
+  box-shadow: 0 0 24px rgba(212, 162, 78, 0.18);
+}
+
+ytmusic-pivot-bar-item-renderer[selected] {
+  text-shadow: 0 0 10px rgba(212, 162, 78, 0.4) !important;
+}

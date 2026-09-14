@@ -1,0 +1,31 @@
+@font-face {
+  font-family: "M PLUS Rounded 1c";
+  src: url("fonts/MPLUSRounded1c.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+:root {
+  --bg: #fdf5f6;
+  --bg-raised: #ffffff;
+  --bg-control: #f6e6ea;
+  --bg-control-hover: #eed6dd;
+  --border: #ecd8de;
+  --border-strong: #c94f7c;
+  --text: #33232b;
+  --text-muted: #6b4a58;
+  --text-faint: #97717f;
+  --accent: #c94f7c;
+  --on-accent: #ffffff;
+  --success: #2e7d46;
+  --danger: #b3261e;
+  --danger-hover: #8e1d17;
+  --knob: #ffffff;
+  --overlay: rgba(51, 35, 43, 0.4);
+  --scrollbar-thumb: #dcc3cc;
+  --titlebar-symbol: #6b4a58;
+  --titlebar-separator: #eed6dd;
+  --ytmd-scheme: light;
+  --font-ui: "M PLUS Rounded 1c", sans-serif;
+  --font-title: "M PLUS Rounded 1c", sans-serif;
+}

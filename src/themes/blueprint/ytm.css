@@ -1,0 +1,33 @@
+ytmusic-pivot-bar-item-renderer {
+  position: relative;
+}
+
+ytmusic-pivot-bar-item-renderer::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: #1e5fbf;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--motion-base) var(--ease);
+}
+
+ytmusic-pivot-bar-item-renderer[selected]::after,
+ytmusic-pivot-bar-item-renderer:hover::after {
+  transform: scaleX(1);
+}
+
+ytmusic-shelf,
+ytmusic-carousel-shelf-renderer {
+  animation: plot-in var(--motion-slow) var(--ease) both;
+}
+
+@keyframes plot-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}

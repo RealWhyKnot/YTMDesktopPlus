@@ -1,0 +1,12 @@
+{
+  "id": "abyss",
+  "name": "Abyss",
+  "version": "1.0.0",
+  "author": "WhyKnot",
+  "description": "Blue-black deep water, a turquoise glint and coral warnings from the dark.",
+  "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus/blob/main/docs/themes.md",
+  "apiVersion": 1,
+  "styles": ["theme.css"],
+  "ytmStyles": ["ytm.css"],
+  "titleBarOverlay": { "color": "#051620", "symbolColor": "#6fc7bd" }
+}
