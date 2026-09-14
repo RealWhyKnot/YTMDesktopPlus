@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- fix(themes): repaint the light-scheme text YouTube hardcodes
+- fix(themes): loop ambient effects and layer them above every page
+- test(harness): add ytm-contrast-audit scenario
 
 ## [v2026.914.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.914.0-beta) - 2026-09-14
 - feat(addons): manifest warnings on cards, wider dev reload, panel example
