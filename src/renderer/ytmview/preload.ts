@@ -491,7 +491,9 @@ const startHooking = async () => {
         (
           await webFrame.executeJavaScript(`
           (function() {
-            window.ytmd.sendVideoData(document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi.getPlayerResponse().videoDetails, document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi.getPlaylistId());
+            const playerApi = document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi;
+            const videoDetails = playerApi.getPlayerResponse()?.videoDetails;
+            if (videoDetails) window.ytmd.sendVideoData(videoDetails, playerApi.getPlaylistId());
           })
         `)
         )();
