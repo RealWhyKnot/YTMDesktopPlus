@@ -456,6 +456,22 @@ module.exports.activate = ctx => {
     return { root, dir };
   }
 
+  it("surfaces manifest warnings on the descriptor and clears them after a fixed reload", async () => {
+    const { root, dir } = externalAddonOnDisk();
+    const clean = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8"));
+    fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ ...clean, version: "not-semver" }));
+    const fixture = fakeServices({ reloadable: { enabled: true } });
+    const manager = new AddonManager(fixture.services);
+    manager.registerExternal(scanExternalAddons(root));
+    await manager.boot();
+
+    expect(manager.descriptors()[0].warnings?.join(" ")).toContain("semver");
+
+    fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify(clean));
+    await manager.reloadExternal("reloadable");
+    expect(manager.descriptors()[0].warnings).toEqual([]);
+  });
+
   it("tears down, busts the module cache and activates fresh sources", async () => {
     const { root, dir } = externalAddonOnDisk();
     const fixture = fakeServices({ reloadable: { enabled: true } });

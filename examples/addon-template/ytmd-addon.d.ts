@@ -114,6 +114,7 @@ export type AddonDescriptor = {
     error?: string;
     /** Most recent runtime error from one of the addon's callbacks; the addon stays active */
     lastError?: string;
+    warnings?: string[];
     restartRequired: boolean;
     settingsSections: AddonSettingsSection[];
 };

@@ -90,6 +90,7 @@ async function copyRecentLog() {
     <p v-if="addon.state === 'active' && addon.lastError" class="status runtime">
       <span class="material-symbols-outlined">warning</span>Recent error: {{ addon.lastError }}
     </p>
+    <p v-for="warning in addon.warnings ?? []" :key="warning" class="status runtime"><span class="material-symbols-outlined">warning</span>{{ warning }}</p>
     <div class="card-actions">
       <button v-if="hasSettings" class="expander" @click="expanded = !expanded">
         <span class="material-symbols-outlined">{{ expanded ? "expand_less" : "expand_more" }}</span

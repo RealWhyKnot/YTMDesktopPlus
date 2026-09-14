@@ -42,6 +42,12 @@ body {
   border-color: transparent;
 }
 
+.ytmd-button:focus-visible,
+.ytmd-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .ytmd-input {
   background-color: var(--bg-control);
   color: var(--text);

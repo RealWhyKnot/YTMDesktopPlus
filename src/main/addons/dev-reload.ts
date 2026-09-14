@@ -6,17 +6,16 @@ type DevReloadLog = {
   warn(...params: unknown[]): void;
 };
 
-/** Watches every valid external addon folder and reloads the addon after its
- *  files change. Development only: the user-facing enable and disable model
- *  stays restart-scoped. Returns a stop function. */
+/** Watches every external addon folder, broken ones included, and reloads the
+ *  addon after its files change. Development only: the user-facing enable and
+ *  disable model stays restart-scoped. Returns a stop function. */
 export function watchExternalAddonsForDev(scans: ExternalAddonScan[], reload: (id: string) => Promise<void>, log: DevReloadLog): () => void {
   const watchers: fs.FSWatcher[] = [];
   const timers = new Map<string, NodeJS.Timeout>();
   const inFlight = new Set<string>();
 
   for (const scan of scans) {
-    if (!scan.manifest || scan.error) continue;
-    const id = scan.manifest.id;
+    const id = scan.manifest?.id ?? scan.folderName;
     try {
       // 500ms of quiet absorbs editors that fire several events per save.
       const watcher = fs.watch(scan.dir, { recursive: true }, () => {

@@ -1,3 +1,4 @@
+import fs from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
 import { buildExternalDefinition, scanExternalAddons } from "../src/main/addons/external-loader";
@@ -24,11 +25,14 @@ describe("the shipped addon template", () => {
 
     expect(ctx.ytmview.watchCSSFile).toHaveBeenCalledWith(path.join(scan.dir, "styles.css"));
     expect(captured.scripts["page.script"]).toContain("__YTMD_HOOK__");
-    expect(captured.sections.flatMap(section => section.fields.map(field => field.key))).toEqual(["showBadge", "greeting", "mode"]);
+    expect(captured.sections.flatMap(section => section.fields.map(field => field.key))).toEqual(["showBadge", "greeting", "mode", "openPanel"]);
     const mode = captured.sections.flatMap(section => section.fields).find(field => field.key === "mode");
     expect(mode?.type === "select" && mode.options.every(option => typeof option.value === "string")).toBe(true);
     expect(captured.badges.at(-1)).toMatchObject({ icon: "waving_hand" });
     expect(captured.eventListeners["trackChanged"]).toHaveLength(1);
+
+    captured.actionCallbacks["openPanel"]();
+    expect(ctx.windows.create).toHaveBeenCalledWith(expect.objectContaining({ file: "panel.html" }));
 
     // Page load: the loader auto-runs the script and the addon invokes it.
     fireLoaded();
@@ -38,5 +42,16 @@ describe("the shipped addon template", () => {
 
     await (instance as { destroy(): void } | undefined)?.destroy();
     expect(captured.badges.at(-1)).toBeNull();
+  });
+
+  it("ships a panel that builds on the addon window class kit", () => {
+    const scan = scanExternalAddons(path.resolve("examples"))[0];
+    const html = fs.readFileSync(path.join(scan.dir, "panel.html"), "utf8");
+
+    expect(html).toContain("ytmd-card");
+    expect(html).toContain("ytmd-drag");
+    expect(html).toContain("ytmd-no-drag");
+    expect(html).toContain("ytmd-button primary");
+    expect(html).toContain("ytmdAddon.closeWindow()");
   });
 });

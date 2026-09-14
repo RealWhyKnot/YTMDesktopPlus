@@ -25,10 +25,15 @@ module.exports.activate = ctx => {
             { label: "Friendly", value: "friendly" },
             { label: "Formal", value: "formal" }
           ]
-        }
+        },
+        { key: "openPanel", type: "button", label: "Example window", buttonText: "Open panel" }
       ]
     }
   ]);
+
+  ctx.settings.onAction("openPanel", () => {
+    ctx.windows.create({ file: "panel.html", width: 380, height: 260, title: "Template panel" });
+  });
 
   const applyBadge = () => {
     ctx.titlebar.setBadge(ctx.settings.get("showBadge") ? { icon: "waving_hand", tooltip: String(ctx.settings.get("greeting")) } : null);

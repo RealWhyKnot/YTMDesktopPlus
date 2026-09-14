@@ -319,7 +319,9 @@ The window is frameless, so your HTML supplies its own drag region
 A `file` window is themed for you: it gets the active theme's tokens plus a
 few ready-made classes (`ytmd-card`, `ytmd-row`, `ytmd-button`, `ytmd-input`,
 `ytmd-muted`, `ytmd-drag`, `ytmd-no-drag`), so a panel looks like the rest of
-the app without you styling anything. Build on those and your window follows
+the app without you styling anything. Add `primary` next to `ytmd-button` for
+an accent-filled call to action, and keyboard focus outlines come free. The
+template's `panel.html` is a working example. Build on those and your window follows
 whatever theme the user picks. Pass `themed: false` to `create` if you would
 rather style the whole thing yourself.
 

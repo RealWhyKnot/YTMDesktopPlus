@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Template panel</title>
+  </head>
+  <body>
+    <div class="ytmd-row ytmd-drag">
+      <strong>Template panel</strong>
+      <span style="flex: 1"></span>
+      <button class="ytmd-button ytmd-no-drag" onclick="ytmdAddon.closeWindow()">Close</button>
+    </div>
+    <div class="ytmd-card">
+      <p class="ytmd-muted">This window is themed for you: the classes on these elements come from the app, so it follows whatever theme the user picks.</p>
+      <div class="ytmd-row">
+        <input id="name" class="ytmd-input" placeholder="Type something" />
+        <button id="greet" class="ytmd-button primary">Greet</button>
+      </div>
+      <p id="reply" class="ytmd-muted"></p>
+    </div>
+    <script>
+      document.getElementById("greet").addEventListener("click", async () => {
+        const name = document.getElementById("name").value || "you";
+        const settings = await ytmdAddon.settings.getAll();
+        document.getElementById("reply").textContent = `${settings.greeting ?? "Hello"}, ${name}!`;
+      });
+    </script>
+  </body>
+</html>

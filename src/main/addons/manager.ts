@@ -82,7 +82,7 @@ export class AddonManager {
       this.addons.push({
         definition: conflict || scan.error ? { manifest, activate: () => {} } : buildExternalDefinition(scan.dir, manifest),
         origin: "external",
-        descriptor: this.baseDescriptor(manifest, "external"),
+        descriptor: { ...this.baseDescriptor(manifest, "external"), warnings: scan.warnings ?? [] },
         instance: null,
         context: null,
         loadedCallbacks: [],
@@ -251,6 +251,7 @@ export class AddonManager {
       log.warn(`Addon manifest warning (${scan.folderName}): ${warning}`);
     }
     addon.scanError = scan.error;
+    addon.descriptor.warnings = scan.warnings ?? [];
     if (scan.manifest) {
       addon.definition = scan.error ? { manifest: scan.manifest, activate: () => {} } : buildExternalDefinition(scan.dir, scan.manifest);
       addon.descriptor.manifest = scan.manifest;

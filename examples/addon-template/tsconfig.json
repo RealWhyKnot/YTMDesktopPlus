@@ -8,5 +8,5 @@
     "target": "es2022",
     "types": ["node"]
   },
-  "include": ["*.js", "*.d.ts"]
+  "include": ["index.js", "ytmd-addon.d.ts"]
 }
