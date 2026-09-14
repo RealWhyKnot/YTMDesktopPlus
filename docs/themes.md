@@ -10,8 +10,10 @@ If you want to add behaviour or new UI rather than restyle what is there, you
 want an [addon](addons.md) instead. The loader will tell you so if you put
 `main` or `ytmScripts` in a theme manifest.
 
-Eight themes ship with the app. Four are pure palettes, four go further with
-their own fonts and structure, and all eight are meant to be copied.
+Sixteen themes ship with the app, from pure palettes to themes with their own
+fonts, structure and motion, and all of them are meant to be copied. Five are
+light themes; setting `--ytmd-scheme: light` next to a light palette is all it
+takes to get one, native controls and YouTube's stubborn dark corners included.
 
 ## Making one
 
@@ -25,8 +27,13 @@ The fastest start is to steal a working theme.
 That live loop is the whole workflow. The card shows an eye next to any theme
 being watched, so you can tell at a glance that editing is live.
 
+**New theme** starts from a blank palette instead, if nothing bundled is close.
+If a pair of your colours would be hard to read, the card says so with the
+measured ratio, the same check the bundled themes have to pass.
+
 When you are happy, **Export as zip** gives you one file to hand to someone
-else. They install it with **Install from file**.
+else. They install it with **Install from file**. A theme folder copied in by
+hand shows up after **Rescan**; no restart needed.
 
 ## Anatomy
 
@@ -122,6 +129,10 @@ The app surface:
 | `--font-ui` | Body font |
 | `--font-title` | Title bar and headings |
 | `--font-mono` | Room codes and anything monospaced |
+| `--motion-fast` | Duration for hovers and presses |
+| `--motion-base` | Duration for ordinary transitions |
+| `--motion-slow` | Duration for entrances and larger movement |
+| `--ease` | The easing curve motion uses |
 
 The YouTube Music surface, which defaults to the matching app token so you
 usually do not touch these:
@@ -142,7 +153,7 @@ usually do not touch these:
 | `--ytmd-on-accent` | Text drawn on top of the accent |
 | `--ytmd-danger` | Warnings on the page, such as the boosted part of the volume bar |
 | `--ytmd-overlay` | Scrims over artwork |
-| `--ytmd-scheme` | `light` or `dark`; drives native scrollbars and form controls |
+| `--ytmd-scheme` | `light` or `dark`; drives native scrollbars and form controls. Set it in `styles`, not `ytmStyles`, so the app's own windows flip too |
 | `--ytmd-font` | Page font; leave it alone to keep YouTube's own |
 
 A palette theme is one `:root` block setting the ones it cares about:
@@ -160,6 +171,50 @@ Beyond tokens you can write ordinary CSS. YouTube Music runs Polymer in a mode
 that flattens component styles into the page, so normal selectors reach inside
 its components. `Cathode` and `Millennium` both do this, and they are the ones
 to read when you want to go past colours.
+
+## Motion
+
+Themes can animate. Write ordinary `transition` and `animation` rules in any of
+your stylesheets and take durations and easing from the tokens:
+
+```css
+.sidebar li {
+  transition: background-color var(--motion-fast) var(--ease);
+}
+
+ytmusic-shelf {
+  animation: rise var(--motion-slow) var(--ease) both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+```
+
+The base layer zeroes the three duration tokens when the OS asks for reduced
+motion, so anything timed through them stops on its own. An ambient loop with a
+literal duration (a 60s background drift, a spinning record) does not get that
+for free; give it your own block:
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  ytmusic-app::after {
+    animation: none;
+  }
+}
+```
+
+Two things to keep motion away from. The progress bar
+(`#primaryProgress`) is painted by the base layer and repainted by the volume
+boost addon, so animating it fights both. And a full-page overlay should only
+animate `transform` and `opacity`; animating anything else there repaints the
+whole window every frame.
+
+Animated image assets: `.gif` is not on the install allowlist, so a zip of your
+theme would drop it. Use animated WebP, SVG, or plain CSS.
 
 ## Fonts
 

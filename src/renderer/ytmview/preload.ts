@@ -100,7 +100,7 @@ function createStyleSheet() {
         cursor: pointer;
         margin: 0 18px 0 2px;
         font-size: 24px;
-        color: rgba(255, 255, 255, 0.5);
+        color: var(--ytmd-nav-icon, rgba(255, 255, 255, 0.5));
       }
 
       .ytmd-history-back.pivotbar, .ytmd-history-forward.pivotbar {
@@ -112,7 +112,7 @@ function createStyleSheet() {
       }
 
       .ytmd-history-back:hover:not(.disabled), .ytmd-history-forward:hover:not(.disabled) {
-        color: #FFFFFF;
+        color: var(--ytmd-nav-icon-hover, #ffffff);
       }
 
       .ytmd-hidden {
@@ -141,7 +141,7 @@ function createStyleSheet() {
       }
 
       .ytmd-player-bar-control.sleep-timer-button.active {
-        color: #FFFFFF;
+        color: var(--ytmd-control-active, #ffffff);
       }
     `)
   );

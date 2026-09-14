@@ -33,6 +33,20 @@ describe("renderer styling stays themeable", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("keeps the ytmview preload styles on tokens", () => {
+    const file = path.join(RENDERER_DIR, "ytmview", "preload.ts");
+    const offenders: string[] = [];
+
+    for (const [index, line] of fs.readFileSync(file, "utf8").split(/\r?\n/).entries()) {
+      const stripped = line.replace(/var\([^)]*\)/g, "");
+      for (const match of stripped.match(COLOR_LITERAL) ?? []) {
+        offenders.push(`ytmview/preload.ts:${index + 1} ${match}`);
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
   it("routes every font through a token", () => {
     const offenders: string[] = [];
 

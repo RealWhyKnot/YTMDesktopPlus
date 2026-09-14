@@ -29,4 +29,16 @@
   --font-ui: "Work Sans", sans-serif;
   --font-title: "Open Sans", sans-serif;
   --font-mono: Consolas, "DejaVu Sans Mono", monospace;
+  --motion-fast: 150ms;
+  --motion-base: 250ms;
+  --motion-slow: 400ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0s;
+    --motion-base: 0s;
+    --motion-slow: 0s;
+  }
 }

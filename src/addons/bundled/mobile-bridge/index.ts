@@ -17,7 +17,7 @@ const BANNER_CSS = `
   background: var(--ytmd-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  font-family: var(--ytmd-font);
+  font-family: var(--ytmd-font, inherit);
   color: var(--ytmd-text);
 }
 #ytmd-phone-banner .ytmd-phone-banner-art {
