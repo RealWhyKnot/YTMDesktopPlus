@@ -1,5 +1,5 @@
 import fs from "fs";
-import { hooksReadyStep, playbackFixture } from "./lib.mjs";
+import { closePopupMenu, hooksReadyStep, openPopupMenu, playbackFixture } from "./lib.mjs";
 
 export const fixture = {
   playback: playbackFixture(),
@@ -279,44 +279,9 @@ export default async function ytmThemeProbe(ctx) {
         "ytmusic-menu-popup-renderer yt-formatted-string",
         "ytmusic-menu-popup-renderer yt-icon"
       ];
-      const trigger = JSON.parse(
-        await ctx.evalYtm(`JSON.stringify((() => {
-          for (const menu of document.querySelectorAll("ytmusic-player-bar ytmusic-menu-renderer, ytmusic-menu-renderer")) {
-            const button = menu.querySelector("tp-yt-paper-icon-button, yt-icon-button button, yt-icon-button, button");
-            if (!button) continue;
-            button.click();
-            return { clicked: "ytmusic-menu-renderer button", tag: button.tagName.toLowerCase() };
-          }
-          const card = document.querySelector("ytmusic-two-row-item-renderer, ytmusic-responsive-list-item-renderer");
-          if (card) {
-            const box = card.getBoundingClientRect();
-            card.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 }));
-            return { clicked: "contextmenu on card" };
-          }
-          return { clicked: null };
-        })())`)
-      );
-      if (!trigger.clicked) {
-        ctx.emit("probe-popup", { found: false, reason: "no menu trigger in the dom" });
-        return;
-      }
-      const visible = await ctx
-        .waitYtm(
-          `(() => {
-            const dropdown = document.querySelector('tp-yt-iron-dropdown:not([aria-hidden="true"])');
-            if (!dropdown) return false;
-            const box = dropdown.getBoundingClientRect();
-            return box.width > 0 && box.height > 0 && !!dropdown.querySelector("ytmusic-menu-popup-renderer");
-          })()`,
-          open => open === true,
-          15000
-        )
-        .then(
-          () => true,
-          () => false
-        );
-      if (!visible) {
-        ctx.emit("probe-popup", { found: false, reason: "menu never opened", trigger: trigger.clicked });
+      const popup = await openPopupMenu(ctx);
+      if (!popup.opened) {
+        ctx.emit("probe-popup", { found: false, reason: popup.reason, ...(popup.trigger ? { trigger: popup.trigger } : {}) });
         return;
       }
       const samples = JSON.parse(
@@ -344,19 +309,10 @@ export default async function ytmThemeProbe(ctx) {
           return out;
         })())`)
       );
-      ctx.emit("probe-popup", { found: true, trigger: trigger.clicked, samples });
+      ctx.emit("probe-popup", { found: true, trigger: popup.trigger, samples });
       const matched = await ctx.matchedStylesYtm(POPUP_SELECTORS);
       ctx.emit("probe-popup-rules", matched);
-      const closed = JSON.parse(
-        await ctx.evalYtm(`JSON.stringify((() => {
-          const dropdown = document.querySelector('tp-yt-iron-dropdown:not([aria-hidden="true"])');
-          if (dropdown && typeof dropdown.close === "function") dropdown.close();
-          document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-          void document.body.offsetHeight;
-          return { stillOpen: !!document.querySelector('tp-yt-iron-dropdown:not([aria-hidden="true"])') };
-        })())`)
-      );
-      ctx.emit("probe-popup-closed", closed);
+      ctx.emit("probe-popup-closed", await closePopupMenu(ctx));
     },
     90000
   );
