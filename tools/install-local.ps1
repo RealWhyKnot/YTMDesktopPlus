@@ -47,16 +47,10 @@ if (-not $ThemesOnly) {
     if ($LASTEXITCODE -ne 0) { throw "electron-forge package failed" }
   }
   finally { Pop-Location }
-  $out = Join-Path $repo "out\YTMDesktopPlus-win32-x64\resources"
-  if (-not (Test-Path (Join-Path $out "app.asar"))) { throw "packaged app.asar not found under $out" }
-  Copy-Item (Join-Path $out "app.asar") (Join-Path $resources "app.asar") -Force
-  $unpacked = Join-Path $out "app.asar.unpacked"
-  if (Test-Path $unpacked) {
-    if (Test-Path (Join-Path $resources "app.asar.unpacked")) {
-      Remove-Item (Join-Path $resources "app.asar.unpacked") -Recurse -Force
-    }
-    Copy-Item $unpacked (Join-Path $resources "app.asar.unpacked") -Recurse -Force
-  }
+  $out = Join-Path $repo "out\YTMDesktopPlus-win32-x64"
+  if (-not (Test-Path (Join-Path $out "resources\app.asar"))) { throw "packaged app.asar not found under $out" }
+  robocopy $out $best.FullName /E /NFL /NDL /NJH /NJS | Out-Null
+  if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
 }
 
 $themesDest = Join-Path $resources "themes"
