@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- ci: enforce conventional commit subjects on push and locally
+- ci(nightly): gate betas on functional changes
 
 ## [v2026.911.1](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.911.1) - 2026-09-11
 - Stable build of v2026.911.1-beta.
