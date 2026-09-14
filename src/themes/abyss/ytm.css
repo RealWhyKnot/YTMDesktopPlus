@@ -3,7 +3,7 @@ ytmusic-app::after {
   position: fixed;
   inset: -20%;
   pointer-events: none;
-  z-index: 0;
+  z-index: 100;
   background: repeating-linear-gradient(105deg, transparent 0 120px, rgba(45, 212, 191, 0.05) 120px 140px, transparent 140px 300px);
   animation: caustic-sway 45s ease-in-out infinite alternate;
   will-change: transform, opacity;

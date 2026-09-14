@@ -3,7 +3,7 @@ ytmusic-app::after {
   position: fixed;
   inset: -60% -20% 40% -20%;
   pointer-events: none;
-  z-index: 0;
+  z-index: 100;
   background:
     radial-gradient(60% 40% at 25% 30%, rgba(52, 211, 153, 0.14), transparent 70%),
     radial-gradient(50% 35% at 70% 20%, rgba(167, 139, 250, 0.12), transparent 70%);
