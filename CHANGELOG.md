@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- fix(ytmview): guard rating and playlist scripts against a null player response during preroll ads
 - fix(ytmview): skip the resume video data send while a preroll ad nulls the player response
 
 ## [v2026.914.0](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.914.0) - 2026-09-14
