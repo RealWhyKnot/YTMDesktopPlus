@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.914.0](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.914.0) - 2026-09-14
 - fix(tools): copy the whole packaged dir so asar integrity fuses accept it
 - feat(tools): script to install the working tree into the local client
 - fix(themes): repaint the light-scheme text YouTube hardcodes
