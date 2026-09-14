@@ -146,6 +146,22 @@ describe("bundled themes", () => {
     expect(ytm).toContain("--ytmusic-overlay-text-secondary: var(--ytmd-text-muted)");
     expect(ytm).toContain("--ytmusic-icon-inactive: var(--ytmd-icon)");
     expect(ytm).toContain("background-color: var(--ytmd-bg) !important");
+    expect(ytm).toContain(".song-title.ytmusic-player-queue-item");
+    expect(ytm).toContain(".text.ytmusic-menu-service-item-renderer");
+    expect(ytm).toContain("tp-yt-paper-tab.iron-selected.ytmusic-player-page");
     themes.dispose();
+  });
+
+  it("never ships a one-shot ambient animation", () => {
+    for (const id of EXPECTED_THEMES) {
+      const dir = path.join(BUNDLED_DIR, id);
+      for (const file of fs.readdirSync(dir).filter(name => name.endsWith(".css"))) {
+        const css = fs.readFileSync(path.join(dir, file), "utf8");
+        for (const line of css.split("\n")) {
+          if (!line.includes("animation:")) continue;
+          expect(line, `${id}/${file} animation must not rely on forwards fill`).not.toMatch(/\bforwards\b/);
+        }
+      }
+    }
   });
 });

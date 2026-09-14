@@ -14,7 +14,11 @@ export const CONTRAST_PAIRS: Array<[string, string, number]> = [
   ["--text", "--bg-raised", 4.5],
   ["--text", "--bg-control", 4.5],
   ["--text-muted", "--bg", 4.5],
-  ["--text-faint", "--bg", 3]
+  ["--text-muted", "--bg-raised", 4.5],
+  ["--text-muted", "--bg-control", 4.5],
+  ["--text-faint", "--bg", 3],
+  ["--text-faint", "--bg-raised", 3],
+  ["--text-faint", "--bg-control", 3]
 ];
 
 export function resolveToken(tokens: Record<string, string>, name: string, depth = 0): string | null {

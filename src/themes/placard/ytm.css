@@ -5,13 +5,13 @@ ytmusic-pivot-bar-item-renderer {
 }
 
 ytmusic-two-row-item-renderer:hover {
-  outline: 3px solid #111111;
+  outline: 3px solid var(--ytmd-accent);
   outline-offset: -3px;
 }
 
 ytmusic-pivot-bar-item-renderer[selected] {
-  background: #111111 !important;
-  color: #f2f0eb !important;
+  background: var(--ytmd-text) !important;
+  color: var(--ytmd-bg) !important;
 }
 
 ytmusic-shelf,

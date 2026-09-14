@@ -86,21 +86,46 @@ ytmusic-pivot-bar-item-renderer[selected] {
 
 .title.ytmusic-two-row-item-renderer,
 .title.ytmusic-carousel-shelf-basic-header-renderer,
+.title.ytmusic-carousel-shelf-basic-header-renderer a.yt-simple-endpoint,
+.title.ytmusic-two-row-item-renderer a.yt-simple-endpoint,
+ytmusic-guide-entry-renderer a.yt-simple-endpoint,
 .title.ytmusic-responsive-list-item-renderer,
+.title.ytmusic-responsive-list-item-renderer a.yt-simple-endpoint,
 .content-info-wrapper.ytmusic-player-bar .title.ytmusic-player-bar,
 ytmusic-guide-entry-renderer,
-ytmusic-chip-cloud-chip-renderer[chip-style="STYLE_LARGE_TRANSLUCENT_AND_SELECTED_WHITE"] a.ytmusic-chip-cloud-chip-renderer {
+.title.ytmusic-guide-entry-renderer,
+ytmusic-chip-cloud-chip-renderer:not([chip-style="STYLE_TRANSPARENT"]):not([is-selected]) a.ytmusic-chip-cloud-chip-renderer,
+.title.ytmusic-player-controls,
+.song-title.ytmusic-player-queue-item,
+.subtitle.ytmusic-queue-header-renderer,
+.autoplay.ytmusic-tab-renderer .title.ytmusic-tab-renderer,
+.autoplay.ytmusic-player-queue .title.ytmusic-player-queue,
+.text.ytmusic-menu-navigation-item-renderer,
+.text.ytmusic-menu-service-item-renderer,
+.text.ytmusic-toggle-menu-service-item-renderer,
+yt-formatted-string.ytmusic-menu-service-item-download-renderer,
+tp-yt-paper-tab.iron-selected.ytmusic-player-page {
   color: var(--ytmd-text) !important;
 }
 
 .strapline.ytmusic-carousel-shelf-basic-header-renderer,
-.subtitle.ytmusic-carousel-shelf-basic-header-renderer {
+.subtitle.ytmusic-carousel-shelf-basic-header-renderer,
+.byline.ytmusic-player-queue-item,
+.duration.ytmusic-player-queue-item,
+.time-info.ytmusic-player-bar,
+.autoplay.ytmusic-tab-renderer .subtitle.ytmusic-tab-renderer,
+tp-yt-paper-tab.ytmusic-player-page {
   color: var(--ytmd-text-muted) !important;
 }
 
 .ytSpecButtonShapeNextMono.ytSpecButtonShapeNextText,
-.ytSpecButtonShapeNextMono.ytSpecButtonShapeNextOutline {
+.ytSpecButtonShapeNextMono.ytSpecButtonShapeNextOutline,
+.ytSpecButtonShapeNextMono.ytSpecButtonShapeNextTonal {
   color: var(--ytmd-text) !important;
+}
+
+.ytSpecButtonShapeNextMono.ytSpecButtonShapeNextTonal {
+  background-color: var(--ytmd-hover) !important;
 }
 
 yt-icon-button[disabled] {

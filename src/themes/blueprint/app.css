@@ -1,5 +1,5 @@
 .titlebar {
-  border-bottom: 1px dashed #1e5fbf;
+  border-bottom: 1px dashed var(--accent);
 }
 
 .title-text {
@@ -19,7 +19,7 @@
   right: 8px;
   bottom: 2px;
   height: 2px;
-  background: #1e5fbf;
+  background: var(--accent);
   transform: scaleX(0);
   transform-origin: left;
   transition: transform var(--motion-base) var(--ease);

@@ -9,7 +9,7 @@ ytmusic-pivot-bar-item-renderer::after {
   right: 0;
   bottom: 0;
   height: 2px;
-  background: #1e5fbf;
+  background: var(--ytmd-accent);
   transform: scaleX(0);
   transform-origin: left;
   transition: transform var(--motion-base) var(--ease);
