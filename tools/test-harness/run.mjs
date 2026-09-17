@@ -18,7 +18,7 @@
 // environment blocked (companion port busy, consent wall), 6 teardown could
 // not verify a clean process table.
 
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createEmitter } from "./events.mjs";
@@ -120,9 +120,23 @@ if (scenario.needsCompanion && (await companion.portInUse())) {
 // scenario fixture still wins key-by-key over the seeded config, and the
 // first-run marker is skipped: a seeded profile is not a first run.
 const seedProfile = process.env.YTMD_SEED_PROFILE;
+const SEED_SKIP = new Set([
+  "Session Storage",
+  "blob_storage",
+  "Cache",
+  "Code Cache",
+  "GPUCache",
+  "DawnGraphiteCache",
+  "DawnWebGPUCache",
+  "Crashpad",
+  "logs",
+  "DIPS",
+  "DIPS-wal",
+  "DevToolsActivePort"
+]);
 if (seedProfile) {
-  cpSync(seedProfile, profileDir, { recursive: true });
-  rmSync(path.join(profileDir, "logs"), { recursive: true, force: true });
+  const seedRoot = path.resolve(seedProfile);
+  cpSync(seedRoot, profileDir, { recursive: true, filter: source => !SEED_SKIP.has(path.basename(source)) || path.dirname(path.resolve(source)) !== seedRoot });
   const configPath = path.join(profileDir, "config.json");
   let seededConfig = {};
   try {
