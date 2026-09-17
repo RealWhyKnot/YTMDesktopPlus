@@ -164,4 +164,16 @@ describe("bundled themes", () => {
       }
     }
   });
+
+  it("never targets the slider knob box", () => {
+    for (const id of EXPECTED_THEMES) {
+      const dir = path.join(BUNDLED_DIR, id);
+      for (const file of fs.readdirSync(dir).filter(name => name.endsWith(".css"))) {
+        const css = fs.readFileSync(path.join(dir, file), "utf8");
+        for (const selector of css.split("}").map(block => block.split("{")[0])) {
+          expect(selector, `${id}/${file} must decorate .slider-knob-inner, never the knob box`).not.toMatch(/#sliderKnob|\.slider-knob(?!-inner)/);
+        }
+      }
+    }
+  });
 });

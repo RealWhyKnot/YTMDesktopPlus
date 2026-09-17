@@ -1,11 +1,11 @@
-ytmusic-player-bar #sliderKnob {
+ytmusic-player-bar #progress-bar .slider-knob-inner {
   position: relative;
 }
 
-ytmusic-player-bar #sliderKnob::after {
+ytmusic-player-bar #progress-bar .slider-knob-inner::after {
   content: "";
   position: absolute;
-  inset: -6px;
+  inset: -4px;
   border-radius: 50%;
   pointer-events: none;
   box-shadow: 0 0 12px 2px rgba(76, 201, 240, 0.55);
@@ -23,7 +23,7 @@ ytmusic-player-bar #sliderKnob::after {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  ytmusic-player-bar #sliderKnob::after {
+  ytmusic-player-bar #progress-bar .slider-knob-inner::after {
     animation: none;
   }
 }
@@ -34,5 +34,5 @@ ytmusic-pivot-bar-item-renderer[selected] {
 
 ytmusic-two-row-item-renderer,
 tp-yt-paper-icon-button {
-  transition: box-shadow var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+  transition: color var(--motion-fast) var(--ease);
 }

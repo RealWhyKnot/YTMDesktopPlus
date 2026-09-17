@@ -207,11 +207,14 @@ for free; give it your own block:
 }
 ```
 
-Two things to keep motion away from. The progress bar
+Three things to keep motion away from. The progress bar
 (`#primaryProgress`) is painted by the base layer and repainted by the volume
-boost addon, so animating it fights both. And a full-page overlay should only
-animate `transform` and `opacity`; animating anything else there repaints the
-whole window every frame.
+boost addon, so animating it fights both. The slider knob box (`#sliderKnob`)
+is positioned by YouTube and is also the volume knob; touching it moves the
+dot off the timeline, so decorate `.slider-knob-inner` under `#progress-bar`
+instead. And a full-page overlay should only animate `transform` and
+`opacity`; animating anything else there repaints the whole window every
+frame.
 
 Animated image assets: `.gif` is not on the install allowlist, so a zip of your
 theme would drop it. Use animated WebP, SVG, or plain CSS.
