@@ -113,6 +113,7 @@ function events() {
 function run(config: Record<string, unknown> = {}) {
   return new Function(`return (${source.replace(/;$/, "")})`)()({
     seconds: 5,
+    blendSkips: false,
     repeatOne: false,
     adPlaying: false,
     hasNext: true,
@@ -313,7 +314,7 @@ describe("blend script", () => {
   });
 
   it("blends a manual skip off the shadow already playing, without advancing again", () => {
-    run();
+    run({ blendSkips: true });
     armAt(30);
 
     changeTrackTo("trackB");
@@ -326,7 +327,7 @@ describe("blend script", () => {
   });
 
   it("fades the incoming track in while a skip blend is still running", () => {
-    run();
+    run({ blendSkips: true });
     armAt(30);
 
     changeTrackTo("trackB");
@@ -362,7 +363,7 @@ describe("blend script", () => {
   });
 
   it("blends a skip before the incoming track reports its length", () => {
-    run();
+    run({ blendSkips: true });
     armAt(30);
 
     clockReadable = false;
@@ -371,6 +372,43 @@ describe("blend script", () => {
 
     expect(audios[0].volume).toBe(0.83);
     expect(diags().find(diag => diag.event === "blend")).toMatchObject({ kind: "skip" });
+  });
+
+  it("cuts a skip when blend skips is off", () => {
+    run();
+    armAt(30);
+
+    changeTrackTo("trackB");
+    dispatch("timeupdate");
+
+    expect(diags().find(diag => diag.event === "cut")).toMatchObject({ reason: "skip" });
+    expect(events()).not.toContain("blend");
+    expect(audios[0].volume).toBe(0);
+    expect(nextVideo).not.toHaveBeenCalled();
+  });
+
+  it("still blends an advance taken in the last seconds when blend skips is off", () => {
+    run({ hasNext: false });
+    armAt(30);
+    armAt(197.5);
+    expect(events()).not.toContain("blend");
+
+    changeTrackTo("trackB");
+    dispatch("timeupdate");
+
+    expect(diags().find(diag => diag.event === "blend")).toMatchObject({ kind: "skip" });
+  });
+
+  it("cuts a skip when the outgoing clock was unreadable", () => {
+    run();
+    armAt(30);
+
+    clockReadable = false;
+    changeTrackTo("trackB");
+    dispatch("timeupdate");
+
+    expect(diags().find(diag => diag.event === "cut")).toMatchObject({ reason: "skip" });
+    expect(events()).not.toContain("blend");
   });
 
   it("cuts rather than blends a skip taken before the shadow is ready", () => {

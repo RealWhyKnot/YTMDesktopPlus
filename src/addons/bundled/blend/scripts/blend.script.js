@@ -37,6 +37,7 @@
 
   state.config = {
     seconds: Math.min(12, Math.max(1, Number(options.seconds) || 5)),
+    blendSkips: options.blendSkips === true,
     repeatOne: options.repeatOne === true,
     adPlaying: options.adPlaying === true,
     hasNext: options.hasNext !== false
@@ -285,6 +286,14 @@
       if (!state.video.paused) beginFadeIn();
       return;
     }
+    const last = state.lastClock;
+    state.lastClock = null;
+    const nearEnd = !!last && last.positionS >= last.durationS - state.config.seconds - TRIGGER_SLACK_S;
+    if (previous && !state.config.blendSkips && !nearEnd) {
+      report("cut", { reason: "skip" });
+      releaseShadow();
+      return;
+    }
     const ready = state.shadowVideoId === previous && shadowSounding();
     if (previous && ready && !gated()) {
       startBlend(earLevel(state.video), false);
@@ -308,6 +317,7 @@
       onTrackChange(previous);
       return;
     }
+    state.lastClock = clock;
 
     if (state.pendingFadeIn && !state.awaitingAdvance && !video.paused && video.readyState >= 3) beginFadeIn();
 

@@ -15,7 +15,7 @@ const blendAddon: BundledAddonDefinition = {
   },
 
   activate(ctx) {
-    ctx.settings.registerDefaults({ seconds: 5 });
+    ctx.settings.registerDefaults({ seconds: 5, blendSkips: false });
     ctx.settings.registerSettingsUI([
       {
         fields: [
@@ -28,6 +28,12 @@ const blendAddon: BundledAddonDefinition = {
             max: 12,
             step: 0.5,
             display: "slider"
+          },
+          {
+            key: "blendSkips",
+            type: "toggle",
+            label: "Blend skips",
+            description: "Overlap songs when you skip, not only when one ends."
           }
         ]
       }
@@ -48,6 +54,7 @@ const blendAddon: BundledAddonDefinition = {
       try {
         const applied = await ctx.ytmview.invokeScript("blend", {
           seconds: ctx.settings.get<number>("seconds") ?? 5,
+          blendSkips: ctx.settings.get<boolean>("blendSkips") === true,
           repeatOne,
           adPlaying,
           hasNext
@@ -60,6 +67,7 @@ const blendAddon: BundledAddonDefinition = {
 
     const unsubscribes = [
       ctx.settings.onDidChange("seconds", () => void apply()),
+      ctx.settings.onDidChange("blendSkips", () => void apply()),
       ctx.ytmview.onLoaded(apply),
       ctx.ytmview.onMessage("diag", payload => {
         const data = payload as Record<string, unknown>;

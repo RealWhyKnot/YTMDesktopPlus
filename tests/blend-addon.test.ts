@@ -33,13 +33,15 @@ describe("blend bundled addon", () => {
     expect(blendAddon.manifest.id).toBe("blend");
   });
 
-  it("exposes exactly one setting", async () => {
+  it("exposes the length slider and the skip toggle", async () => {
     const bag = harness();
     await blendAddon.activate(bag.ctx);
     const fields = bag.captured.sections.flatMap(section => section.fields);
-    expect(fields).toHaveLength(1);
+    expect(fields).toHaveLength(2);
     expect(fields[0]).toMatchObject({ key: "seconds", type: "number", display: "slider", min: 1, max: 12 });
+    expect(fields[1]).toMatchObject({ key: "blendSkips", type: "toggle" });
     expect(bag.settings.seconds).toBe(5);
+    expect(bag.settings.blendSkips).toBe(false);
   });
 
   it("registers the engine and its teardown script", async () => {
@@ -69,7 +71,7 @@ describe("blend bundled addon", () => {
     await blendAddon.activate(bag.ctx);
     bag.fireLoaded();
     await vi.waitFor(() => expect(lastArg(bag)).toBeDefined());
-    expect(lastArg(bag)).toEqual({ seconds: 8, repeatOne: false, adPlaying: true, hasNext: true });
+    expect(lastArg(bag)).toEqual({ seconds: 8, blendSkips: false, repeatOne: false, adPlaying: true, hasNext: true });
   });
 
   it("re-applies when the setting, the ads, the repeat mode or the queue change", async () => {
@@ -79,6 +81,10 @@ describe("blend bundled addon", () => {
     bag.settings.seconds = 7;
     await bag.captured.settingsListeners.seconds?.(7, 5);
     await vi.waitFor(() => expect(lastArg(bag)?.seconds).toBe(7));
+
+    bag.settings.blendSkips = true;
+    await bag.captured.settingsListeners.blendSkips?.(true, false);
+    await vi.waitFor(() => expect(lastArg(bag)?.blendSkips).toBe(true));
 
     bag.emitPlayerEvent("adStateChanged", { adPlaying: true });
     await vi.waitFor(() => expect(lastArg(bag)?.adPlaying).toBe(true));
