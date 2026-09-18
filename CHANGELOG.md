@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.918.0](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.918.0) - 2026-09-18
 - test(harness): check blend cuts and blends a skip live
 - feat(blend): add a blend skips toggle, off by default
 - test(harness): audit player-bar geometry across bundled themes
