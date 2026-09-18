@@ -31,6 +31,15 @@ $sections.Add("Chores", @())
 $sections.Add("Reverts", @())
 $sections.Add("Other Changes", @())
 
+function Format-AuthorCredit {
+  param([string] $Author)
+
+  if (-not $Author) { return "" }
+  if ($Author -match '\[bot]$') { return $Author }
+  if ($Author -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$') { return $Author }
+  return "[$Author](https://github.com/$Author)"
+}
+
 $typeMap = @{
   feat     = "Features"
   fix      = "Bug Fixes"
@@ -54,7 +63,7 @@ foreach ($commit in $commits) {
   $shortSha = $commit.sha.Substring(0, [Math]::Min(7, $commit.sha.Length))
   $author = ""
   if ($commit.login) {
-    $author = " by [@$($commit.login)](https://github.com/$($commit.login))"
+    $author = " by $(Format-AuthorCredit $commit.login)"
   }
   $sections[$section] = @($sections[$section]) + "* $($commit.subject)$author in $shortSha"
 }

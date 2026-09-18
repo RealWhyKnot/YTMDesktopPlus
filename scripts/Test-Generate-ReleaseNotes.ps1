@@ -20,7 +20,7 @@ try {
   Assert-True ($output -match "### Bug Fixes") "has a Bug Fixes section"
   Assert-True ($output -match "### Other Changes") "untyped subjects land in Other Changes"
   Assert-True ($output -notmatch "### Chores") "empty sections are omitted"
-  Assert-True ($output -match [regex]::Escape("* feat(player): add sleep timer by [@RealWhyKnot](https://github.com/RealWhyKnot) in abc1234")) "bullet format with author and short sha"
+  Assert-True ($output -match [regex]::Escape("* feat(player): add sleep timer by [RealWhyKnot](https://github.com/RealWhyKnot) in abc1234")) "bullet format with author and short sha"
   Assert-True ($output -match [regex]::Escape("* docs(readme): document build steps in cde3456")) "missing login omits attribution"
   Assert-True ($output.IndexOf("### Features") -lt $output.IndexOf("### Bug Fixes")) "sections keep fixed order"
   Assert-True ($output -match [regex]::Escape("Full Changelog: [RealWhyKnot/YTMDesktopPlus@v2026.803.0-beta...v2026.803.1](https://github.com/RealWhyKnot/YTMDesktopPlus/compare/v2026.803.0-beta...v2026.803.1)")) "compare footer present"
