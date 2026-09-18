@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- test(harness): check blend cuts and blends a skip live
+- feat(blend): add a blend skips toggle, off by default
+- test(harness): audit player-bar geometry across bundled themes
+- fix(themes): stop pitch repositioning the slider knob
 
 ## [v2026.915.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.915.0-beta) - 2026-09-15
 - fix(ytmview): guard rating and playlist scripts against a null player response during preroll ads
