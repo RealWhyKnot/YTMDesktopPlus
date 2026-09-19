@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.919.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.919.1-beta) - 2026-09-19
 - fix(rooms): report a capture encode failure instead of going quiet
 - fix(rooms): let a room link be acted on while already in a room
 - fix(rooms): count the people listening in a browser
