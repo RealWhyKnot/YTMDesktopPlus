@@ -216,6 +216,7 @@ export class RoomSession {
         this.memberId = frame.u;
         this.clockOffsetMs = frame.c - this.deps.now();
         this.roomId = frame.r;
+        this.listenerCount = frame.n;
         this.error = null;
         if (this.mode === "host") {
           if (frame.k) this.hostKey = frame.k;

@@ -131,8 +131,11 @@ describe("room indicator counts", () => {
     expect(otherListenerCount(snapshot({ listenerCount: 2, webListenerCount: 3 }))).toBe(5);
   });
 
-  it("counts the host for a listener", () => {
-    expect(otherListenerCount(snapshot({ phase: "listening", isHost: false }))).toBe(1);
-    expect(otherListenerCount(snapshot({ phase: "listening", isHost: false, listenerCount: 2 }))).toBe(3);
+  // The relay counts members, so a listener is in its own count and the host
+  // is not: trading yourself for the host leaves the total unchanged.
+  it("trades a listener for the host it cannot see in the count", () => {
+    expect(otherListenerCount(snapshot({ phase: "listening", isHost: false, listenerCount: 1 }))).toBe(1);
+    expect(otherListenerCount(snapshot({ phase: "listening", isHost: false, listenerCount: 3 }))).toBe(3);
+    expect(otherListenerCount(snapshot({ phase: "listening", isHost: false, listenerCount: 1, webListenerCount: 2 }))).toBe(3);
   });
 });

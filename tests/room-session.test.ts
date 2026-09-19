@@ -145,6 +145,13 @@ describe("RoomSession hosting", () => {
     expect(snapshot.hostName).toBe("DJ");
     expect(snapshot.listenerCount).toBe(1);
   });
+
+  // A reconnect lands mid-room, and the next roster change can be minutes
+  // away; the welcome frame already carries the count, so take it.
+  it("takes the count from the welcome frame", () => {
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 4, c: 1 });
+    expect(h.lastSnapshot().listenerCount).toBe(4);
+  });
 });
 
 describe("RoomSession listening", () => {
