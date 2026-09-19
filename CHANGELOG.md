@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.919.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.919.0-beta) - 2026-09-19
 - fix(release): credit authors by profile link instead of a mention
 
 ## [v2026.918.0](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.918.0) - 2026-09-18
