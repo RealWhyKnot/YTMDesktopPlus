@@ -63,6 +63,7 @@ declare global {
       roomHost(displayName: string): void;
       roomJoin(roomId: string, displayName: string): void;
       roomLeave(): void;
+      roomDismissJoinPrompt(): void;
       roomGrant(memberId: string, role: number): void;
       roomControl(action: string, value?: unknown): void;
       roomResume(): void;

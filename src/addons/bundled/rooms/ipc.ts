@@ -8,6 +8,7 @@ export type RoomIpcDeps = {
   host(displayName: string): void;
   join(roomId: string, displayName: string): void;
   leave(): void;
+  dismissJoinPrompt(): void;
   grant(memberId: string, role: RoomRole): void;
   control(action: ControlAction, value?: number | string): void;
   resume(): void;
@@ -46,6 +47,12 @@ export function registerRoomIpc(ipc: AddonContext["ipc"], deps: RoomIpcDeps): vo
     if (!isRoomSender(event.sender)) return;
 
     deps.leave();
+  });
+
+  ipc.on("dismissJoinPrompt", event => {
+    if (!isRoomSender(event.sender)) return;
+
+    deps.dismissJoinPrompt();
   });
 
   ipc.on("grant", (event, memberId, role) => {

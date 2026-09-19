@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { RoomSnapshot } from "~shared/room-protocol";
+import { otherListenerCount, type RoomSnapshot } from "~shared/room-protocol";
 
 const memoryStore = window.ytmd.memoryStore;
 const store = window.ytmd.store;
@@ -23,16 +23,19 @@ const copied = ref(false);
 memoryStore.onStateChanged(newState => {
   const memory = roomsMemory(newState.addonMemory);
   snapshot.value = (memory.room as RoomSnapshot | null | undefined) ?? snapshot.value;
-  const prompt = memory.joinPrompt as string | null | undefined;
-  if (prompt && prompt !== joinPrompt.value) {
+  const prompt = (memory.joinPrompt as string | null | undefined) ?? null;
+  if (prompt !== joinPrompt.value) {
     joinPrompt.value = prompt;
-    joinInput.value = prompt;
+    if (prompt) joinInput.value = prompt;
   }
 });
 
 const phase = computed(() => snapshot.value?.phase ?? "idle");
 const canSubmitName = computed(() => displayName.value.trim().length > 0);
 const isController = computed(() => snapshot.value?.isHost || snapshot.value?.role === 1);
+const pendingInvite = computed(() => (joinPrompt.value && joinPrompt.value !== snapshot.value?.roomId ? joinPrompt.value : null));
+const listenerTotal = computed(() => otherListenerCount(snapshot.value) + 1);
+const webListeners = computed(() => snapshot.value?.webListenerCount ?? 0);
 
 const joinCode = computed(() => {
   const match = /([abcdefghjkmnpqrstuvwxyz23456789]{8})\s*$/.exec(joinInput.value.trim());
@@ -49,8 +52,18 @@ function joinRoom() {
   window.ytmd.roomJoin(joinCode.value, displayName.value.trim());
 }
 
+function acceptInvite() {
+  if (!pendingInvite.value || !canSubmitName.value) return;
+  window.ytmd.roomJoin(pendingInvite.value, displayName.value.trim());
+}
+
 function leaveRoom() {
   window.ytmd.roomLeave();
+}
+
+function dismissPrompt() {
+  joinPrompt.value = null;
+  window.ytmd.roomDismissJoinPrompt();
 }
 
 async function copyShareLink() {
@@ -98,6 +111,18 @@ function memberLabel(name: string | null, id: string) {
 
 <template>
   <div class="room-container">
+    <div v-if="pendingInvite" class="card invite">
+      <p class="card-title"><span class="material-symbols-outlined">group_add</span>Invitation to {{ pendingInvite }}</p>
+      <p class="card-body">
+        {{ phase === "idle" ? "Someone shared their room with you." : "Joining this room leaves the one you are in now." }}
+      </p>
+      <input v-if="!canSubmitName" v-model="displayName" class="text-input" type="text" maxlength="24" placeholder="Pick a name to join with" />
+      <div class="invite-actions">
+        <button class="primary" :disabled="!canSubmitName" @click="acceptInvite">Join</button>
+        <button class="subtle" @click="dismissPrompt">Dismiss</button>
+      </div>
+    </div>
+
     <!-- Idle: start or join -->
     <div v-if="phase === 'idle'" class="setup">
       <div class="field">
@@ -144,7 +169,7 @@ function memberLabel(name: string | null, id: string) {
         </div>
         <p class="room-subtitle">
           {{ snapshot?.isHost ? "You are hosting" : `Following ${snapshot?.hostName ?? "the host"}` }}
-          <span class="listener-count"><span class="material-symbols-outlined">headphones</span>{{ (snapshot?.listenerCount ?? 0) + 1 }}</span>
+          <span class="listener-count"><span class="material-symbols-outlined">headphones</span>{{ listenerTotal }}</span>
         </p>
       </div>
 
@@ -177,7 +202,11 @@ function memberLabel(name: string | null, id: string) {
             <button v-else class="subtle small" @click="grant(member.id, 0)">Demote</button>
           </template>
         </div>
-        <p v-if="(snapshot?.members ?? []).length === 0" class="empty">Nobody else yet. Share the link to invite people.</p>
+        <div v-if="webListeners > 0" class="member">
+          <span class="member-name">{{ webListeners === 1 ? "1 listener in a browser" : `${webListeners} listeners in a browser` }}</span>
+          <span class="badge web-badge">Web</span>
+        </div>
+        <p v-if="(snapshot?.members ?? []).length === 0 && webListeners === 0" class="empty">Nobody else yet. Share the link to invite people.</p>
       </div>
 
       <div v-if="!snapshot?.isHost && isController" class="controls">
@@ -450,6 +479,19 @@ button:disabled {
 
 .controller-badge {
   background-color: var(--bg-control-hover);
+}
+
+.web-badge {
+  background-color: var(--bg-control-hover);
+}
+
+.invite {
+  border-color: var(--accent);
+}
+
+.invite-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .empty {

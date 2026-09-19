@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld("ytmd", {
   roomHost: (displayName: string) => ipcRenderer.send("addon:rooms:host", displayName),
   roomJoin: (roomId: string, displayName: string) => ipcRenderer.send("addon:rooms:join", roomId, displayName),
   roomLeave: () => ipcRenderer.send("addon:rooms:leave"),
+  roomDismissJoinPrompt: () => ipcRenderer.send("addon:rooms:dismissJoinPrompt"),
   roomGrant: (memberId: string, role: number) => ipcRenderer.send("addon:rooms:grant", memberId, role),
   roomControl: (action: string, value?: unknown) => ipcRenderer.send("addon:rooms:control", action, value),
   roomResume: () => ipcRenderer.send("addon:rooms:resume"),
