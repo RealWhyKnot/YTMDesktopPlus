@@ -205,7 +205,7 @@ the addon stays active.
   (`addon:<id>:<channel>`) and guarded to the app's own windows, including
   windows the addon created.
 - `ctx.deepLinks` - `register(command, handler)` for `ytmdplus://<command>/...`
-  links (`play` is reserved).
+  links.
 - `ctx.discord` - `isEnabled`/`onEnabledChanged` for whether the user shares
   presence at all, `registerButtonsProvider` to contribute presence buttons
   (Discord shows at most two), `registerRemoteActivityProvider` to offer a

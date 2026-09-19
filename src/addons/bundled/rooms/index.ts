@@ -160,13 +160,10 @@ const roomsAddon: BundledAddonDefinition = {
     ctx.settings.onDidChange("autoRoomEnabled", () => autoRoom.syncToggles());
     ctx.discord.onEnabledChanged(() => autoRoom.syncToggles());
 
-    ctx.discord.registerButtonsProvider(trackShareUrl => {
+    ctx.discord.registerButtonsProvider(() => {
       const room = ctx.memory.get<RoomSnapshot | null>("room");
       if (!room || room.phase !== "hosting" || !room.shareUrl) return undefined;
-      return [
-        { label: "Join Room", url: room.shareUrl },
-        { label: "Listen Along", url: trackShareUrl }
-      ];
+      return [{ label: "Listen Along", url: room.shareUrl }];
     });
 
     ctx.deepLinks.register("room", segments => {
@@ -216,6 +213,7 @@ const roomsAddon: BundledAddonDefinition = {
         autoRoom.noteManualLeave(roomSession.snapshot.isHost);
         roomSession.leave();
       },
+      dismissJoinPrompt: () => ctx.memory.set("joinPrompt", null),
       grant: (memberId, role) => roomSession.grant(memberId, role),
       control: (action, value) => roomSession.control(action, value),
       resume: () => roomSession.resume()

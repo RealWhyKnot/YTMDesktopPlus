@@ -7,13 +7,11 @@ import { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
 import DiscordClient from "./minimal-discord-client";
 import log from "electron-log";
 import { DiscordActivityType } from "./minimal-discord-client/types";
-import { buildListenAlongUrl } from "~shared/protocol-url";
 
 const DISCORD_CLIENT_ID = "1533867163079671849";
 
 export type PresenceButton = { label: string; url: string };
-/** Receives the current track's share link; returns buttons to show, if any. */
-export type PresenceButtonsProvider = (trackShareUrl: string) => PresenceButton[] | undefined;
+export type PresenceButtonsProvider = () => PresenceButton[] | undefined;
 
 /** A track playing somewhere other than this app, offered as a presence
  *  fallback while local playback has nothing to show. No end timestamp: remote
@@ -80,7 +78,6 @@ export default class DiscordPresence implements IIntegration {
   private videoState: VideoState | null = null;
   private videoDetails: Partial<VideoDetails> | null = null;
   private progress: number | null = null;
-  private adPlaying = false;
 
   private connectionRetries: number = 0;
   private buttonsProviders: PresenceButtonsProvider[] = [];
@@ -135,27 +132,16 @@ export default class DiscordPresence implements IIntegration {
         this.clearOrRemote();
         return;
       }
-      const { title, author, album, id, thumbnails, durationSeconds, channelId, albumId, isLive } = this.videoDetails;
+      const { title, author, album, id, thumbnails, durationSeconds, channelId, albumId } = this.videoDetails;
       const thumbnail = getHighestResThumbnail(thumbnails);
       const playing = this.videoState === VideoState.Playing;
       if (!playing && this.store?.get("integrations").discordPresenceHideOnPause) {
         this.clearOrRemote();
         return;
       }
-      // One clock read, so the elapsed bar and the listen along link agree.
       const nowMs = Date.now();
       const startEpochMs = nowMs - this.progress * 1000;
-      const buttons = this.buildButtons(
-        buildListenAlongUrl({
-          videoId: id,
-          positionSeconds: this.progress,
-          playing,
-          durationSeconds,
-          isLive,
-          adPlaying: this.adPlaying,
-          nowMs
-        })
-      );
+      const buttons = this.buildButtons();
       this.discordClient.setActivity({
         type: DiscordActivityType.Listening,
         status_display_type: 1,
@@ -193,7 +179,6 @@ export default class DiscordPresence implements IIntegration {
       this.clearOrRemote();
       return;
     }
-    this.adPlaying = state.adPlaying;
     const oldState = this.videoState ?? null;
     const oldId = this.videoDetails?.id ?? null;
     const oldProgress = this.progress ?? null;
@@ -249,11 +234,11 @@ export default class DiscordPresence implements IIntegration {
 
   // Discord renders at most two buttons and silently drops the whole activity
   // frame on a non-http(s) url, so both limits are enforced here.
-  private buildButtons(listenAlongUrl: string): { label: string; url: string }[] | undefined {
+  private buildButtons(): { label: string; url: string }[] | undefined {
     const buttons: PresenceButton[] = [];
     for (const provider of this.buttonsProviders) {
       try {
-        buttons.push(...(provider(listenAlongUrl) ?? []));
+        buttons.push(...(provider() ?? []));
       } catch (error) {
         log.error("Presence buttons provider failed", error);
       }

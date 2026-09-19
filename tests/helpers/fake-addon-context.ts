@@ -95,7 +95,7 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
     actionCallbacks: {} as Record<string, () => void>,
     sections: [] as AddonSettingsSection[],
     remoteProviders: [] as (() => RemoteTrackActivity | undefined)[],
-    buttonsProviders: [] as ((trackShareUrl: string) => { label: string; url: string }[] | undefined)[],
+    buttonsProviders: [] as (() => { label: string; url: string }[] | undefined)[],
     badges: [] as (Omit<AddonTitlebarBadge, "addonId"> | null)[],
     deepLinks: {} as Record<string, (segments: string[], params: URLSearchParams) => void>,
     innertubeCalls: [] as { endpoint: string; body?: Record<string, unknown> }[],
@@ -264,7 +264,7 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
     discord: {
       isEnabled: vi.fn(() => options.discordEnabled ?? false),
       onEnabledChanged: vi.fn(() => unsubscribe),
-      registerButtonsProvider: vi.fn((provider: (trackShareUrl: string) => { label: string; url: string }[] | undefined) => {
+      registerButtonsProvider: vi.fn((provider: () => { label: string; url: string }[] | undefined) => {
         captured.buttonsProviders.push(provider);
         return unsubscribe;
       }),

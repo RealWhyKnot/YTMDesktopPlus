@@ -34,10 +34,26 @@ describe("rooms bundled addon", () => {
     expect(ctx.memory.get("room")).not.toBeUndefined();
     const ipcOn = ctx.ipc.on as ReturnType<typeof vi.fn>;
     const channels = ipcOn.mock.calls.map(call => call[0]).sort();
-    expect(channels).toEqual(["closeWindow", "control", "grant", "host", "join", "leave", "openWindow", "resume"]);
+    expect(channels).toEqual(["closeWindow", "control", "dismissJoinPrompt", "grant", "host", "join", "leave", "openWindow", "resume"]);
 
     expect(ctx.ytmview.registerScript).toHaveBeenCalledWith("enable", expect.any(String));
     expect(ctx.ytmview.registerScript).toHaveBeenCalledWith("disable", expect.any(String));
+  });
+
+  it("offers one presence button, pointing at the live room", async () => {
+    const { ctx, captured } = fakeAddonContext({ manifest: roomsAddon.manifest });
+    await roomsAddon.activate(ctx);
+
+    const provider = captured.buttonsProviders[0];
+    expect(provider).toBeDefined();
+
+    expect(provider()).toBeUndefined();
+
+    ctx.memory.set("room", { phase: "hosting", shareUrl: "https://ytmdesktopplus.com/r/abcdefgh" });
+    expect(provider()).toEqual([{ label: "Listen Along", url: "https://ytmdesktopplus.com/r/abcdefgh" }]);
+
+    ctx.memory.set("room", { phase: "listening", shareUrl: "https://ytmdesktopplus.com/r/abcdefgh" });
+    expect(provider()).toBeUndefined();
   });
 
   it("listens for the capture traffic its page script posts", async () => {

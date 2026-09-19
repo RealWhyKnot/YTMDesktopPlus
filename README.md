@@ -39,15 +39,15 @@ sudo apparmor_parser -r /etc/apparmor.d/ytmdesktop-plus
 - [Themes](docs/themes.md) that restyle the app and the music page together, sixteen of them bundled, switched without a restart
 - [Addons](docs/addons.md) for CSS, page scripts and code, managed in settings. Custom CSS and Listen Along rooms use addons
 - A REST and WebSocket companion server on port 9863 for remote controls, with one-time authorization
-- `ytmdplus://play/<videoId>` links and a Listen Along button on Discord to join at your playback position
+- A Listen Along button on your Discord presence that drops friends straight into your room
 
 You sign in with your YouTube Music account. Settings and sign-in from an older YouTube Music Desktop App install carry over on first launch.
 
 ## Listen Along rooms
 
-Start a room from the tray menu. Friends can join through the link, the Join Room button on your Discord presence, or an 8 letter code. Listeners follow your playback. You can promote them to let them change tracks, skip, seek and pause for the room.
+Start a room from the tray menu. Friends can join through the link, the Listen Along button on your Discord presence, or an 8 letter code. Listeners follow your playback. You can promote them to let them change tracks, skip, seek and pause for the room.
 
-The link also opens a web player with live audio, track title and artwork. Web listeners are anonymous and don't appear in the roster. Your volume setting doesn't affect their audio, but muting the app mutes the stream.
+The link also opens a web player with live audio, track title and artwork, which follows you from one track to the next. Web listeners are anonymous, so you see how many are there rather than who. Your volume setting doesn't affect their audio, but muting the app mutes the stream.
 
 Discord presence starts a room automatically and notifies you. You can disable automatic rooms in settings.
 

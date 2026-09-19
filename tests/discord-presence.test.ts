@@ -13,12 +13,12 @@ import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context"
 
 type Buttons = { label: string; url: string }[] | undefined;
 
-function buildButtons(providers: PresenceButtonsProvider[], listenAlongUrl = "https://ytmdesktopplus.com/p/abc123?t=60"): Buttons {
+function buildButtons(providers: PresenceButtonsProvider[]): Buttons {
   const presence = new DiscordPresence();
   for (const provider of providers) {
     presence.registerButtonsProvider(provider);
   }
-  return (presence as unknown as { buildButtons(url: string): Buttons }).buildButtons(listenAlongUrl);
+  return (presence as unknown as { buildButtons(): Buttons }).buildButtons();
 }
 
 describe("buildButtons", () => {
@@ -27,9 +27,9 @@ describe("buildButtons", () => {
     expect(buildButtons([() => undefined, () => []])).toBeUndefined();
   });
 
-  it("passes the current track link through to providers", () => {
-    const buttons = buildButtons([url => [{ label: "Listen Along", url }]], "https://ytmdesktopplus.com/p/abc123?t=60");
-    expect(buttons).toEqual([{ label: "Listen Along", url: "https://ytmdesktopplus.com/p/abc123?t=60" }]);
+  it("collects what a provider offers", () => {
+    const buttons = buildButtons([() => [{ label: "Listen Along", url: "https://ytmdesktopplus.com/r/abcdefgh" }]]);
+    expect(buttons).toEqual([{ label: "Listen Along", url: "https://ytmdesktopplus.com/r/abcdefgh" }]);
   });
 
   it("drops non-http urls and caps the result at two buttons", () => {
@@ -37,13 +37,13 @@ describe("buildButtons", () => {
       () => [
         { label: "Bad", url: "ytmdplus://room/abcdefgh" },
         { label: "One", url: "https://ytmdesktopplus.com/r/abcdefgh" },
-        { label: "Two", url: "https://ytmdesktopplus.com/p/abc123" },
+        { label: "Two", url: "https://ytmdesktopplus.com/r/ijklmnop" },
         { label: "Three", url: "https://ytmdesktopplus.com/" }
       ]
     ]);
     expect(buttons).toEqual([
       { label: "One", url: "https://ytmdesktopplus.com/r/abcdefgh" },
-      { label: "Two", url: "https://ytmdesktopplus.com/p/abc123" }
+      { label: "Two", url: "https://ytmdesktopplus.com/r/ijklmnop" }
     ]);
   });
 
@@ -52,16 +52,16 @@ describe("buildButtons", () => {
       () => {
         throw new Error("provider blew up");
       },
-      () => [{ label: "Join Room", url: "https://ytmdesktopplus.com/r/abcdefgh" }]
+      () => [{ label: "Listen Along", url: "https://ytmdesktopplus.com/r/abcdefgh" }]
     ]);
-    expect(buttons).toEqual([{ label: "Join Room", url: "https://ytmdesktopplus.com/r/abcdefgh" }]);
+    expect(buttons).toEqual([{ label: "Listen Along", url: "https://ytmdesktopplus.com/r/abcdefgh" }]);
   });
 
   it("unregisters a provider through the returned handle", () => {
     const presence = new DiscordPresence();
     const unsubscribe = presence.registerButtonsProvider(() => [{ label: "One", url: "https://ytmdesktopplus.com/" }]);
     unsubscribe();
-    const buttons = (presence as unknown as { buildButtons(url: string): Buttons }).buildButtons("https://ytmdesktopplus.com/p/abc123");
+    const buttons = (presence as unknown as { buildButtons(): Buttons }).buildButtons();
     expect(buttons).toBeUndefined();
   });
 });

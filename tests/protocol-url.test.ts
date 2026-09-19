@@ -1,77 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { buildListenAlongUrl, parseProtocolUrl, PLAY_SHARE_URL_BASE, resolveStartSeconds } from "../src/shared/protocol-url";
+import { parseProtocolUrl, resolveStartSeconds } from "../src/shared/protocol-url";
 
 describe("parseProtocolUrl", () => {
-  it("parses the plain form", () => {
-    expect(parseProtocolUrl("ytmdplus://play/dQw4w9WgXcQ")).toEqual({
-      command: "play",
-      videoId: "dQw4w9WgXcQ",
-      playlistId: null,
-      anchor: null
-    });
+  it("passes a command through with its segments in both written forms", () => {
+    expect(parseProtocolUrl("ytmdplus://room/abcdefgh")).toMatchObject({ name: "room", segments: ["abcdefgh"] });
+    expect(parseProtocolUrl("ytmdplus:room/abcdefgh")).toMatchObject({ name: "room", segments: ["abcdefgh"] });
   });
 
-  it("parses a playlist path segment", () => {
-    expect(parseProtocolUrl("ytmdplus://play/abc123/PLxyz")).toMatchObject({ videoId: "abc123", playlistId: "PLxyz" });
-  });
-
-  it("reads a playlist from the list param", () => {
-    expect(parseProtocolUrl("ytmdplus://play/abc123?list=PLxyz")).toMatchObject({ playlistId: "PLxyz" });
-  });
-
-  it("reads a frozen position from t", () => {
-    expect(parseProtocolUrl("ytmdplus://play/abc123?t=42")).toMatchObject({ anchor: { kind: "absolute", seconds: 42 } });
-  });
-
-  it("reads a live anchor from at", () => {
-    expect(parseProtocolUrl("ytmdplus://play/abc123?at=1754236800000")).toMatchObject({ anchor: { kind: "anchor", epochMs: 1754236800000 } });
-  });
-
-  it("prefers at over t when both are present", () => {
-    expect(parseProtocolUrl("ytmdplus://play/abc123?t=42&at=1754236800000")).toMatchObject({ anchor: { kind: "anchor", epochMs: 1754236800000 } });
-  });
-
-  it("ignores an unusable position instead of throwing", () => {
-    expect(parseProtocolUrl("ytmdplus://play/abc123?t=abc")).toMatchObject({ videoId: "abc123", anchor: null });
-    expect(parseProtocolUrl("ytmdplus://play/abc123?t=-5")).toMatchObject({ videoId: "abc123", anchor: null });
-    expect(parseProtocolUrl("ytmdplus://play/abc123?at=nope")).toMatchObject({ videoId: "abc123", anchor: null });
+  it("keeps query params available to the handler", () => {
+    const parsed = parseProtocolUrl("ytmdplus://room/abcdefgh?invite=yes");
+    expect(parsed?.params.get("invite")).toBe("yes");
   });
 
   // ytmdplus: is a non-special scheme, so the host keeps its case.
-  it("normalizes the command case", () => {
-    expect(parseProtocolUrl("ytmdplus://PLAY/abc123")).toMatchObject({ command: "play", videoId: "abc123" });
-  });
-
-  // Without "//" there is no host and the command lands in the path.
-  it("parses the form written without an authority", () => {
-    expect(parseProtocolUrl("ytmdplus:play/abc123")).toMatchObject({ command: "play", videoId: "abc123" });
+  it("lowercases the command name but not the segments", () => {
+    expect(parseProtocolUrl("ytmdplus://ROOM/ABCDEFGH")).toMatchObject({ name: "room", segments: ["ABCDEFGH"] });
   });
 
   it("drops empty path segments", () => {
-    expect(parseProtocolUrl("ytmdplus://play/abc123/")).toMatchObject({ videoId: "abc123", playlistId: null });
-    expect(parseProtocolUrl("ytmdplus://play//PLxyz")).toMatchObject({ videoId: "PLxyz", playlistId: null });
+    expect(parseProtocolUrl("ytmdplus://room/abcdefgh/")).toMatchObject({ segments: ["abcdefgh"] });
+    expect(parseProtocolUrl("ytmdplus://room//abcdefgh")).toMatchObject({ segments: ["abcdefgh"] });
   });
 
   it("decodes percent-encoded segments", () => {
-    expect(parseProtocolUrl("ytmdplus://play/abc%2Ddef")).toMatchObject({ videoId: "abc-def" });
+    expect(parseProtocolUrl("ytmdplus://room/abc%2Ddef")).toMatchObject({ segments: ["abc-def"] });
   });
 
   it("rejects anything it cannot act on", () => {
-    expect(parseProtocolUrl("https://evil.com/play/abc123")).toBeNull();
-    expect(parseProtocolUrl("ytmdplus://play")).toBeNull();
-    expect(parseProtocolUrl("ytmdplus://play/abc def")).toBeNull();
-    expect(parseProtocolUrl("ytmdplus://play/abc%")).toBeNull();
-    expect(parseProtocolUrl("ytmdplus://play/abc123/not a playlist")).toBeNull();
-    expect(parseProtocolUrl("ytmdplus://play/abc123/PLxyz/extra")).toBeNull();
+    expect(parseProtocolUrl("https://evil.com/room/abcdefgh")).toBeNull();
+    expect(parseProtocolUrl("ytmdplus://room/abc%")).toBeNull();
+    expect(parseProtocolUrl("ytmdplus://")).toBeNull();
     expect(parseProtocolUrl("not a url")).toBeNull();
     expect(parseProtocolUrl("")).toBeNull();
   });
 
-  // URL parsing collapses "..", so a traversal attempt just yields ids that do
-  // not exist. They are handed to YouTube Music as opaque strings, never used
-  // as a path, so the track simply fails to load.
-  it("collapses relative segments into harmless ids", () => {
-    expect(parseProtocolUrl("ytmdplus://play/../../etc/passwd")).toMatchObject({ videoId: "etc", playlistId: "passwd" });
+  // URL parsing collapses "..", so a traversal attempt just yields segments
+  // the handler will reject. Handlers validate their own segments.
+  it("collapses relative segments", () => {
+    expect(parseProtocolUrl("ytmdplus://room/../../etc/passwd")).toMatchObject({ name: "room", segments: ["etc", "passwd"] });
   });
 });
 
@@ -111,88 +77,5 @@ describe("resolveStartSeconds", () => {
   it("accepts a frozen position when the duration is unknown", () => {
     expect(resolveStartSeconds({ kind: "absolute", seconds: 42 }, now, null)).toBe(42);
     expect(resolveStartSeconds({ kind: "absolute", seconds: 42 }, now, 0)).toBe(42);
-  });
-});
-
-describe("buildListenAlongUrl", () => {
-  const now = 1754236800000;
-  const base = { videoId: "abc123", durationSeconds: 200, isLive: false, adPlaying: false, nowMs: now };
-
-  // What the /p/ share page redirects to: same path and query, scheme form.
-  const asDeepLink = (url: string) => url.replace(PLAY_SHARE_URL_BASE, "ytmdplus://play/");
-
-  it("anchors to wall clock while playing", () => {
-    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true })).toBe(`https://ytmdesktopplus.com/p/abc123?at=${now - 60_000}`);
-  });
-
-  it("freezes the position while paused", () => {
-    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: false })).toBe("https://ytmdesktopplus.com/p/abc123?t=60");
-  });
-
-  it("includes a playlist when there is one", () => {
-    expect(buildListenAlongUrl({ ...base, playlistId: "PLxyz", positionSeconds: 60, playing: true })).toBe(
-      `https://ytmdesktopplus.com/p/abc123/PLxyz?at=${now - 60_000}`
-    );
-  });
-
-  it("omits the position near the start", () => {
-    expect(buildListenAlongUrl({ ...base, positionSeconds: 2, playing: true })).toBe("https://ytmdesktopplus.com/p/abc123");
-  });
-
-  it("omits the position when it does not describe the music", () => {
-    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true, adPlaying: true })).toBe("https://ytmdesktopplus.com/p/abc123");
-    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true, isLive: true })).toBe("https://ytmdesktopplus.com/p/abc123");
-    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true, durationSeconds: 0 })).toBe("https://ytmdesktopplus.com/p/abc123");
-  });
-
-  // Discord drops SET_ACTIVITY frames whose button urls are not http(s), so
-  // the built link must never be the raw scheme form.
-  it("is always https", () => {
-    expect(buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true }).startsWith("https://")).toBe(true);
-    expect(buildListenAlongUrl({ ...base, positionSeconds: 2, playing: false }).startsWith("https://")).toBe(true);
-  });
-
-  it("stays well inside Discord's button url limit", () => {
-    const url = buildListenAlongUrl({ ...base, videoId: "a".repeat(64), playlistId: "b".repeat(128), positionSeconds: 60, playing: true });
-    expect(url.length).toBeLessThan(512);
-  });
-
-  it("round-trips through the share page redirect and the parser", () => {
-    const url = buildListenAlongUrl({ ...base, playlistId: "PLxyz", positionSeconds: 60, playing: true });
-    expect(parseProtocolUrl(asDeepLink(url))).toEqual({
-      command: "play",
-      videoId: "abc123",
-      playlistId: "PLxyz",
-      anchor: { kind: "anchor", epochMs: now - 60_000 }
-    });
-  });
-
-  it("resolves a freshly built link back to the position it encoded", () => {
-    const url = buildListenAlongUrl({ ...base, positionSeconds: 60, playing: true });
-    const parsed = parseProtocolUrl(asDeepLink(url));
-    if (parsed?.command !== "play") throw new Error("expected a play command");
-    expect(resolveStartSeconds(parsed.anchor, now, 200)).toBe(60);
-  });
-});
-
-describe("other commands", () => {
-  it("passes unknown commands through with their segments in both written forms", () => {
-    expect(parseProtocolUrl("ytmdplus://room/abcdefgh")).toMatchObject({ command: "other", name: "room", segments: ["abcdefgh"] });
-    expect(parseProtocolUrl("ytmdplus:room/abcdefgh")).toMatchObject({ command: "other", name: "room", segments: ["abcdefgh"] });
-  });
-
-  it("keeps query params available to the handler", () => {
-    const parsed = parseProtocolUrl("ytmdplus://room/abcdefgh?invite=yes");
-    expect(parsed?.command).toBe("other");
-    if (parsed?.command !== "other") return;
-    expect(parsed.params.get("invite")).toBe("yes");
-  });
-
-  it("lowercases the command name but not the segments", () => {
-    expect(parseProtocolUrl("ytmdplus://ROOM/ABCDEFGH")).toMatchObject({ command: "other", name: "room", segments: ["ABCDEFGH"] });
-  });
-
-  it("still rejects urls with no command at all", () => {
-    expect(parseProtocolUrl("ytmdplus://")).toBeNull();
   });
 });

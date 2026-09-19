@@ -1,14 +1,12 @@
 import log from "electron-log";
 import { parseProtocolUrl } from "../shared/protocol-url";
-import { cueTrack } from "./playback";
 
 export function findProtocolUrl(argv: string[]) {
   return argv.find(argument => argument.startsWith("ytmdplus://")) ?? "";
 }
 
 export interface DeepLinkRouter {
-  // Deep link commands other than play are pluggable; a feature registers its
-  // command name and owns everything after it in the url.
+  // A feature registers its command name and owns everything after it in the url.
   registerDeepLink(command: string, handler: (segments: string[], params: URLSearchParams) => void): () => void;
   handleProtocol(url: string): void;
   queueProtocolUrl(url: string): void;
@@ -24,7 +22,7 @@ export function createDeepLinkRouter(deps: { hasYtmView(): boolean }): DeepLinkR
 
   const registerDeepLink = (command: string, handler: (segments: string[], params: URLSearchParams) => void): (() => void) => {
     const name = command.toLowerCase();
-    if (name === "play" || deepLinkHandlers.has(name)) {
+    if (deepLinkHandlers.has(name)) {
       throw new Error(`Deep link command already taken: ${name}`);
     }
     deepLinkHandlers.set(name, handler);
@@ -48,14 +46,9 @@ export function createDeepLinkRouter(deps: { hasYtmView(): boolean }): DeepLinkR
       return;
     }
 
-    if (request.command === "other") {
-      const handler = deepLinkHandlers.get(request.name);
-      if (handler) handler(request.segments, request.params);
-      else log.info(`Ignoring protocol url with unknown command ${request.name}`);
-      return;
-    }
-
-    void cueTrack({ videoId: request.videoId, playlistId: request.playlistId, anchor: request.anchor });
+    const handler = deepLinkHandlers.get(request.name);
+    if (handler) handler(request.segments, request.params);
+    else log.info(`Ignoring protocol url with unknown command ${request.name}`);
   };
 
   return {

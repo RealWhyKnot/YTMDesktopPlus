@@ -449,7 +449,7 @@ export interface AddonContext {
     create(options: AddonWindowOptions): AddonWindowHandle;
   };
   deepLinks: {
-    /** Handles ytmdplus://<command>/... links; "play" is reserved by the app */
+    /** Handles ytmdplus://<command>/... links */
     register(command: string, handler: (segments: string[], params: URLSearchParams) => void): Unsubscribe;
   };
   discord: {
@@ -457,7 +457,7 @@ export interface AddonContext {
     isEnabled(): boolean;
     onEnabledChanged(callback: (enabled: boolean) => void): Unsubscribe;
     /** Discord shows at most two buttons across all providers */
-    registerButtonsProvider(provider: (trackShareUrl: string) => { label: string; url: string }[] | undefined): Unsubscribe;
+    registerButtonsProvider(provider: () => { label: string; url: string }[] | undefined): Unsubscribe;
     /** Offers a track playing outside this app as a presence stand-in while
      *  local playback has nothing to show. Call refreshActivity after the
      *  provided value changes. */

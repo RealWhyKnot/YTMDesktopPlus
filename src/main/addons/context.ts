@@ -86,7 +86,7 @@ export type AddonHostServices = {
   discord: {
     isEnabled(): boolean;
     onEnabledChanged(callback: (enabled: boolean) => void): () => void;
-    registerButtonsProvider(provider: (trackShareUrl: string) => { label: string; url: string }[] | undefined): () => void;
+    registerButtonsProvider(provider: () => { label: string; url: string }[] | undefined): () => void;
     registerRemoteActivityProvider(provider: () => RemoteTrackActivity | undefined): () => void;
     refreshActivity(): void;
   };
@@ -424,9 +424,9 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
         return unsubscribe;
       },
       registerButtonsProvider(provider) {
-        const unsubscribe = services.discord.registerButtonsProvider(trackShareUrl => {
+        const unsubscribe = services.discord.registerButtonsProvider(() => {
           try {
-            return provider(trackShareUrl);
+            return provider();
           } catch (error) {
             reportError("discord.buttonsProvider", error);
             return undefined;
