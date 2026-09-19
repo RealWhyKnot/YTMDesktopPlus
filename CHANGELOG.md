@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- fix(rooms): report a capture encode failure instead of going quiet
+- fix(rooms): let a room link be acted on while already in a room
+- fix(rooms): count the people listening in a browser
+- feat(rooms)!: point the Listen Along button at the room
 
 ## [v2026.919.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.919.0-beta) - 2026-09-19
 - fix(release): credit authors by profile link instead of a mention
