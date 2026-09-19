@@ -2,7 +2,8 @@
 // end to end: the capture pipeline encodes, the publisher authenticates
 // against the production relay, an in-scenario browser bot subscribes to
 // /audio/<room> and receives config, metadata and a monotonic batch stream,
-// the local volume stays off the wire, and mute reaches the bot as a status.
+// the local volume stays off the wire, the stream survives a track change,
+// and mute reaches the bot as a status.
 // Local use, not suited to CI runners: production relay plus live YTM.
 
 import WebSocket from "ws";
@@ -18,6 +19,7 @@ export const fixture = {
 };
 
 const VIDEO_ID = "dQw4w9WgXcQ";
+const NEXT_VIDEO_ID = "9bZkp7q19f0";
 const SETTINGS_WINDOW = /windows\/settings\//;
 const ROOM_WINDOW = /windows\/room\//;
 
@@ -108,6 +110,47 @@ export default async function audioStream(ctx) {
           socket.on("error", reject);
         }),
       65000
+    );
+
+    await ctx.step(
+      "the stream carries on across a track change",
+      async () => {
+        const before = bot.batches.length;
+        const firstMeta = bot.frames.filter(frame => frame.t === "meta").at(-1);
+
+        await ctx.evalYtm(
+          `document.dispatchEvent(new CustomEvent("yt-navigate", { detail: { endpoint: { watchEndpoint: { videoId: "${NEXT_VIDEO_ID}" } } } }))`
+        );
+
+        const deadline = Date.now() + 60000;
+        let crossed = null;
+        while (Date.now() < deadline) {
+          crossed = bot.frames.find(frame => frame.t === "meta" && frame.v === NEXT_VIDEO_ID) ?? null;
+          if (crossed) break;
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        if (!crossed) throw new Error(`no meta for ${NEXT_VIDEO_ID}; saw ${JSON.stringify(bot.frames.filter(f => f.t === "meta").map(f => f.v))}`);
+
+        const atBoundary = bot.batches.length;
+        const settle = Date.now() + 20000;
+        while (Date.now() < settle && bot.batches.length < atBoundary + 8) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        const after = bot.batches.length - atBoundary;
+        ctx.emit("probe", { fromVideoId: firstMeta?.v ?? null, toVideoId: crossed.v, batchesBefore: before, batchesAfter: after });
+        if (after < 8) throw new Error(`only ${after} batches after the track change; the stream stalled`);
+
+        // A gap is legitimate here, the publisher marks it; going backwards is not.
+        const tail = bot.batches.slice(atBoundary);
+        for (let i = 1; i < tail.length; i++) {
+          if (tail[i] <= tail[i - 1]) throw new Error(`batch sequence not monotonic across the change: ${tail.join(",")}`);
+        }
+
+        const sent = Number(await ctx.evalYtm("window.__ytmdAudioStream?.batchesSent ?? 0"));
+        if (sent <= 0) throw new Error("host capture pump stopped at the track change");
+      },
+      90000
     );
 
     await ctx.step(

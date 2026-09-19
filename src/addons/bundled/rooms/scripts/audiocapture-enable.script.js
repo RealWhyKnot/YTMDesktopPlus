@@ -100,11 +100,19 @@
         return;
       }
       if (result.done || state.stopped) return;
-      if (state.encoder.state === "configured") state.encoder.encode(result.value);
+      try {
+        if (state.encoder.state === "configured") state.encoder.encode(result.value);
+      } catch (error) {
+        result.value.close();
+        window.ytmd.postAddonMessage("rooms", "captureStatus", { error: String(error) });
+        return;
+      }
       result.value.close();
     }
   };
-  pump();
+  pump().catch(error => {
+    window.ytmd.postAddonMessage("rooms", "captureStatus", { error: String(error) });
+  });
 
   state.flushTimer = setInterval(() => {
     if (state.pending.length === 0) return;
