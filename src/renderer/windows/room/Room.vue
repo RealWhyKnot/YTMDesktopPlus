@@ -163,8 +163,11 @@ function memberLabel(name: string | null, id: string) {
       <div class="room-header">
         <div class="room-code-line">
           <span class="room-code">{{ snapshot?.roomId }}</span>
-          <button class="icon-button" :title="copied ? 'Copied' : 'Copy share link'" @click="copyShareLink">
-            <span class="material-symbols-outlined">{{ copied ? "check" : "content_copy" }}</span>
+        </div>
+        <div class="link-buttons">
+          <button class="subtle small" title="Opens the room in a browser" @click="copyShareLink">
+            <span class="material-symbols-outlined">{{ copied ? "check" : "link" }}</span
+            >{{ copied ? "Copied" : "Copy web link" }}
           </button>
         </div>
         <p class="room-subtitle">
@@ -236,6 +239,7 @@ function memberLabel(name: string | null, id: string) {
 
 <style scoped>
 .room-container {
+  box-sizing: border-box;
   user-select: none;
   overflow-y: auto;
   padding: 16px;
@@ -341,7 +345,7 @@ button:disabled {
 }
 
 .status-screen {
-  height: 100%;
+  flex-grow: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -373,7 +377,18 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  height: 100%;
+  flex-grow: 1;
+}
+
+.link-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.link-buttons .material-symbols-outlined {
+  font-size: 16px;
 }
 
 .room-header .room-code-line {
