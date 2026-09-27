@@ -55,7 +55,7 @@ You choose a display name before hosting or joining; it isn't taken from your ac
 
 ## Development
 
-You'll need Node.js 22.12 or newer and Git.
+You'll need Node.js 22.12 or newer and Git. Node 25 and later no longer bundle corepack, so install it first with `npm install --global corepack`.
 
 ```bash
 git clone https://github.com/RealWhyKnot/YTMDesktopPlus.git

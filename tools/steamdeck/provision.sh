@@ -16,12 +16,10 @@ if [ ! -f /etc/pacman.d/gnupg/trustdb.gpg ]; then
   pacman-key --populate archlinux
 fi
 
-# Node is pinned to the major CI builds with. @electron/packager exits silently partway
-# through extracting the Electron zip on 26, leaving no out directory and exit status 0.
-echo "==> Pinning Node to the major CI builds with"
-if ! pacman -Qq nodejs-lts-jod >/dev/null 2>&1; then
-  pacman -Rdd --noconfirm nodejs >/dev/null 2>&1 || true
-  pacman -Sy --noconfirm nodejs-lts-jod
+echo "==> Installing Node"
+if ! pacman -Qq nodejs >/dev/null 2>&1; then
+  pacman -Rdd --noconfirm nodejs-lts-jod >/dev/null 2>&1 || true
+  pacman -Sy --noconfirm nodejs
 fi
 
 echo "==> Installing packages"

@@ -1,5 +1,5 @@
 name: Setup node and dependencies
-description: Node 22 with corepack, optional electron binary cache, immutable yarn install
+description: Node 26 with corepack, optional electron binary cache, immutable yarn install
 inputs:
   cache-electron:
     description: Cache electron binaries under .electron-cache (job must set ELECTRON_CACHE)
@@ -10,10 +10,12 @@ runs:
   steps:
     - uses: actions/setup-node@v7
       with:
-        node-version: 22
+        node-version: 26
     - name: Enable corepack
       shell: bash
-      run: corepack enable
+      run: |
+        npm install --global corepack@0.36.0
+        corepack enable
     - name: Cache electron binaries
       if: ${{ inputs.cache-electron == 'true' }}
       uses: actions/cache@v6

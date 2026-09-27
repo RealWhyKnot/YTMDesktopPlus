@@ -78,9 +78,6 @@ function Get-NodeMajor {
     return -1
 }
 
-# The build needs a Node the toolchain still works on. Under Node 26 the
-# Electron archive stops unpacking after one entry and forge reports success
-# with no installer produced, so those are excluded rather than trusted.
 function Resolve-BuildNode {
     $candidates = @()
     $onPath = Get-Command node -ErrorAction SilentlyContinue
@@ -97,19 +94,18 @@ function Resolve-BuildNode {
     $bestMajor = -1
     foreach ($candidate in $candidates) {
         $major = Get-NodeMajor -Exe $candidate
-        if ($major -ge 22 -and $major -lt 26 -and $major -gt $bestMajor) {
+        if ($major -ge 22 -and $major -gt $bestMajor) {
             $best = $candidate
             $bestMajor = $major
         }
     }
-    if ($null -eq $best) { throw "no usable Node found: need one at least 22 and below 26. Pass -NodeExe to choose one." }
+    if ($null -eq $best) { throw "no usable Node found: need 22 or newer. Pass -NodeExe to choose one." }
     return $best
 }
 
 if ([string]::IsNullOrWhiteSpace($NodeExe)) { $NodeExe = Resolve-BuildNode }
 $nodeMajor = Get-NodeMajor -Exe $NodeExe
 if ($nodeMajor -lt 22) { throw "$NodeExe reports major version $nodeMajor; the build needs at least 22" }
-if ($nodeMajor -ge 26) { Write-Warning "$NodeExe is Node $nodeMajor; packaging is known to produce no installer on 26" }
 
 function Invoke-Yarn {
     param([string[]]$YarnArgs)

@@ -31,16 +31,6 @@ if ($running) {
 }
 
 if (-not $ThemesOnly) {
-  $nodeMajor = [int](& node -p "process.versions.node.split('.')[0]")
-  if ($nodeMajor -gt 22) {
-    $nvmRoot = Join-Path $env:LOCALAPPDATA "nvm"
-    $node22 = $null
-    if (Test-Path $nvmRoot) {
-      $node22 = Get-ChildItem -Path $nvmRoot -Directory -Filter "v22.*" | Sort-Object { [version]$_.Name.Substring(1) } -Descending | Select-Object -First 1
-    }
-    if ($null -eq $node22) { throw "node $nodeMajor breaks electron-packager's zip extraction; install a node 22.x via nvm" }
-    $env:PATH = "$($node22.FullName);$env:PATH"
-  }
   Push-Location $repo
   try {
     npx --no-install electron-forge package
