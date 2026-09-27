@@ -101,6 +101,16 @@ describe("createPlayerEventDeriver", () => {
     expect(names()).toEqual(["queueChanged"]);
   });
 
+  it("tolerates queue slots YouTube Music filled with something unreadable", () => {
+    const { deriver, names } = harness();
+    const withGap = makeQueue(["a", "b"]);
+    withGap.items[0] = null;
+    deriver.next(makePlayerState({ queue: makeQueue(["a", "b"]) }));
+
+    expect(() => deriver.next(makePlayerState({ queue: withGap }))).not.toThrow();
+    expect(names()).toEqual(["queueChanged"]);
+  });
+
   it("emits likeChanged only for a flip on the same track", () => {
     const { deriver, names } = harness();
     deriver.next(makePlayerState({ videoDetails: makeVideoDetails({ id: "one", likeStatus: LikeStatus.Indifferent }) }));

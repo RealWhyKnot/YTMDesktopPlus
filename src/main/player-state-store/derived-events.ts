@@ -6,7 +6,7 @@ export const SEEK_JUMP_SECONDS = 1.5;
 
 function queueSignature(queue: PlayerQueue | null): string {
   if (!queue) return "";
-  return [queue.items.map(item => item.videoId).join(","), queue.automixItems.length, queue.selectedItemIndex, queue.repeatMode].join("|");
+  return [queue.items.map(item => item?.videoId ?? "").join(","), queue.automixItems.length, queue.selectedItemIndex, queue.repeatMode].join("|");
 }
 
 /** Feed full snapshots in; granular events come out. The first snapshot seeds
