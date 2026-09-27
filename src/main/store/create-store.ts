@@ -1,7 +1,8 @@
-import Conf from "conf";
+import type Conf from "conf";
 import log from "electron-log";
 import { app } from "electron";
 import { StoreSchema, TrayIconStyle, UpdateChannel } from "../../shared/store/schema";
+import { CachedConf } from "./cached-conf";
 
 // Nothing is bound by default. Media keys are deliberately left alone so
 // Chromium keeps answering them through the page's own media session, which
@@ -17,7 +18,7 @@ export const DEFAULT_SHORTCUTS = {
 };
 
 export function createAppStore(): Conf<StoreSchema> {
-  const store = new Conf<StoreSchema>({
+  const store = new CachedConf<StoreSchema>({
     configName: "config",
     cwd: app.getPath("userData"),
     projectVersion: app.getVersion(),
