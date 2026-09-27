@@ -32,6 +32,7 @@ import { migrateCustomCssSetting } from "./addons/migrate-custom-css";
 import { BUNDLED_ADDONS } from "../addons/bundled";
 import playerStateStore, { playerEvents } from "./player-state-store";
 import { setLogOutputEnabled, setupLogging } from "./logging";
+import { watchMainThreadStalls } from "./stall-watch";
 import { MemoryStoreSchema, StoreSchema } from "../shared/store/schema";
 
 import CompanionServer from "./integrations/companion-server";
@@ -170,6 +171,7 @@ if (electronSquirrelStartup) {
 }
 
 log.info("Application launched");
+watchMainThreadStalls({ report: blockedMs => log.warn(`Main thread blocked for ${blockedMs}ms`) });
 
 // Enforce sandbox on all renderers
 app.enableSandbox();
