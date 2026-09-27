@@ -23,6 +23,7 @@ import {
 } from "~shared/hook-probes";
 import { mergeScript, type ScriptTable } from "./script-table";
 import { installAdPrune } from "./ad-prune";
+import { installQueueProjection } from "~shared/queue-projection";
 
 import playerBarControlsScript from "./scripts/playerbarcontrols.script?raw";
 import hookPlayerApiEventsScript from "./scripts/hookplayerapievents.script?raw";
@@ -62,8 +63,9 @@ contextBridge.exposeInMainWorld("ytmd", {
   sendVideoState: (state: number) => ipcRenderer.send("ytmView:videoStateChanged", state),
   sendVideoData: (videoDetails: unknown, playlistId: string, album: { id: string; text: string }, likeStatus: unknown, hasFullMetadata: boolean) =>
     ipcRenderer.send("ytmView:videoDataChanged", videoDetails, playlistId, album, likeStatus, hasFullMetadata),
-  sendStoreUpdate: (queueState: unknown, likeStatus: string, volume: number, muted: boolean, adPlaying: boolean) =>
-    ipcRenderer.send("ytmView:storeStateChanged", queueState, likeStatus, volume, muted, adPlaying),
+  sendQueueUpdate: (queue: unknown) => ipcRenderer.send("ytmView:queueChanged", queue),
+  sendStoreUpdate: (likeStatus: string, volume: number, muted: boolean, adPlaying: boolean) =>
+    ipcRenderer.send("ytmView:storeStateChanged", likeStatus, volume, muted, adPlaying),
   sendCreatePlaylistObservation: (playlist: unknown) => ipcRenderer.send("ytmView:createPlaylistObserved", playlist),
   sendDeletePlaylistObservation: (playlistId: string) => ipcRenderer.send("ytmView:deletePlaylistObserved", playlistId),
   // Page scripts push to their addon's main-process half; delivery lands on
@@ -251,6 +253,7 @@ function getYTMTextRun(runs: { text: string }[]) {
 // this install exists to avoid.
 const adBlockEnabled: boolean = ipcRenderer.sendSync("ytmView:adBlockEnabled") === true;
 contextBridge.executeInMainWorld({ func: installAdPrune, args: [adBlockEnabled, AD_PRUNE_CONTRACT] });
+contextBridge.executeInMainWorld({ func: installQueueProjection });
 
 // This hooks YTM's internal store. YouTube Music defines
 // PolymerFakeBaseClassWithoutHtml itself, so whichever side defines the

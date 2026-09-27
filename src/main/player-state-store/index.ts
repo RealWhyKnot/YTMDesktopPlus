@@ -12,6 +12,7 @@ import {
   type VideoDetails
 } from "~shared/addons/sdk";
 
+import type { ProjectedQueue } from "~shared/queue-projection";
 import { createPlayerEventDeriver } from "./derived-events";
 
 export { LikeStatus, RepeatMode, VideoState, VideoType };
@@ -32,53 +33,9 @@ type YTMThumbnail = {
   width: number;
 };
 
-type YTMTextRun = {
-  text: string;
-};
-
-type YTMText = {
-  runs: YTMTextRun[];
-};
-
-type YTMPlayerQueueItemVideoRenderer = {
-  lengthText: YTMText;
-  selected: boolean;
-  shortBylineText: YTMText;
-  thumbnail: {
-    thumbnails: YTMThumbnail[];
-  };
-  title: YTMText;
-  videoId: string;
-};
-
-type YTMPlayerQueueItemCounterpart = {
-  counterpartRenderer: {
-    playlistPanelVideoRenderer: YTMPlayerQueueItemVideoRenderer;
-  };
-};
-
-type YTMPlayerQueueItem = {
-  playlistPanelVideoRenderer: YTMPlayerQueueItemVideoRenderer | null;
-  playlistPanelVideoWrapperRenderer: {
-    primaryRenderer: {
-      playlistPanelVideoRenderer: YTMPlayerQueueItemVideoRenderer;
-    };
-    counterpart: YTMPlayerQueueItemCounterpart[];
-  } | null;
-};
-
 type YTMRepeatMode = "NONE" | "ALL" | "ONE";
 
 type YTMLikeStatus = "INDIFFERENT" | "DISLIKE" | "LIKE";
-
-type YTMPlayerQueue = {
-  automixItems: YTMPlayerQueueItem[];
-  autoplay: boolean;
-  isGenerating: boolean;
-  isInfinite: boolean;
-  items: YTMPlayerQueueItem[];
-  repeatMode: YTMRepeatMode;
-};
 
 type YTMVideoDetails = {
   album: string;
@@ -94,14 +51,6 @@ type YTMVideoDetails = {
   musicVideoType: string;
 };
 
-function getYTMTextRun(runs: YTMTextRun[]) {
-  let final = "";
-  for (const run of runs) {
-    final += run.text;
-  }
-  return final;
-}
-
 function mapYTMThumbnails(thumbnail: YTMThumbnail) {
   // Explicit mapping to keep a consistent API
   // If YouTube Music changes how this is presented internally then it's easier to update without breaking the API
@@ -110,43 +59,6 @@ function mapYTMThumbnails(thumbnail: YTMThumbnail) {
     width: thumbnail.width,
     height: thumbnail.height
   };
-}
-
-function mapCounterpart(counterpart: YTMPlayerQueueItemCounterpart) {
-  // Explicit mapping to keep a consistent API
-  // If YouTube Music changes how this is presented internally then it's easier to update without breaking the API
-  return transformPlaylistPanelVideoRenderer(counterpart.counterpartRenderer.playlistPanelVideoRenderer);
-}
-
-function transformPlaylistPanelVideoRenderer(
-  playlistPanelVideoRenderer: YTMPlayerQueueItemVideoRenderer,
-  counterpart?: YTMPlayerQueueItemCounterpart[]
-): PlayerQueueItem {
-  return {
-    thumbnails: playlistPanelVideoRenderer.thumbnail ? playlistPanelVideoRenderer.thumbnail.thumbnails.map(mapYTMThumbnails) : [],
-    title: getYTMTextRun(playlistPanelVideoRenderer.title?.runs ?? [{ text: "" }]),
-    author: getYTMTextRun(playlistPanelVideoRenderer.shortBylineText?.runs ?? [{ text: "" }]),
-    duration: getYTMTextRun(playlistPanelVideoRenderer.lengthText?.runs ?? [{ text: "" }]),
-    selected: playlistPanelVideoRenderer.selected,
-    videoId: playlistPanelVideoRenderer.videoId,
-    counterparts: counterpart ? counterpart.map(mapCounterpart) : null
-  };
-}
-
-function mapYTMQueueItems(item: YTMPlayerQueueItem): PlayerQueueItem {
-  let playlistPanelVideoRenderer;
-  let counterpart;
-  if (item.playlistPanelVideoRenderer) {
-    playlistPanelVideoRenderer = item.playlistPanelVideoRenderer;
-  } else if (item.playlistPanelVideoWrapperRenderer) {
-    playlistPanelVideoRenderer = item.playlistPanelVideoWrapperRenderer.primaryRenderer.playlistPanelVideoRenderer;
-    counterpart = item.playlistPanelVideoWrapperRenderer.counterpart;
-  }
-
-  // This probably shouldn't happen but in the off chance it does we need to return nothing
-  if (!playlistPanelVideoRenderer) return null;
-
-  return transformPlaylistPanelVideoRenderer(playlistPanelVideoRenderer, counterpart);
 }
 
 // This may seem redundant but we do this in case YTM changes its own data to accomodate and prevent severe breaking of things
@@ -310,31 +222,25 @@ class PlayerStateStore {
     this.eventEmitter.emit("stateChanged", this.getState());
   }
 
-  public updateFromStore(
-    queueState: YTMPlayerQueue | null,
-    likeStatus: YTMLikeStatus | null,
-    volume: number | null,
-    muted: boolean | null,
-    adPlaying: boolean | null
-  ) {
-    const queueItems = queueState ? queueState.items?.map(mapYTMQueueItems) : [];
-    const automixItems = queueState ? queueState.automixItems?.map(mapYTMQueueItems) : [];
-    this.queue = queueState
+  public updateQueue(queue: ProjectedQueue | null) {
+    this.queue = queue
       ? {
           // automixItems comes from an autoplay queue that isn't pushed yet to the main queue. A radio will never have automixItems (weird YTM distinction from autoplay vs radio)
-          automixItems: automixItems,
-          autoplay: queueState.autoplay,
-          isGenerating: queueState.isGenerating,
+          automixItems: queue.automixItems,
+          autoplay: queue.autoplay,
+          isGenerating: queue.isGenerating,
           // Observed state seems to be a radio having infinite true while an autoplay queue has infinite false
-          isInfinite: queueState.isInfinite,
-          items: queueItems,
-          repeatMode: transformRepeatMode(queueState.repeatMode),
+          isInfinite: queue.isInfinite,
+          items: queue.items,
+          repeatMode: transformRepeatMode(queue.repeatMode as YTMRepeatMode),
           // YTM has a native selectedItemIndex property but that isn't updated correctly so we calculate it ourselves
-          selectedItemIndex: queueItems.findIndex(item => {
-            return item.selected;
-          })
+          selectedItemIndex: queue.items.findIndex(item => item?.selected)
         }
       : null;
+    this.eventEmitter.emit("stateChanged", this.getState());
+  }
+
+  public updateFromStore(likeStatus: YTMLikeStatus | null, volume: number | null, muted: boolean | null, adPlaying: boolean | null) {
     if (this.videoDetails) {
       this.videoDetails.likeStatus = transformLikeStatus(likeStatus);
     }

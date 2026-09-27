@@ -15,15 +15,34 @@
     return stored ? stored : fallback;
   }
 
+  let sentQueue;
+  let sentPlayer = null;
+  let flushPending = false;
+
   function sendStoreState() {
+    flushPending = false;
     try {
       // We don't want to see everything in the store as there can be some sensitive data so we only send what's necessary to operate
       const state = ytmStore.getState();
+      if (state.queue !== sentQueue) {
+        sentQueue = state.queue;
+        window.ytmd.sendQueueUpdate(window.__ytmdProjectQueue(state.queue));
+      }
       const videoId = playerApi.getPlayerResponse()?.videoDetails?.videoId;
-      window.ytmd.sendStoreUpdate(state.queue, likeStatusFor(state, videoId), state.player.volume, state.player.muted, state.player.adPlaying);
+      const player = [likeStatusFor(state, videoId), state.player.volume, state.player.muted, state.player.adPlaying];
+      if (sentPlayer === null || player.some((value, index) => value !== sentPlayer[index])) {
+        sentPlayer = player;
+        window.ytmd.sendStoreUpdate(...player);
+      }
     } catch (error) {
       miss("store-state", error);
     }
+  }
+
+  function scheduleStoreState() {
+    if (flushPending) return;
+    flushPending = true;
+    setTimeout(sendStoreState, 0);
   }
 
   playerApi.addEventListener("onVideoProgress", progress => {
@@ -78,9 +97,8 @@
       miss("video-data", error);
     }
   });
-  ytmStore.subscribe(() => {
-    sendStoreState();
-  });
+  ytmStore.subscribe(scheduleStoreState);
+  sendStoreState();
   window.addEventListener("yt-action", e => {
     try {
       if (e.detail.actionName === "yt-service-request") {

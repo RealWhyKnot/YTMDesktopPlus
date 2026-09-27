@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installQueueProjection } from "../src/shared/queue-projection";
 
 const source = readFileSync("src/renderer/ytmview/scripts/hookplayerapievents.script.js", "utf8").trim();
 
@@ -10,6 +11,7 @@ let storeSubscribers: Listener[];
 let windowListeners: Map<string, Listener>;
 let misses: [string, string | undefined][];
 let storeUpdates: unknown[][];
+let queueUpdates: unknown[];
 let videoData: unknown[][];
 let state: Record<string, unknown>;
 let playerResponse: unknown;
@@ -40,6 +42,7 @@ beforeEach(() => {
   windowListeners = new Map();
   misses = [];
   storeUpdates = [];
+  queueUpdates = [];
   videoData = [];
   likeButton = { data: { likeStatus: "LIKE" } };
   currentItem = { title: { runs: [{ text: "Song" }] }, thumbnail: { thumbnails: [] }, longBylineText: { runs: [ALBUM_RUN] } };
@@ -69,14 +72,18 @@ beforeEach(() => {
       sendVideoProgress: () => {},
       sendVideoState: () => {},
       sendStoreUpdate: (...args: unknown[]) => storeUpdates.push(args),
+      sendQueueUpdate: (queue: unknown) => queueUpdates.push(queue),
       sendVideoData: (...args: unknown[]) => videoData.push(args),
       sendCreatePlaylistObservation: () => {},
       sendDeletePlaylistObservation: () => {}
     }
   });
+  installQueueProjection();
+  vi.useFakeTimers();
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -88,34 +95,73 @@ describe("hookplayerapievents", () => {
     expect(windowListeners.has("yt-action")).toBe(true);
   });
 
-  it("sends store state with the like button status", () => {
+  it("sends the queue and the player fields as soon as it hooks in", () => {
     run();
-    storeSubscribers[0]({});
-    expect(storeUpdates).toEqual([[state.queue, "LIKE", 40, false, false]]);
+    expect(storeUpdates).toEqual([["LIKE", 40, false, false]]);
+    expect(queueUpdates).toEqual([{ items: [], automixItems: [], autoplay: false, isGenerating: false, isInfinite: false, repeatMode: "" }]);
     expect(misses).toEqual([]);
   });
 
   it("prefers the store like status over the button", () => {
     state.likeStatus = { videos: { abc: "DISLIKE" } };
     run();
-    storeSubscribers[0]({});
-    expect(storeUpdates[0][1]).toBe("DISLIKE");
+    expect(storeUpdates[0][0]).toBe("DISLIKE");
   });
 
   it("keeps sending state when the like button element moves", () => {
     likeButton = null;
     run();
-    storeSubscribers[0]({});
-    expect(storeUpdates).toEqual([[state.queue, "UNKNOWN", 40, false, false]]);
+    expect(storeUpdates).toEqual([["UNKNOWN", 40, false, false]]);
     expect(misses).toEqual([["ytmusic-like-button-renderer", undefined]]);
   });
 
   it("reports and survives a store shape change instead of throwing at the subscriber", () => {
     state = {};
-    run();
+    expect(() => run()).not.toThrow();
     expect(() => storeSubscribers[0]({})).not.toThrow();
+    vi.runAllTimers();
     expect(storeUpdates).toEqual([]);
     expect(misses[0][0]).toBe("store-state");
+  });
+
+  it("folds a burst of store dispatches into one send", () => {
+    run();
+    storeUpdates.length = 0;
+    state = { ...state, player: { volume: 55, muted: false, adPlaying: false } };
+    for (let i = 0; i < 5; i++) storeSubscribers[0]({});
+    expect(storeUpdates).toEqual([]);
+
+    vi.runAllTimers();
+
+    expect(storeUpdates).toEqual([["LIKE", 55, false, false]]);
+    expect(queueUpdates).toHaveLength(1);
+  });
+
+  it("stays quiet for dispatches that change nothing it sends", () => {
+    run();
+    storeSubscribers[0]({});
+    vi.runAllTimers();
+
+    expect(storeUpdates).toHaveLength(1);
+    expect(queueUpdates).toHaveLength(1);
+  });
+
+  it("sends the queue again only once the store replaces it", () => {
+    run();
+    state = {
+      ...state,
+      queue: {
+        items: [{ playlistPanelVideoRenderer: { videoId: "v1", title: { runs: [{ text: "One" }] }, selected: true } }],
+        automixItems: [],
+        repeatMode: "ALL"
+      }
+    };
+    storeSubscribers[0]({});
+    vi.runAllTimers();
+
+    expect(storeUpdates).toHaveLength(1);
+    expect(queueUpdates).toHaveLength(2);
+    expect(queueUpdates[1]).toMatchObject({ items: [{ videoId: "v1", title: "One", selected: true }], repeatMode: "ALL" });
   });
 
   it("sends video data with the album pulled out of the byline", () => {

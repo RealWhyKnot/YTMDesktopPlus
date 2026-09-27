@@ -1435,10 +1435,16 @@ app.on("ready", async () => {
     playerStateStore.updateVideoDetails(videoDetails, playlistId, album, likeStatus, hasFullMetadata);
   });
 
-  ipcMain.on("ytmView:storeStateChanged", (event, queue, likeStatus, volume, muted, adPlaying) => {
+  ipcMain.on("ytmView:queueChanged", (event, queue) => {
     if (!isYtmViewSender(event.sender)) return;
 
-    playerStateStore.updateFromStore(queue, likeStatus, volume, muted, adPlaying);
+    playerStateStore.updateQueue(queue);
+  });
+
+  ipcMain.on("ytmView:storeStateChanged", (event, likeStatus, volume, muted, adPlaying) => {
+    if (!isYtmViewSender(event.sender)) return;
+
+    playerStateStore.updateFromStore(likeStatus, volume, muted, adPlaying);
   });
 
   ipcMain.on("ytmView:addonMessage", (event, addonId: string, name: string, payload: unknown) => {
