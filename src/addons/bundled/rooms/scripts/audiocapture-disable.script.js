@@ -34,6 +34,12 @@
     });
     Reflect.deleteProperty(video, "volume");
     step(() => state.nativeDesc.set.call(video, effective));
+    let muted = video.muted;
+    step(() => {
+      muted = state.virtualMuted();
+    });
+    Reflect.deleteProperty(video, "muted");
+    step(() => state.mutedDesc.set.call(video, muted));
   }
 
   // Ear path back to the plain shared graph; the tap goes away with it. Anything

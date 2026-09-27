@@ -114,7 +114,10 @@ const roomsAddon: BundledAddonDefinition = {
       createTransport: (url, handlers) => new AudioRelayClient(url, handlers),
       startCapture: () => audioStreamCapture.enable(),
       stopCapture: () => audioStreamCapture.disable(),
-      onUpdate: ({ streaming, webListeners }) => roomSession.setAudioStreamState(streaming, webListeners),
+      onUpdate: ({ streaming, webListeners }) => {
+        audioStreamCapture.setListening(streaming && webListeners > 0);
+        roomSession.setAudioStreamState(streaming, webListeners);
+      },
       now: () => Date.now(),
       log: (message, ...args) => ctx.log.info(message, ...args)
     });

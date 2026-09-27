@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const enableSource = readFileSync("src/addons/bundled/rooms/scripts/audiocapture-enable.script.js", "utf8").trim();
 const disableSource = readFileSync("src/addons/bundled/rooms/scripts/audiocapture-disable.script.js", "utf8").trim();
+const listeningOnSource = readFileSync("src/addons/bundled/rooms/scripts/audiocapture-listening-on.script.js", "utf8").trim();
+const listeningOffSource = readFileSync("src/addons/bundled/rooms/scripts/audiocapture-listening-off.script.js", "utf8").trim();
 
 type CaptureState = {
   pending: { t: number; d: ArrayBuffer }[];
@@ -10,6 +12,7 @@ type CaptureState = {
   encoder: { state: string } | null;
   reader: unknown;
   stopped: boolean;
+  localGain: ReturnType<typeof fakeNode>;
 };
 
 function run(source: string) {
@@ -29,7 +32,14 @@ function fakeNode() {
 }
 
 let nativeVolume: number;
-let video: { volume: number; muted: boolean; addEventListener: ReturnType<typeof vi.fn>; removeEventListener: ReturnType<typeof vi.fn> };
+let nativeMuted: boolean;
+let video: {
+  volume: number;
+  muted: boolean;
+  addEventListener: ReturnType<typeof vi.fn>;
+  removeEventListener: ReturnType<typeof vi.fn>;
+  dispatchEvent: ReturnType<typeof vi.fn>;
+};
 let post: ReturnType<typeof vi.fn>;
 let consoleError: ReturnType<typeof vi.spyOn>;
 let graphSource: ReturnType<typeof fakeNode>;
@@ -41,6 +51,7 @@ let encoderClosed: number;
 beforeEach(() => {
   vi.useFakeTimers();
   nativeVolume = 0.4;
+  nativeMuted = false;
   encoderClosed = 0;
   closeCapture = () => Promise.resolve();
   configureEncoder = () => {};
@@ -53,10 +64,17 @@ beforeEach(() => {
       nativeVolume = value;
     }
   });
+  Object.defineProperty(HTMLMediaElement.prototype, "muted", {
+    configurable: true,
+    get: () => nativeMuted,
+    set: (value: boolean) => {
+      nativeMuted = value;
+    }
+  });
   video = Object.create(HTMLMediaElement.prototype) as typeof video;
-  video.muted = false;
   video.addEventListener = vi.fn();
   video.removeEventListener = vi.fn();
+  video.dispatchEvent = vi.fn();
 
   graphSource = fakeNode();
   graphOut = fakeNode();
@@ -215,5 +233,67 @@ describe("rooms audio capture teardown", () => {
   it("does nothing when no capture is running", () => {
     expect(() => run(disableSource)).not.toThrow();
     expect(consoleError).not.toHaveBeenCalled();
+  });
+});
+
+describe("rooms audio capture mute", () => {
+  const earGain = () => captureState()?.localGain.gain.setTargetAtTime.mock.lastCall?.[0];
+
+  it("leaves a local mute native while nobody is listening", () => {
+    run(enableSource);
+    video.muted = true;
+    const onVolumeChange = video.addEventListener.mock.calls.find(([name]) => name === "volumechange")?.[1];
+    onVolumeChange();
+
+    expect(nativeMuted).toBe(true);
+    expect(post).toHaveBeenLastCalledWith("rooms", "captureStatus", { muted: true });
+  });
+
+  it("keeps the broadcast playing through a local mute while someone listens", () => {
+    run(enableSource);
+    video.muted = true;
+
+    run(listeningOnSource);
+
+    expect(nativeMuted).toBe(false);
+    expect(video.muted).toBe(true);
+    expect(earGain()).toBe(0);
+    expect(post).toHaveBeenLastCalledWith("rooms", "captureStatus", { muted: false });
+  });
+
+  it("mutes only the ear path when muting mid-listen", () => {
+    run(enableSource);
+    run(listeningOnSource);
+
+    video.muted = true;
+
+    expect(nativeMuted).toBe(false);
+    expect(earGain()).toBe(0);
+    expect(video.dispatchEvent).toHaveBeenCalled();
+
+    video.muted = false;
+    expect(earGain()).toBeCloseTo(0.4, 10);
+  });
+
+  it("goes back to a native mute when the last listener leaves", () => {
+    run(enableSource);
+    run(listeningOnSource);
+    video.muted = true;
+
+    run(listeningOffSource);
+
+    expect(nativeMuted).toBe(true);
+    expect(earGain()).toBeCloseTo(0.4, 10);
+  });
+
+  it("hands the mute back as the user left it", () => {
+    run(enableSource);
+    run(listeningOnSource);
+    video.muted = true;
+
+    run(disableSource);
+
+    expect(Object.getOwnPropertyDescriptor(video, "muted")).toBeUndefined();
+    expect(nativeMuted).toBe(true);
   });
 });

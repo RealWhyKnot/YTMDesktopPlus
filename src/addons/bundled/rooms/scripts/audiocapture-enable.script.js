@@ -22,6 +22,9 @@
   const localGain = context.createGain();
   const tap = context.createMediaStreamDestination();
   let virtualVolume = video.volume;
+  const mutedDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "muted");
+  let virtualMuted = video.muted;
+  let listening = false;
   localGain.gain.value = nativeDesc.get.call(video);
 
   // Ear path runs through localGain and rejoins the shared output; the tap comes
@@ -33,16 +36,41 @@
   nativeDesc.set.call(video, 1);
 
   const effectiveVolume = () => (ratioActive() ? Math.pow(virtualVolume, EXPONENT) : virtualVolume);
+  const applyEarGain = () => {
+    const gain = listening && virtualMuted ? 0 : effectiveVolume();
+    localGain.gain.setTargetAtTime(gain, context.currentTime, 0.01);
+  };
   Object.defineProperty(video, "volume", {
     configurable: true,
     get: () => virtualVolume,
     set: value => {
       virtualVolume = value;
-      localGain.gain.setTargetAtTime(effectiveVolume(), context.currentTime, 0.01);
+      applyEarGain();
     }
   });
 
-  const onVolumeChange = () => window.ytmd.postAddonMessage("rooms", "captureStatus", { muted: video.muted });
+  const postMuted = () => window.ytmd.postAddonMessage("rooms", "captureStatus", { muted: virtualMuted && !listening });
+  const applyMuted = () => {
+    mutedDesc.set.call(video, virtualMuted && !listening);
+    applyEarGain();
+  };
+  Object.defineProperty(video, "muted", {
+    configurable: true,
+    get: () => virtualMuted,
+    set: value => {
+      virtualMuted = Boolean(value);
+      applyMuted();
+      if (listening) video.dispatchEvent(new Event("volumechange"));
+    }
+  });
+  const setListening = active => {
+    if (listening === active) return;
+    listening = active;
+    applyMuted();
+    postMuted();
+  };
+
+  const onVolumeChange = () => postMuted();
   video.addEventListener("volumechange", onVolumeChange);
 
   // The shared context runs at the device rate, which Opus may not accept, so
@@ -61,6 +89,9 @@
     bridgeDest,
     nativeDesc,
     effectiveVolume,
+    mutedDesc,
+    virtualMuted: () => virtualMuted,
+    setListening,
     onVolumeChange,
     pending: [],
     flushTimer: 0,
@@ -122,6 +153,6 @@
     window.ytmd.postAddonMessage("rooms", "audioChunks", packets);
   }, 250);
 
-  window.ytmd.postAddonMessage("rooms", "captureStatus", { cfg: { sr: 48000, ch: 2, br: 128000 }, muted: video.muted });
+  window.ytmd.postAddonMessage("rooms", "captureStatus", { cfg: { sr: 48000, ch: 2, br: 128000 }, muted: virtualMuted });
   return "";
 })

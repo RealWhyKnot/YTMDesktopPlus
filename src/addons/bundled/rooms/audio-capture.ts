@@ -1,6 +1,10 @@
 import type { BatchPacket } from "~shared/audio-protocol";
 import enableScript from "./scripts/audiocapture-enable.script?raw";
 import disableScript from "./scripts/audiocapture-disable.script?raw";
+import listeningOnScript from "./scripts/audiocapture-listening-on.script?raw";
+import listeningOffScript from "./scripts/audiocapture-listening-off.script?raw";
+
+type CaptureScript = "enable" | "disable" | "listening-on" | "listening-off";
 
 /** Encoded packets as the page posts them, filtered down to the well formed. */
 export function cleanAudioPackets(payload: unknown): BatchPacket[] {
@@ -24,8 +28,9 @@ export default class AudioStreamCapture {
   private hasInjected = false;
   private isEnabled = false;
   private waitForYTMView = true;
+  private listening = false;
 
-  constructor(private readonly runScript: (name: "enable" | "disable") => void) {}
+  constructor(private readonly runScript: (name: CaptureScript) => void) {}
 
   public enable(): void {
     this.isEnabled = true;
@@ -33,6 +38,13 @@ export default class AudioStreamCapture {
 
     this.runScript("enable");
     this.hasInjected = true;
+    if (this.listening) this.runScript("listening-on");
+  }
+
+  public setListening(active: boolean): void {
+    if (this.listening === active) return;
+    this.listening = active;
+    if (this.hasInjected) this.runScript(active ? "listening-on" : "listening-off");
   }
 
   public disable(): void {
@@ -43,10 +55,12 @@ export default class AudioStreamCapture {
     this.hasInjected = false;
   }
 
-  public getYTMScripts(): { name: string; script: string }[] {
+  public getYTMScripts(): { name: CaptureScript; script: string }[] {
     return [
       { name: "enable", script: enableScript },
-      { name: "disable", script: disableScript }
+      { name: "disable", script: disableScript },
+      { name: "listening-on", script: listeningOnScript },
+      { name: "listening-off", script: listeningOffScript }
     ];
   }
 
