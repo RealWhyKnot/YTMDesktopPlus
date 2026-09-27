@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- build: run the toolchain on node 26
+- fix(rooms): keep the leave button inside the listen along window
 
 ## [v2026.919.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.919.1-beta) - 2026-09-19
 - fix(rooms): report a capture encode failure instead of going quiet
