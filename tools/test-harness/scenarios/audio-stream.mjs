@@ -2,8 +2,7 @@
 // end to end: the capture pipeline encodes, the publisher authenticates
 // against the production relay, an in-scenario browser bot subscribes to
 // /audio/<room> and receives config, metadata and a monotonic batch stream,
-// the local volume stays off the wire, the stream survives a track change,
-// and mute reaches the bot as a status.
+// the local volume stays off the wire and the stream survives a track change.
 // Local use, not suited to CI runners: production relay plus live YTM.
 
 import WebSocket from "ws";
@@ -32,12 +31,20 @@ export default async function audioStream(ctx) {
     await ctx.step(
       "a track is playing",
       async () => {
-        await ctx.evalYtm(`document.dispatchEvent(new CustomEvent("yt-navigate", { detail: { endpoint: { watchEndpoint: { videoId: "${VIDEO_ID}" } } } }))`);
-        await ctx.waitYtm(
-          `document.querySelector("ytmusic-app-layout>ytmusic-player-bar")?.playerApi?.getPlayerState?.() ?? null`,
-          state => state === 1,
-          120000
-        );
+        for (let attempt = 1; ; attempt++) {
+          await ctx.evalYtm(`document.dispatchEvent(new CustomEvent("yt-navigate", { detail: { endpoint: { watchEndpoint: { videoId: "${VIDEO_ID}" } } } }))`);
+          try {
+            await ctx.waitYtm(
+              `document.querySelector("ytmusic-app-layout>ytmusic-player-bar")?.playerApi?.getPlayerState?.() ?? null`,
+              state => state === 1,
+              12000
+            );
+            return;
+          } catch (error) {
+            if (attempt === 9) throw error;
+            ctx.emit("probe", { navigateRetry: attempt });
+          }
+        }
       },
       125000
     );
@@ -81,7 +88,9 @@ export default async function audioStream(ctx) {
           const socket = new WebSocket(`wss://ytmdesktopplus.com/audio/${roomId}`);
           bot.socket = socket;
           const timer = setTimeout(() => reject(new Error(`bot saw ${bot.frames.length} frames, ${bot.batches.length} batches`)), 60000);
+          let done = false;
           const maybeDone = () => {
+            if (done) return;
             const types = bot.frames.map(frame => frame.t);
             if (!types.includes("cfg") || !types.includes("meta") || bot.batches.length < 8) return;
             for (let i = 1; i < bot.batches.length; i++) {
@@ -94,6 +103,7 @@ export default async function audioStream(ctx) {
             const cfg = bot.frames.find(frame => frame.t === "cfg");
             const meta = bot.frames.find(frame => frame.t === "meta");
             ctx.emit("probe", { cfg, meta, batches: bot.batches.length });
+            done = true;
             clearTimeout(timer);
             resolve();
           };
@@ -172,17 +182,21 @@ export default async function audioStream(ctx) {
     );
 
     await ctx.step(
-      "mute reaches the bot as a status",
+      "a muted host keeps streaming to its listener",
       async () => {
+        const before = bot.batches.length;
         await ctx.evalYtm(`document.querySelector("video").muted = true`);
-        const deadline = Date.now() + 15000;
-        while (Date.now() < deadline) {
-          if (bot.frames.some(frame => frame.t === "status" && frame.s === "muted")) return;
-          await new Promise(resolve => setTimeout(resolve, 500));
+        const deadline = Date.now() + 10000;
+        while (Date.now() < deadline && bot.batches.length < before + 20) {
+          await new Promise(resolve => setTimeout(resolve, 250));
         }
-        throw new Error(`no muted status: ${JSON.stringify(bot.frames.filter(frame => frame.t === "status"))}`);
+        const elementMuted = await ctx.evalYtm(`window.__ytmdAudioStream.mutedDesc.get.call(document.querySelector("video"))`);
+        ctx.emit("probe", { batchesAfterMute: bot.batches.length - before, elementMuted });
+        if (bot.batches.length < before + 20) throw new Error(`the stream stalled after the host muted: ${bot.batches.length - before} batches`);
+        if (bot.frames.some(frame => frame.t === "status" && frame.s === "muted")) throw new Error("the listener was told the host muted");
+        if (elementMuted !== false) throw new Error("the element itself was muted, which silences the broadcast");
       },
-      20000
+      15000
     );
 
     // YTMD_TEST_HOLD=<seconds> keeps the hosted room streaming after the
