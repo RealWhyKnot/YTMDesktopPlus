@@ -13,9 +13,7 @@ runs:
         node-version: 26
     - name: Enable corepack
       shell: bash
-      run: |
-        npm install --global corepack@0.36.0
-        corepack enable
+      run: npm install --global --force corepack@0.36.0
     - name: Cache electron binaries
       if: ${{ inputs.cache-electron == 'true' }}
       uses: actions/cache@v6
