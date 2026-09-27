@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- ci: let corepack replace the runner's global yarn shim
 - build: run the toolchain on node 26
 - fix(rooms): keep the leave button inside the listen along window
 
