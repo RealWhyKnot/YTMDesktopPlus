@@ -1,6 +1,6 @@
 import { app } from "electron";
 import log from "electron-log";
-import { isSpamLogMessage, redactLogUrls } from "./log-filters";
+import { isInitialDocumentBootstrapError, isSpamLogMessage, redactLogUrls } from "./log-filters";
 
 // electron-log's own renderer console spy still listens with the positional
 // console-message signature Electron deprecated, which prints a warning on every
@@ -15,6 +15,7 @@ const RENDERER_LEVEL = {
 function spyRendererConsole() {
   app.on("web-contents-created", (_event, contents) => {
     contents.on("console-message", details => {
+      if (isInitialDocumentBootstrapError(details.message, details.frame?.url)) return;
       log.processMessage({
         data: [details.message],
         date: new Date(),

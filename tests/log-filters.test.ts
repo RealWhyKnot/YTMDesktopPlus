@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSpamLogMessage, redactLogUrls } from "../src/main/log-filters";
+import { isInitialDocumentBootstrapError, isSpamLogMessage, redactLogUrls } from "../src/main/log-filters";
 
 describe("isSpamLogMessage", () => {
   it("matches the third-party cookie warning", () => {
@@ -21,6 +21,30 @@ describe("isSpamLogMessage", () => {
     expect(isSpamLogMessage("Autofill request failed for the settings window")).toBe(false);
     expect(isSpamLogMessage(42)).toBe(false);
     expect(isSpamLogMessage(undefined)).toBe(false);
+  });
+});
+
+describe("isInitialDocumentBootstrapError", () => {
+  const bootstrapErrors = [
+    "Electron sandboxed_renderer.bundle.js script failed to run",
+    "TypeError: Cannot destructure property 'preloadScripts' of 'binding.startupData' as it is null."
+  ];
+
+  it("matches Electron's preload bootstrap errors from a frame that has not committed a document", () => {
+    for (const message of bootstrapErrors) expect(isInitialDocumentBootstrapError(message, "")).toBe(true);
+  });
+
+  it("keeps them when the frame has committed a document or is unknown", () => {
+    for (const message of bootstrapErrors) {
+      expect(isInitialDocumentBootstrapError(message, "http://localhost:5173/windows/settings/index.html")).toBe(false);
+      expect(isInitialDocumentBootstrapError(message, "about:blank")).toBe(false);
+      expect(isInitialDocumentBootstrapError(message, undefined)).toBe(false);
+    }
+  });
+
+  it("keeps other errors from a frame that has not committed a document", () => {
+    expect(isInitialDocumentBootstrapError("Uncaught TypeError: Cannot read properties of undefined (reading 'ytmd')", "")).toBe(false);
+    expect(isInitialDocumentBootstrapError("Electron sandboxed_renderer.bundle.js script failed to run twice", "")).toBe(false);
   });
 });
 
