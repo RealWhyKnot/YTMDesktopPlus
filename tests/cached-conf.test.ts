@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import Conf from "conf";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CachedConf } from "../src/main/store/cached-conf";
 import { makeTempDir } from "./helpers/temp-dir";
@@ -7,6 +8,21 @@ import { makeTempDir } from "./helpers/temp-dir";
 type Schema = { playback: { volume: number; tags: string[] }; state: { lastUrl: string } };
 
 const DEFAULTS: Schema = { playback: { volume: 50, tags: [] }, state: { lastUrl: "https://music.youtube.com/" } };
+
+const MIGRATING = {
+  configName: "config",
+  defaults: DEFAULTS,
+  projectVersion: "2.0.0",
+  migrations: {
+    ">=2.0.0": (migrating: Conf<Schema>) => {
+      if (!migrating.has("playback.volume")) migrating.set("playback.volume", 50);
+    }
+  }
+};
+
+function readConfigFile(cwd: string) {
+  return JSON.parse(fs.readFileSync(path.join(cwd, "config.json"), "utf8"));
+}
 
 function makeStore() {
   const cwd = makeTempDir("ytmd-conf-");
@@ -72,6 +88,27 @@ describe("CachedConf", () => {
     });
 
     expect(readBack).toEqual(["https://music.youtube.com/explore"]);
+  });
+
+  it.each([
+    ["no config file", undefined],
+    ["a config file missing a section", { playback: { volume: 20, tags: ["kept"] } }]
+  ])("ends a migration from %s with what plain conf writes, then reads from memory", (_, existing) => {
+    const cachedDir = makeTempDir("ytmd-conf-");
+    const plainDir = makeTempDir("ytmd-conf-");
+    for (const dir of existing ? [cachedDir, plainDir] : []) {
+      fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify(existing));
+    }
+
+    const store = new CachedConf<Schema>({ cwd: cachedDir, ...MIGRATING });
+    const plain = new Conf<Schema>({ cwd: plainDir, ...MIGRATING });
+
+    expect(store.get("state")).toEqual(DEFAULTS.state);
+    expect(store.store).toEqual(plain.store);
+    expect(readConfigFile(cachedDir)).toEqual(readConfigFile(plainDir));
+    const reads = vi.spyOn(fs, "readFileSync");
+    for (let i = 0; i < 50; i++) store.get("playback");
+    expect(reads.mock.calls.filter(call => String(call[0]) === path.join(cachedDir, "config.json"))).toHaveLength(0);
   });
 
   it("rereads the file once after a change event from outside the process", () => {
