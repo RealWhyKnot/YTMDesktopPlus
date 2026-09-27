@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PLAYER_BAR_SELECTOR } from "../src/shared/hook-probes";
 import { REMOTE_COMMAND_NAMES, validateRemoteCommand } from "../src/shared/remote-commands";
 
 describe("validateRemoteCommand", () => {
@@ -49,5 +50,47 @@ describe("remote command vocabulary", () => {
     const cases = [...body.matchAll(/case "([A-Za-z]+)"/g)].map(match => match[1]);
 
     expect(new Set(cases)).toEqual(new Set(REMOTE_COMMAND_NAMES));
+  });
+});
+
+describe("next command", () => {
+  const preload = fs.readFileSync(path.resolve("src/renderer/ytmview/preload.ts"), "utf8");
+  const scriptStart = preload.indexOf("executeJavaScript(`", preload.indexOf(`case "next"`)) + "executeJavaScript(`".length;
+  const script = preload.slice(scriptStart, preload.indexOf("`)", scriptStart)).replaceAll("${PLAYER_BAR_SELECTOR}", PLAYER_BAR_SELECTOR);
+
+  let nextButton: { click: ReturnType<typeof vi.fn> } | null;
+  let nextVideo: ReturnType<typeof vi.fn>;
+  let misses: string[];
+
+  beforeEach(() => {
+    nextButton = { click: vi.fn() };
+    nextVideo = vi.fn();
+    misses = [];
+    vi.stubGlobal("window", { ytmd: { reportContractMiss: (what: string) => misses.push(what) } });
+    vi.stubGlobal("document", {
+      querySelector: (selector: string) =>
+        selector === PLAYER_BAR_SELECTOR ? { playerApi: { nextVideo }, querySelector: (inner: string) => (inner === ".next-button" ? nextButton : null) } : null
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const run = () => (new Function(`return (${script});`)() as () => void)();
+
+  it("clicks the player bar's Next button instead of calling the player API", () => {
+    const button = nextButton;
+    run();
+    expect(button?.click).toHaveBeenCalledTimes(1);
+    expect(nextVideo).not.toHaveBeenCalled();
+    expect(misses).toEqual([]);
+  });
+
+  it("falls back to the player API and reports the missing button", () => {
+    nextButton = null;
+    run();
+    expect(nextVideo).toHaveBeenCalledTimes(1);
+    expect(misses).toEqual([`${PLAYER_BAR_SELECTOR} .next-button`]);
   });
 });

@@ -565,7 +565,14 @@ const startHooking = async () => {
         (
           await webFrame.executeJavaScript(`
             (function() {
-              document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi.nextVideo();
+              const playerBar = document.querySelector("${PLAYER_BAR_SELECTOR}");
+              const nextButton = playerBar.querySelector(".next-button");
+              if (nextButton) {
+                nextButton.click();
+              } else {
+                window.ytmd.reportContractMiss("${PLAYER_BAR_SELECTOR} .next-button");
+                playerBar.playerApi.nextVideo();
+              }
             })
           `)
         )();
