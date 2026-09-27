@@ -47,6 +47,7 @@ let graphOut: ReturnType<typeof fakeNode>;
 let closeCapture: () => Promise<void>;
 let configureEncoder: () => void;
 let encoderClosed: number;
+let processorInit: { maxBufferSize?: number } | undefined;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -105,6 +106,9 @@ beforeEach(() => {
   }
 
   class MediaStreamTrackProcessor {
+    constructor(init: { maxBufferSize?: number }) {
+      processorInit = init;
+    }
     readable = {
       getReader: () => ({
         read: () => Promise.resolve({ done: true }),
@@ -149,6 +153,12 @@ describe("rooms audio capture enable", () => {
     expect(nativeVolume).toBe(1);
     expect(video.volume).toBeCloseTo(0.4, 10);
     expect(post).toHaveBeenCalledWith("rooms", "captureStatus", { cfg: { sr: 48000, ch: 2, br: 128000 }, muted: false });
+  });
+
+  it("queues seconds of audio so a busy page delays capture instead of dropping it", () => {
+    run(enableSource);
+
+    expect(processorInit?.maxBufferSize).toBeGreaterThanOrEqual(500);
   });
 
   it("reports a failed encoder setup instead of running half started", () => {

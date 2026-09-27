@@ -115,7 +115,7 @@
     });
     state.encoder.configure({ codec: "opus", sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 });
 
-    const processor = new MediaStreamTrackProcessor({ track: bridgeDest.stream.getAudioTracks()[0] });
+    const processor = new MediaStreamTrackProcessor({ track: bridgeDest.stream.getAudioTracks()[0], maxBufferSize: 1000 });
     state.reader = processor.readable.getReader();
   } catch (error) {
     window.ytmd.postAddonMessage("rooms", "captureStatus", { error: String(error) });
@@ -151,7 +151,7 @@
     state.pending = [];
     state.batchesSent += 1;
     window.ytmd.postAddonMessage("rooms", "audioChunks", packets);
-  }, 250);
+  }, 100);
 
   window.ytmd.postAddonMessage("rooms", "captureStatus", { cfg: { sr: 48000, ch: 2, br: 128000 }, muted: virtualMuted });
   return "";
