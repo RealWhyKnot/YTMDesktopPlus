@@ -77,7 +77,9 @@ let video: {
   addEventListener: (type: string, listener: () => void) => void;
   removeEventListener: (type: string, listener: () => void) => void;
 };
-let nextVideo: ReturnType<typeof vi.fn>;
+let advanced: ReturnType<typeof vi.fn>;
+let apiNextVideo: ReturnType<typeof vi.fn>;
+let nextButtonPresent: boolean;
 let currentId: string;
 // YTM concatenates tracks into one MediaSource: the element's clock counts
 // every track buffered so far, while playerApi stays track-relative. Both are
@@ -158,7 +160,9 @@ beforeEach(() => {
   playerState = 1;
   clockReadable = true;
   nowMs = 10_000;
-  nextVideo = vi.fn();
+  advanced = vi.fn();
+  apiNextVideo = vi.fn();
+  nextButtonPresent = true;
   resourceEntries = [{ name: SEGMENT_URL }];
   perf = { bufferSize: null, cleared: 0, bufferFull: [] };
   outGain = fakeGainParam();
@@ -203,8 +207,9 @@ beforeEach(() => {
             // length shortly before the change.
             getDuration: () => video.duration - priorTracksS,
             getPlayerResponse: () => (clockReadable ? { videoDetails: { lengthSeconds: String(video.duration - priorTracksS - appendedNextS) } } : undefined),
-            nextVideo
-          }
+            nextVideo: apiNextVideo
+          },
+          querySelector: (inner: string) => (inner === ".next-button" && nextButtonPresent ? { click: advanced } : null)
         };
       }
       return null;
@@ -267,6 +272,30 @@ describe("blend script", () => {
     expect(events()).toContain("armed");
   });
 
+  it("arms from the audio entry that matches this track's length, not a newer prefetch of the next one", () => {
+    resourceEntries = [
+      { name: "https://rr1.googlevideo.com/videoplayback?itag=141&mime=audio%2Fmp4&dur=200.090&id=current&range=0-9999" },
+      { name: "https://rr1.googlevideo.com/videoplayback?itag=141&mime=audio%2Fmp4&dur=238.190&id=next&range=0-9999" }
+    ];
+    run();
+    armAt(30);
+
+    expect(audios).toHaveLength(1);
+    expect(new URL(audios[0].src).searchParams.get("id")).toBe("current");
+  });
+
+  it("waits for this track's audio rather than arming another song's", () => {
+    resourceEntries = [{ name: "https://rr1.googlevideo.com/videoplayback?itag=141&mime=audio%2Fmp4&dur=238.190&id=next" }];
+    run();
+    armAt(30);
+    expect(audios).toHaveLength(0);
+    expect(events()).toEqual(["armFailed"]);
+
+    resourceEntries.push({ name: "https://rr1.googlevideo.com/videoplayback?itag=141&mime=audio%2Fmp4&dur=200.090&id=current" });
+    armAt(31);
+    expect(new URL(audios[0].src).searchParams.get("id")).toBe("current");
+  });
+
   it("corrects shadow drift while it is silent, and never during a blend", () => {
     run();
     armAt(30);
@@ -290,8 +319,27 @@ describe("blend script", () => {
     expect(audios).toHaveLength(1);
     expect(audios[0].volume).toBe(0.83);
     expect(lastGainValue()).toMatchObject({ method: "target", value: 0 });
-    expect(nextVideo).toHaveBeenCalledTimes(1);
+    expect(advanced).toHaveBeenCalledTimes(1);
     expect(diags().find(diag => diag.event === "blend")).toMatchObject({ kind: "end", seconds: 5 });
+  });
+
+  it("advances through the player bar's Next button, not the player API", () => {
+    run();
+    armAt(30);
+    armAt(195.5);
+
+    expect(advanced).toHaveBeenCalledTimes(1);
+    expect(apiNextVideo).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the player API when the Next button is gone, and says so", () => {
+    nextButtonPresent = false;
+    run();
+    armAt(30);
+    armAt(195.5);
+
+    expect(apiNextVideo).toHaveBeenCalledTimes(1);
+    expect(events()).toContain("advanceFallback");
   });
 
   // Measured on the live page: YTM appends the next track into the same
@@ -307,10 +355,10 @@ describe("blend script", () => {
     run();
     armAt(30);
     armAt(194);
-    expect(nextVideo).not.toHaveBeenCalled();
+    expect(advanced).not.toHaveBeenCalled();
 
     armAt(195.5);
-    expect(nextVideo).toHaveBeenCalledTimes(1);
+    expect(advanced).toHaveBeenCalledTimes(1);
   });
 
   it("blends a manual skip off the shadow already playing, without advancing again", () => {
@@ -322,7 +370,7 @@ describe("blend script", () => {
 
     expect(audios).toHaveLength(1);
     expect(audios[0].volume).toBe(0.83);
-    expect(nextVideo).not.toHaveBeenCalled();
+    expect(advanced).not.toHaveBeenCalled();
     expect(diags().find(diag => diag.event === "blend")).toMatchObject({ kind: "skip" });
   });
 
@@ -358,7 +406,7 @@ describe("blend script", () => {
     audios[0].paused = true;
 
     armAt(195.5);
-    expect(nextVideo).not.toHaveBeenCalled();
+    expect(advanced).not.toHaveBeenCalled();
     expect(diags().find(diag => diag.event === "suppressed")).toMatchObject({ reason: "shadow not ready" });
   });
 
@@ -384,7 +432,7 @@ describe("blend script", () => {
     expect(diags().find(diag => diag.event === "cut")).toMatchObject({ reason: "skip" });
     expect(events()).not.toContain("blend");
     expect(audios[0].volume).toBe(0);
-    expect(nextVideo).not.toHaveBeenCalled();
+    expect(advanced).not.toHaveBeenCalled();
   });
 
   it("still blends an advance taken in the last seconds when blend skips is off", () => {
@@ -487,7 +535,7 @@ describe("blend script", () => {
       armAt(30);
       armAt(195.5);
       expect(audios[0].volume).toBe(0.27);
-      expect(nextVideo).toHaveBeenCalledTimes(1);
+      expect(advanced).toHaveBeenCalledTimes(1);
     });
 
     it("falls back to the element when a half torn down capture throws", () => {
@@ -501,7 +549,7 @@ describe("blend script", () => {
       armAt(30);
       armAt(195.5);
       expect(audios[0].volume).toBe(0.83);
-      expect(nextVideo).toHaveBeenCalledTimes(1);
+      expect(advanced).toHaveBeenCalledTimes(1);
     });
 
     it("ignores a capture that has already stopped", () => {
@@ -522,7 +570,7 @@ describe("blend script", () => {
       run(config);
       armAt(30);
       armAt(195.5);
-      expect(nextVideo).not.toHaveBeenCalled();
+      expect(advanced).not.toHaveBeenCalled();
       expect(diags().find(diag => diag.event === "suppressed")).toMatchObject({ reason });
     });
 
@@ -533,7 +581,7 @@ describe("blend script", () => {
       run();
       video.currentTime = 195.5;
       dispatch("timeupdate");
-      expect(nextVideo).not.toHaveBeenCalled();
+      expect(advanced).not.toHaveBeenCalled();
     });
 
     it("has no other reason to stand down", () => {
@@ -541,7 +589,7 @@ describe("blend script", () => {
       armAt(30);
       armAt(195.5);
       expect(events()).not.toContain("suppressed");
-      expect(nextVideo).toHaveBeenCalledTimes(1);
+      expect(advanced).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -7,6 +7,7 @@
   const MIN_FADE_IN_S = 0.4;
   const TRIGGER_SLACK_S = 0.12;
   const RESOURCE_BUFFER_SIZE = 1000;
+  const DURATION_MATCH_S = 1.5;
 
   let state = window.__ytmdBlend;
   if (!state) {
@@ -43,7 +44,11 @@
     hasNext: options.hasNext !== false
   };
 
-  const playerBar = () => document.querySelector("ytmusic-app-layout>ytmusic-player-bar");
+  let bar = null;
+  const playerBar = () => {
+    if (!bar || !bar.isConnected) bar = document.querySelector("ytmusic-app-layout>ytmusic-player-bar");
+    return bar;
+  };
   const playerApi = () => {
     const bar = playerBar();
     return (bar && bar.playerApi) || null;
@@ -102,10 +107,16 @@
 
   const equalPower = (t, direction) => (direction === "out" ? Math.cos((t * Math.PI) / 2) : Math.sin((t * Math.PI) / 2));
 
-  const segmentUrl = () => {
-    const entries = performance.getEntriesByType("resource").filter(entry => /videoplayback/.test(entry.name) && /mime=audio/.test(entry.name));
-    if (!entries.length) return null;
-    const url = new URL(entries[entries.length - 1].name);
+  const segmentUrl = durationS => {
+    const urls = performance
+      .getEntriesByType("resource")
+      .filter(entry => /videoplayback/.test(entry.name) && /mime=audio/.test(entry.name))
+      .map(entry => new URL(entry.name));
+    const dated = urls.filter(url => url.searchParams.has("dur"));
+    const url = dated.length
+      ? dated.findLast(candidate => Math.abs(Number(candidate.searchParams.get("dur")) - durationS) < DURATION_MATCH_S)
+      : urls[urls.length - 1];
+    if (!url) return null;
     for (const param of ["range", "rn", "rbuf", "ump", "srfvp", "alr"]) url.searchParams.delete(param);
     return url.toString();
   };
@@ -124,8 +135,8 @@
     }
   };
 
-  const armShadow = (videoId, positionS) => {
-    const url = segmentUrl();
+  const armShadow = (videoId, clock) => {
+    const url = segmentUrl(clock.durationS);
     if (!url) {
       reportOnce("arm", "armFailed", { reason: "no audio segment url yet" });
       return;
@@ -139,8 +150,8 @@
       "canplay",
       () => {
         if (state.shadow !== shadow) return;
-        const clock = trackClock();
-        shadow.currentTime = clock ? clock.positionS : positionS;
+        const now = trackClock();
+        shadow.currentTime = now ? now.positionS : clock.positionS;
         if (state.video && !state.video.paused) shadow.play().catch(() => {});
         report("armed", { videoId });
       },
@@ -260,8 +271,15 @@
     setOutGain(0, 0.02);
     armWatchdog();
     if (advance) {
-      const api = playerApi();
-      if (api && api.nextVideo) api.nextVideo();
+      const host = playerBar();
+      const next = host && host.querySelector && host.querySelector(".next-button");
+      if (next) {
+        next.click();
+      } else {
+        reportOnce("advance", "advanceFallback", {});
+        const api = playerApi();
+        if (api && api.nextVideo) api.nextVideo();
+      }
     }
   };
 
@@ -329,7 +347,7 @@
     }
     if (state.phase !== "idle") return;
 
-    if (state.shadowVideoId !== videoId) armShadow(videoId, clock.positionS);
+    if (state.shadowVideoId !== videoId) armShadow(videoId, clock);
     else syncShadow(clock.positionS);
 
     if (clock.positionS < clock.durationS - state.config.seconds - TRIGGER_SLACK_S) return;
