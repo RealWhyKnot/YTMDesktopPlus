@@ -7,12 +7,26 @@ const listeningOnSource = readFileSync("src/addons/bundled/rooms/scripts/audioca
 const listeningOffSource = readFileSync("src/addons/bundled/rooms/scripts/audiocapture-listening-off.script.js", "utf8").trim();
 
 type CaptureState = {
-  pending: { t: number; d: ArrayBuffer }[];
-  flushTimer: number;
-  encoder: { state: string } | null;
-  reader: unknown;
+  node: FakeWorkletNode | null;
   stopped: boolean;
   localGain: ReturnType<typeof fakeNode>;
+};
+
+class FakeWorkletNode {
+  port = { postMessage: vi.fn() };
+  constructor(
+    readonly context: unknown,
+    readonly name: string,
+    readonly options: Record<string, unknown>
+  ) {
+    workletNodes.push(this);
+  }
+}
+
+const nativeMessageChannel = globalThis.MessageChannel;
+
+const settle = async () => {
+  for (let i = 0; i < 5; i++) await Promise.resolve();
 };
 
 function run(source: string) {
@@ -44,18 +58,17 @@ let post: ReturnType<typeof vi.fn>;
 let consoleError: ReturnType<typeof vi.spyOn>;
 let graphSource: ReturnType<typeof fakeNode>;
 let graphOut: ReturnType<typeof fakeNode>;
-let closeCapture: () => Promise<void>;
-let configureEncoder: () => void;
-let encoderClosed: number;
-let processorInit: { maxBufferSize?: number } | undefined;
+let addModule: ReturnType<typeof vi.fn>;
+let workletNodes: FakeWorkletNode[];
+let pagePosts: { data: unknown; ports: unknown[] }[];
 
 beforeEach(() => {
   vi.useFakeTimers();
   nativeVolume = 0.4;
   nativeMuted = false;
-  encoderClosed = 0;
-  closeCapture = () => Promise.resolve();
-  configureEncoder = () => {};
+  workletNodes = [];
+  pagePosts = [];
+  addModule = vi.fn(() => Promise.resolve());
 
   class HTMLMediaElement {}
   Object.defineProperty(HTMLMediaElement.prototype, "volume", {
@@ -82,39 +95,12 @@ beforeEach(() => {
   const sharedContext = {
     currentTime: 0,
     createGain: () => fakeNode(),
-    createMediaStreamDestination: () => ({ stream: { getAudioTracks: () => [{}] } })
+    audioWorklet: { addModule }
   };
 
-  class AudioContext {
-    state = "running";
-    resume = vi.fn();
-    createMediaStreamSource = () => fakeNode();
-    createMediaStreamDestination = () => ({ stream: { getAudioTracks: () => [{}] } });
-    close = () => closeCapture();
-  }
-
-  class AudioEncoder {
-    state = "unconfigured";
-    configure() {
-      configureEncoder();
-      this.state = "configured";
-    }
-    close() {
-      encoderClosed++;
-      this.state = "closed";
-    }
-  }
-
-  class MediaStreamTrackProcessor {
-    constructor(init: { maxBufferSize?: number }) {
-      processorInit = init;
-    }
-    readable = {
-      getReader: () => ({
-        read: () => Promise.resolve({ done: true }),
-        cancel: () => Promise.resolve()
-      })
-    };
+  class MessageChannel {
+    port1 = { name: "worklet end" };
+    port2 = { name: "outgoing end" };
   }
 
   post = vi.fn();
@@ -122,12 +108,12 @@ beforeEach(() => {
 
   const globals = globalThis as Record<string, unknown>;
   globals.HTMLMediaElement = HTMLMediaElement;
-  globals.AudioContext = AudioContext;
-  globals.AudioEncoder = AudioEncoder;
-  globals.MediaStreamTrackProcessor = MediaStreamTrackProcessor;
+  globals.AudioWorkletNode = FakeWorkletNode;
+  globals.MessageChannel = MessageChannel;
   globals.document = { querySelector: (selector: string) => (selector === "video" ? video : null) };
   globals.window = {
     ytmd: { postAddonMessage: post },
+    postMessage: (data: unknown, _origin: string, ports: unknown[]) => pagePosts.push({ data, ports }),
     __ytmdEnsureAudioGraph: () => {
       const graphWindow = globals.window as { __ytmdAudioGraph?: unknown };
       const graph = { context: sharedContext, source: graphSource, out: graphOut };
@@ -140,9 +126,10 @@ beforeEach(() => {
 afterEach(() => {
   consoleError.mockRestore();
   vi.useRealTimers();
-  for (const key of ["window", "document", "HTMLMediaElement", "AudioContext", "AudioEncoder", "MediaStreamTrackProcessor"]) {
+  for (const key of ["window", "document", "HTMLMediaElement", "AudioWorkletNode"]) {
     delete (globalThis as Record<string, unknown>)[key];
   }
+  globalThis.MessageChannel = nativeMessageChannel;
 });
 
 describe("rooms audio capture enable", () => {
@@ -152,38 +139,51 @@ describe("rooms audio capture enable", () => {
     expect(captureState()).toBeDefined();
     expect(nativeVolume).toBe(1);
     expect(video.volume).toBeCloseTo(0.4, 10);
-    expect(post).toHaveBeenCalledWith("rooms", "captureStatus", { cfg: { sr: 48000, ch: 2, br: 128000 }, muted: false });
+    expect(post).toHaveBeenCalledWith("rooms", "captureStatus", { muted: false });
   });
 
-  it("queues seconds of audio so a busy page delays capture instead of dropping it", () => {
+  it("taps ahead of the local volume with an audio thread node and hands its channel out of the page", async () => {
     run(enableSource);
+    await settle();
 
-    expect(processorInit?.maxBufferSize).toBeGreaterThanOrEqual(500);
+    expect(addModule).toHaveBeenCalledWith("ytmd-media://capture/worklet.js");
+    expect(workletNodes).toHaveLength(1);
+    const [node] = workletNodes;
+    expect(node.name).toBe("ytmd-room-capture");
+    expect(node.options).toMatchObject({ numberOfOutputs: 0, channelCount: 2 });
+    expect(node.port.postMessage).toHaveBeenCalledWith({ port: { name: "worklet end" } }, [{ name: "worklet end" }]);
+    expect(graphSource.connect).toHaveBeenCalledWith(node);
+    expect(graphSource.connect).not.toHaveBeenCalledWith(graphOut);
+    expect(pagePosts).toEqual([{ data: { type: "ytmd-room-capture-port" }, ports: [{ name: "outgoing end" }] }]);
   });
 
-  it("reports a failed encoder setup instead of running half started", () => {
-    configureEncoder = () => {
-      throw new Error("codec unsupported");
-    };
+  it("reports a capture module that fails to load", async () => {
+    addModule.mockReturnValue(Promise.reject(new Error("blocked by policy")));
 
     run(enableSource);
+    await settle();
 
-    expect(post).toHaveBeenCalledWith("rooms", "captureStatus", { error: "Error: codec unsupported" });
-    expect(post).not.toHaveBeenCalledWith("rooms", "captureStatus", expect.objectContaining({ cfg: expect.anything() }));
-    expect(captureState()?.flushTimer).toBe(0);
+    expect(post).toHaveBeenCalledWith("rooms", "captureStatus", { error: "Error: blocked by policy" });
+    expect(workletNodes).toHaveLength(0);
+  });
 
+  it("builds nothing when capture is torn down while the module is still loading", async () => {
+    run(enableSource);
     run(disableSource);
-    expect(captureState()).toBeUndefined();
-    expect(nativeVolume).toBeCloseTo(0.4, 10);
+    await settle();
+
+    expect(workletNodes).toHaveLength(0);
+    expect(pagePosts).toEqual([]);
   });
 });
 
 describe("rooms audio capture teardown", () => {
-  it("clears the flag even when closing the capture context throws", () => {
+  it("clears the flag even when stopping the capture node throws", async () => {
     run(enableSource);
-    closeCapture = () => {
-      throw new Error("context already closed");
-    };
+    await settle();
+    workletNodes[0].port.postMessage.mockImplementation(() => {
+      throw new Error("port already closed");
+    });
 
     run(disableSource);
 
@@ -205,16 +205,13 @@ describe("rooms audio capture teardown", () => {
     expect(captureState()).toBeUndefined();
   });
 
-  it("stops the flush timer so the page stops posting batches", () => {
+  it("tells the capture node to stop", async () => {
     run(enableSource);
-    const state = captureState();
-    state?.pending.push({ t: 0, d: new ArrayBuffer(4) });
+    await settle();
 
     run(disableSource);
-    post.mockClear();
-    vi.advanceTimersByTime(2000);
 
-    expect(post).not.toHaveBeenCalled();
+    expect(workletNodes[0].port.postMessage).toHaveBeenLastCalledWith({ stop: true });
   });
 
   it("hands the slider back at the volume the user left it on", () => {
@@ -228,8 +225,9 @@ describe("rooms audio capture teardown", () => {
     expect(video.removeEventListener).toHaveBeenCalledWith("volumechange", expect.any(Function));
   });
 
-  it("puts the ear path back on the shared graph and closes the encoder", () => {
+  it("puts the ear path back on the shared graph", async () => {
     run(enableSource);
+    await settle();
     graphSource.connect.mockClear();
     graphSource.disconnect.mockClear();
 
@@ -237,7 +235,6 @@ describe("rooms audio capture teardown", () => {
 
     expect(graphSource.disconnect).toHaveBeenCalled();
     expect(graphSource.connect).toHaveBeenCalledWith(graphOut);
-    expect(encoderClosed).toBe(1);
   });
 
   it("does nothing when no capture is running", () => {

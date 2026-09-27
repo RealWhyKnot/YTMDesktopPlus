@@ -56,13 +56,11 @@ describe("rooms bundled addon", () => {
     expect(provider()).toBeUndefined();
   });
 
-  it("listens for the capture traffic its page script posts", async () => {
+  it("listens only for the capture status its page script posts", async () => {
     const { ctx, captured } = fakeAddonContext({ manifest: roomsAddon.manifest });
     await roomsAddon.activate(ctx);
 
-    expect(Object.keys(captured.messageCallbacks).sort()).toEqual(["audioChunks", "captureStatus"]);
-    // Malformed payloads never reach the publisher.
-    expect(() => captured.messageCallbacks["audioChunks"][0]("not packets")).not.toThrow();
+    expect(Object.keys(captured.messageCallbacks)).toEqual(["captureStatus"]);
     expect(() => captured.messageCallbacks["captureStatus"][0](null)).not.toThrow();
   });
 });

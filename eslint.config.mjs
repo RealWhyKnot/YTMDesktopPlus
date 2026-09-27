@@ -42,5 +42,11 @@ export default defineConfig(
       "no-undef": "off"
     }
   },
+  {
+    files: ["**/*.worklet.js"],
+    languageOptions: {
+      globals: globals.audioWorklet
+    }
+  },
   prettier
 );

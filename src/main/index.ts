@@ -11,6 +11,7 @@ import {
   MenuItemConstructorOptions,
   nativeTheme,
   net,
+  protocol,
   Notification,
   safeStorage,
   screen,
@@ -62,6 +63,7 @@ import { enableIntegrationsAtBoot, syncIntegrations, type IntegrationRegistratio
 import { registerWindowControlIpc } from "./ipc/window-controls";
 import { registerStoreBridgeIpc } from "./ipc/store-bridge";
 import { buildUpdateFeedUrl, isNewerVersion, newerVersionFromFeed } from "../shared/update-feed";
+import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, mediaHost, serveMediaScheme } from "./media/media-host";
 
 // Injected by Forge's Vite plugin; empty in packaged builds.
 declare const ALL_WINDOWS_VITE_DEV_SERVER_URL: string;
@@ -175,6 +177,8 @@ watchMainThreadStalls({ report: blockedMs => log.warn(`Main thread blocked for $
 
 // Enforce sandbox on all renderers
 app.enableSandbox();
+
+protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: MEDIA_SCHEME_PRIVILEGES }]);
 
 // appMenu allows for some basic windows management, editMenu allow for copy and paste shortcuts on MacOS
 const template: MenuItemConstructorOptions[] = [{ role: "appMenu", label: "YTMDesktop+" }, { role: "editMenu" }];
@@ -1447,6 +1451,29 @@ app.on("ready", async () => {
     playerStateStore.updateFromStore(likeStatus, volume, muted, adPlaying);
   });
 
+  ipcMain.on("ytmView:roomCapturePort", event => {
+    const port = event.ports[0];
+    if (!port) return;
+    if (!isYtmViewSender(event.sender)) {
+      port.close();
+      return;
+    }
+
+    mediaHost.acceptPagePort(port);
+  });
+
+  ipcMain.on("mediaHost:audioChunks", (event, packets: unknown) => {
+    if (!mediaHost.ownsWebContents(event.sender)) return;
+
+    mediaHost.receivePackets(packets);
+  });
+
+  ipcMain.on("mediaHost:captureStatus", (event, status: unknown) => {
+    if (!mediaHost.ownsWebContents(event.sender)) return;
+
+    mediaHost.receiveStatus(status);
+  });
+
   ipcMain.on("ytmView:addonMessage", (event, addonId: string, name: string, payload: unknown) => {
     if (!isYtmViewSender(event.sender)) return;
     if (typeof addonId !== "string" || typeof name !== "string") return;
@@ -1671,6 +1698,8 @@ app.on("ready", async () => {
     return callback(false);
   });
 
+  session.fromPartition(app.isPackaged ? "persist:ytmview" : "persist:ytmview-dev").protocol.handle(MEDIA_SCHEME, serveMediaScheme);
+
   log.info("Setup permission handlers");
 
   // Blocking is bound to the partition rather than the view, so it outlives a
@@ -1810,6 +1839,22 @@ app.on("ready", async () => {
 
   const externalAddonScans = scanExternalAddons(addonsDirPath);
   addonManager.registerExternal(externalAddonScans);
+
+  mediaHost.provide(() => {
+    const window = createAppWindow({
+      width: 1,
+      height: 1,
+      show: false,
+      skipTaskbar: true,
+      focusable: false,
+      webPreferences: {
+        preload: path.join(__dirname, "../renderer/windows/media-host/preload.js"),
+        backgroundThrottling: false
+      }
+    });
+    loadWindowEntry(window, "media-host", ALL_WINDOWS_VITE_DEV_SERVER_URL);
+    return window;
+  });
 
   await addonManager.boot();
   log.info("Addons booted");

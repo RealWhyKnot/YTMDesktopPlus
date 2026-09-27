@@ -15,7 +15,8 @@ export default defineConfig({
         main_window: "src/renderer/windows/main/index.html",
         settings_window: "src/renderer/windows/settings/index.html",
         authorize_companion_window: "src/renderer/windows/authorize-companion/index.html",
-        room_window: "src/renderer/windows/room/index.html"
+        room_window: "src/renderer/windows/room/index.html",
+        media_host_window: "src/renderer/windows/media-host/index.html"
       },
       output: {
         manualChunks: {

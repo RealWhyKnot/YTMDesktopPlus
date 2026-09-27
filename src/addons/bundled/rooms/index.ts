@@ -7,6 +7,7 @@ import { AutoRoom } from "../../../main/integrations/listen-along/auto-room";
 import { RelayClient } from "../../../main/integrations/listen-along/relay-client";
 import { RoomSession } from "../../../main/integrations/listen-along/room-session";
 import { registerRoomIpc } from "./ipc";
+import { mediaHost } from "../../../main/media/media-host";
 
 // Listen Along rooms as a bundled addon: hosting and joining relay rooms, the
 // audio stream to browser listeners, the automatic room that follows Discord
@@ -54,7 +55,19 @@ const roomsAddon: BundledAddonDefinition = {
 
     // The capture scripts live under this addon's script namespace; the
     // capture class runs them through the same channel it registered on.
-    const audioStreamCapture = new AudioStreamCapture(name => ctx.ytmview.runScript(name));
+    const audioStreamCapture = new AudioStreamCapture(name => ctx.ytmview.runScript(name), {
+      start: () =>
+        mediaHost.start({
+          onPackets: payload => {
+            const cleaned = cleanAudioPackets(payload);
+            if (cleaned.length > 0) audioPublisher.handleChunks(cleaned);
+          },
+          onStatus: status => {
+            if (typeof status === "object" && status !== null) audioPublisher.handleCaptureStatus(status as AudioCaptureStatus);
+          }
+        }),
+      stop: () => mediaHost.stop()
+    });
     for (const { name, script } of audioStreamCapture.getYTMScripts()) {
       ctx.ytmview.registerScript(name, script);
     }
@@ -185,11 +198,6 @@ const roomsAddon: BundledAddonDefinition = {
       autoRoom.evaluate();
     });
 
-    // Encoded capture traffic the page script posts to this addon.
-    ctx.ytmview.onMessage("audioChunks", payload => {
-      const cleaned = cleanAudioPackets(payload);
-      if (cleaned.length > 0) audioPublisher.handleChunks(cleaned);
-    });
     ctx.ytmview.onMessage("captureStatus", status => {
       if (typeof status !== "object" || status === null) return;
       audioPublisher.handleCaptureStatus(status as AudioCaptureStatus);

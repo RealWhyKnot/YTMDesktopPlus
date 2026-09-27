@@ -17,25 +17,22 @@ export function cleanAudioPackets(payload: unknown): BatchPacket[] {
   return cleaned;
 }
 
-// Captures the YTM page's audio for Listen Along rooms. The page-side script
-// splits the shared audio graph into an ear path and a broadcast tap, moves
-// the local volume onto the ear path so the stream is immune to it, and
-// encodes the tap with WebCodecs. Encoded packets arrive as addon messages;
-// this class only manages injection. Injection is driven by the addon that
-// owns it, which passes runScript in, so this never talks to the view
-// directly.
 export default class AudioStreamCapture {
   private hasInjected = false;
   private isEnabled = false;
   private waitForYTMView = true;
   private listening = false;
 
-  constructor(private readonly runScript: (name: CaptureScript) => void) {}
+  constructor(
+    private readonly runScript: (name: CaptureScript) => void,
+    private readonly host: { start(): void; stop(): void }
+  ) {}
 
   public enable(): void {
     this.isEnabled = true;
     if (this.hasInjected || this.waitForYTMView) return;
 
+    this.host.start();
     this.runScript("enable");
     this.hasInjected = true;
     if (this.listening) this.runScript("listening-on");
@@ -53,6 +50,7 @@ export default class AudioStreamCapture {
 
     this.runScript("disable");
     this.hasInjected = false;
+    this.host.stop();
   }
 
   public getYTMScripts(): { name: CaptureScript; script: string }[] {

@@ -4,7 +4,6 @@
 
   state.stopped = true;
   delete window.__ytmdAudioStream;
-  clearInterval(state.flushTimer);
 
   const step = fn => {
     try {
@@ -18,12 +17,8 @@
   const video = document.querySelector("video");
 
   step(() => {
-    if (state.reader) state.reader.cancel().catch(() => {});
+    if (state.node) state.node.port.postMessage({ stop: true });
   });
-  step(() => {
-    if (state.encoder && state.encoder.state !== "closed") state.encoder.close();
-  });
-  step(() => state.captureContext.close().catch(() => {}));
 
   // Hand the volume back to the element exactly as loud as it was.
   if (video) {

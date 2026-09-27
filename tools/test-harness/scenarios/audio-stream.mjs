@@ -72,7 +72,7 @@ export default async function audioStream(ctx) {
       60000
     );
 
-    await ctx.step("capture pipeline is running", () => ctx.waitYtm("window.__ytmdAudioStream?.batchesSent ?? 0", sent => Number(sent) > 0, 30000), 35000);
+    await ctx.step("capture pipeline is running", () => ctx.waitYtm("!!window.__ytmdAudioStream?.node", running => running === true, 30000), 35000);
 
     await ctx.step(
       "bot receives config, metadata and a monotonic stream",
@@ -147,8 +147,8 @@ export default async function audioStream(ctx) {
           if (tail[i] <= tail[i - 1]) throw new Error(`batch sequence not monotonic across the change: ${tail.join(",")}`);
         }
 
-        const sent = Number(await ctx.evalYtm("window.__ytmdAudioStream?.batchesSent ?? 0"));
-        if (sent <= 0) throw new Error("host capture pump stopped at the track change");
+        const running = await ctx.evalYtm("!!window.__ytmdAudioStream?.node");
+        if (running !== true) throw new Error("host capture node went away at the track change");
       },
       90000
     );

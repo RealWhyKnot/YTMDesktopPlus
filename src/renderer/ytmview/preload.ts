@@ -76,6 +76,12 @@ contextBridge.exposeInMainWorld("ytmd", {
   ...(YTMD_DEV_TOOLS ? { sendDevProbe: (batch: unknown[]) => ipcRenderer.send("ytmView:devProbe", batch) } : {})
 });
 
+window.addEventListener("message", event => {
+  if (event.source !== window || event.origin !== "https://music.youtube.com") return;
+  if (event.data?.type !== "ytmd-room-capture-port" || !event.ports[0]) return;
+  ipcRenderer.postMessage("ytmView:roomCapturePort", null, [event.ports[0]]);
+});
+
 const THEME_STYLE_ID = "ytmd-theme";
 
 function applyThemeStyle(css: string) {

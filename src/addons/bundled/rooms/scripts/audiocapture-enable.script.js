@@ -20,7 +20,6 @@
   };
 
   const localGain = context.createGain();
-  const tap = context.createMediaStreamDestination();
   let virtualVolume = video.volume;
   const mutedDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "muted");
   let virtualMuted = video.muted;
@@ -32,7 +31,6 @@
   base.source.disconnect();
   base.source.connect(localGain);
   localGain.connect(base.out);
-  base.source.connect(tap);
   nativeDesc.set.call(video, 1);
 
   const effectiveVolume = () => (ratioActive() ? Math.pow(virtualVolume, EXPONENT) : virtualVolume);
@@ -73,86 +71,40 @@
   const onVolumeChange = () => postMuted();
   video.addEventListener("volumechange", onVolumeChange);
 
-  // The shared context runs at the device rate, which Opus may not accept, so
-  // the tap crosses into a dedicated capture context that resamples to 48k.
-  const captureContext = new AudioContext({ sampleRate: 48000 });
-  const bridgeSource = captureContext.createMediaStreamSource(tap.stream);
-  const bridgeDest = captureContext.createMediaStreamDestination();
-  bridgeSource.connect(bridgeDest);
-  if (captureContext.state === "suspended") captureContext.resume();
-
   const state = {
     localGain,
-    tap,
-    captureContext,
-    bridgeSource,
-    bridgeDest,
+    node: null,
     nativeDesc,
     effectiveVolume,
     mutedDesc,
     virtualMuted: () => virtualMuted,
     setListening,
     onVolumeChange,
-    pending: [],
-    flushTimer: 0,
-    reader: null,
-    encoder: null,
-    stopped: false,
-    batchesSent: 0
+    stopped: false
   };
   window.__ytmdAudioStream = state;
 
-  try {
-    state.encoder = new AudioEncoder({
-      output: chunk => {
-        const data = new ArrayBuffer(chunk.byteLength);
-        chunk.copyTo(data);
-        state.pending.push({ t: chunk.timestamp, d: data });
-      },
-      error: err => {
-        window.ytmd.postAddonMessage("rooms", "captureStatus", { error: String(err) });
-      }
+  context.audioWorklet
+    .addModule("ytmd-media://capture/worklet.js")
+    .then(() => {
+      if (state.stopped) return;
+      const node = new AudioWorkletNode(context, "ytmd-room-capture", {
+        numberOfInputs: 1,
+        numberOfOutputs: 0,
+        channelCount: 2,
+        channelCountMode: "explicit",
+        channelInterpretation: "speakers"
+      });
+      const channel = new MessageChannel();
+      node.port.postMessage({ port: channel.port1 }, [channel.port1]);
+      base.source.connect(node);
+      state.node = node;
+      window.postMessage({ type: "ytmd-room-capture-port" }, "*", [channel.port2]);
+    })
+    .catch(error => {
+      window.ytmd.postAddonMessage("rooms", "captureStatus", { error: String(error) });
     });
-    state.encoder.configure({ codec: "opus", sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 });
 
-    const processor = new MediaStreamTrackProcessor({ track: bridgeDest.stream.getAudioTracks()[0], maxBufferSize: 1000 });
-    state.reader = processor.readable.getReader();
-  } catch (error) {
-    window.ytmd.postAddonMessage("rooms", "captureStatus", { error: String(error) });
-    return "";
-  }
-
-  const pump = async () => {
-    for (;;) {
-      let result;
-      try {
-        result = await state.reader.read();
-      } catch {
-        return;
-      }
-      if (result.done || state.stopped) return;
-      try {
-        if (state.encoder.state === "configured") state.encoder.encode(result.value);
-      } catch (error) {
-        result.value.close();
-        window.ytmd.postAddonMessage("rooms", "captureStatus", { error: String(error) });
-        return;
-      }
-      result.value.close();
-    }
-  };
-  pump().catch(error => {
-    window.ytmd.postAddonMessage("rooms", "captureStatus", { error: String(error) });
-  });
-
-  state.flushTimer = setInterval(() => {
-    if (state.pending.length === 0) return;
-    const packets = state.pending;
-    state.pending = [];
-    state.batchesSent += 1;
-    window.ytmd.postAddonMessage("rooms", "audioChunks", packets);
-  }, 100);
-
-  window.ytmd.postAddonMessage("rooms", "captureStatus", { cfg: { sr: 48000, ch: 2, br: 128000 }, muted: virtualMuted });
+  window.ytmd.postAddonMessage("rooms", "captureStatus", { muted: virtualMuted });
   return "";
 })
