@@ -13,10 +13,11 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 // its stdin closes, and the app's test seam exits when the inherited stdin
 // closes, so if this runner dies for any reason the whole tree follows.
 // Nothing is ever written to it: forge treats input as the restart command.
-export function launchApp({ profileDir, cdpPort, logPath, env = {} }) {
+export function launchApp({ profileDir, cdpPort, inspectPort = null, logPath, env = {} }) {
   const forgeStart = path.join(REPO_ROOT, "node_modules", "@electron-forge", "cli", "dist", "electron-forge-start.js");
+  const inspect = inspectPort ? { forge: ["--inspect-electron"], app: [`--inspect=${inspectPort}`] } : { forge: [], app: [] };
   const fd = openSync(logPath, "w");
-  const child = spawn(process.execPath, [forgeStart], {
+  const child = spawn(process.execPath, [forgeStart, ...inspect.forge, "--", "--disable-features=CalculateNativeWinOcclusion", ...inspect.app], {
     cwd: REPO_ROOT,
     stdio: ["pipe", fd, fd],
     env: {

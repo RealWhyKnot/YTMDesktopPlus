@@ -8,6 +8,8 @@
 import WebSocket from "ws";
 import { hooksReadyStep, playbackFixture, roomIntegrationsFixture } from "./lib.mjs";
 
+export const inspectMain = true;
+
 export const fixture = {
   playback: playbackFixture(),
   integrations: roomIntegrationsFixture(),
@@ -19,11 +21,13 @@ export const fixture = {
 
 const VIDEO_ID = "dQw4w9WgXcQ";
 const NEXT_VIDEO_ID = "9bZkp7q19f0";
+const BLOCK_MS = 3000;
+const MAX_ARRIVAL_GAP_MS = 300;
 const SETTINGS_WINDOW = /windows\/settings\//;
 const ROOM_WINDOW = /windows\/room\//;
 
 export default async function audioStream(ctx) {
-  const bot = { socket: null, frames: [], batches: [] };
+  const bot = { socket: null, frames: [], batches: [], arrivals: [] };
 
   try {
     await hooksReadyStep(ctx);
@@ -109,6 +113,7 @@ export default async function audioStream(ctx) {
           };
           socket.on("message", (data, isBinary) => {
             if (isBinary) {
+              bot.arrivals.push(Date.now());
               const chunk = /** @type {Buffer} */ (data);
               bot.batches.push(new DataView(chunk.buffer, chunk.byteOffset, chunk.byteLength).getUint32(4));
             } else {
@@ -120,6 +125,32 @@ export default async function audioStream(ctx) {
           socket.on("error", reject);
         }),
       65000
+    );
+
+    await ctx.step(
+      `the stream keeps flowing while main is blocked for ${BLOCK_MS}ms`,
+      async () => {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const blockedAt = Date.now();
+        await ctx.evalMainProcess(`(() => { const end = Date.now() + ${BLOCK_MS}; while (Date.now() < end); return true; })()`);
+        const releasedAt = Date.now();
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const from = blockedAt - 1000;
+        const to = releasedAt + 1000;
+        const points = [from, ...bot.arrivals.filter(at => at > from && at < to), to];
+        const gaps = points.slice(1).map((at, index) => at - points[index]);
+        const maxGapMs = Math.max(...gaps);
+        ctx.emit("probe", {
+          blockedMs: releasedAt - blockedAt,
+          batchesInWindow: points.length - 2,
+          maxArrivalGapMs: maxGapMs,
+          gapsOver300ms: gaps.filter(gap => gap > MAX_ARRIVAL_GAP_MS).length
+        });
+        if (releasedAt - blockedAt < BLOCK_MS) throw new Error(`main was blocked for only ${releasedAt - blockedAt}ms`);
+        if (maxGapMs > MAX_ARRIVAL_GAP_MS) throw new Error(`no batch reached the listener for ${maxGapMs}ms while main was blocked`);
+      },
+      30000
     );
 
     await ctx.step(

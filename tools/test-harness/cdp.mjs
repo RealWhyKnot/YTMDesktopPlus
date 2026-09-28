@@ -13,7 +13,7 @@ export async function listTargets(port) {
 
 export async function evalOnTarget(port, urlPattern, expression, { awaitPromise = true, timeoutMs = 10000 } = {}) {
   const targets = await listTargets(port);
-  const target = targets.find(t => t.type === "page" && urlPattern.test(t.url));
+  const target = targets.find(t => (t.type === "page" || t.type === "node") && urlPattern.test(t.url));
   if (!target) throw new Error(`no target matching ${urlPattern}`);
 
   const ws = new WebSocket(target.webSocketDebuggerUrl);

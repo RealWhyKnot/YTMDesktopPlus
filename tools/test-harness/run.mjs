@@ -105,7 +105,9 @@ for (; cdpPort < 9343; cdpPort++) {
   }
 }
 
-emit("run-start", { scenario: scenarioName, runDir, cdpPort, timeoutSeconds });
+const inspectPort = scenario.inspectMain ? cdpPort + 6 : null;
+
+emit("run-start", { scenario: scenarioName, runDir, cdpPort, inspectPort, timeoutSeconds });
 
 const sweptBefore = sweep();
 if (sweptBefore.length) emit("prelaunch-sweep", { killed: sweptBefore });
@@ -168,7 +170,7 @@ logTail = createLogTail({
 });
 
 phase = "launch";
-child = launchApp({ profileDir, cdpPort, logPath: forgeLog, env: scenario.env ?? {} });
+child = launchApp({ profileDir, cdpPort, inspectPort, logPath: forgeLog, env: scenario.env ?? {} });
 emit("launched", { pid: child.pid });
 child.on("exit", code => emit("app-process-exit", { code }));
 
@@ -185,6 +187,7 @@ const ctx = {
     throw new EnvironmentBlocked(reason);
   },
   evalMain: expr => evalOnTarget(cdpPort, MAIN_WINDOW, expr),
+  evalMainProcess: expr => evalOnTarget(inspectPort, /^file:/, expr),
   evalYtm: expr => evalOnTarget(cdpPort, /music\.youtube\.com/, expr),
   matchedStylesYtm: selectors => matchedStylesOnTarget(cdpPort, YTM_VIEW, selectors),
   screenshotYtm: () => screenshotOnTarget(cdpPort, YTM_VIEW),
