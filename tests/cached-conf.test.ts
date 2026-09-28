@@ -55,6 +55,18 @@ describe("CachedConf", () => {
     expect(store.get("playback")).toEqual({ volume: 50, tags: [] });
   });
 
+  it("copies only the requested value on a keyed read", () => {
+    const { store } = makeStore();
+    store.get("state");
+    const clone = vi.spyOn(globalThis, "structuredClone");
+
+    const tags = store.get("playback.tags");
+    tags.push("mutated");
+
+    expect(clone.mock.calls.map(([value]) => value)).toEqual([[]]);
+    expect(store.get("playback").tags).toEqual([]);
+  });
+
   it("returns what was just written and tells change listeners the old and new values", () => {
     const { store } = makeStore();
     const seen: [unknown, unknown][] = [];
