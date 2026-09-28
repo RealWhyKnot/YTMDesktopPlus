@@ -1162,6 +1162,10 @@ const createMainWindow = (): void => {
       });
     }
   });
+  mainWindow.once("ready-to-show", () => {
+    trayController.createTray();
+    log.info("Created tray icon");
+  });
 
   // and load the index.html of the app.
   loadWindowEntry(mainWindow, "main", ALL_WINDOWS_VITE_DEV_SERVER_URL);
@@ -1735,11 +1739,6 @@ app.on("ready", async () => {
 
   // Register global shortcuts
   registerShortcuts();
-
-  // Create the tray
-  trayController.createTray();
-
-  log.info("Created tray icon");
 
   // The old appearance.customCSSPath setting becomes a styles-only addon
   const appearanceRaw = store.get("appearance") as unknown as Record<string, unknown>;

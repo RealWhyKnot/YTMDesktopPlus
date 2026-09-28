@@ -112,6 +112,7 @@ export function createTrayController(deps: TrayDeps): TrayController {
 
   return {
     createTray() {
+      if (tray) return;
       tray = new Tray(getTrayIconPath());
       tray.setToolTip("YouTube Music Desktop");
       tray.setContextMenu(Menu.buildFromTemplate(buildTrayContextMenu()));
@@ -127,7 +128,7 @@ export function createTrayController(deps: TrayDeps): TrayController {
       });
     },
     setTrayIcon() {
-      tray.setImage(getTrayIconPath());
+      tray?.setImage(getTrayIconPath());
     },
     refreshTrayMenu() {
       if (tray) tray.setContextMenu(Menu.buildFromTemplate(buildTrayContextMenu()));
