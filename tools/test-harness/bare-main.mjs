@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, session } from "electron";
 
 const profile = process.env.YTMD_BARE_PROFILE;
 app.setPath("userData", profile);
@@ -7,6 +7,11 @@ app.commandLine.appendSwitch("mute-audio");
 app.commandLine.appendSwitch("remote-debugging-port", process.env.YTMD_BARE_CDP_PORT);
 
 app.whenReady().then(() => {
+  session
+    .fromPartition("persist:ytmview-dev")
+    .webRequest.onBeforeSendHeaders({ urls: ["*://*.youtube.com/api/stats/playback*", "*://*.youtube.com/api/stats/watchtime*"] }, (_details, callback) =>
+      callback({ cancel: true })
+    );
   const window = new BrowserWindow({
     width: 1280,
     height: 760,

@@ -1,4 +1,5 @@
-import { app, ipcMain } from "electron";
+import { app, ipcMain, type Session } from "electron";
+import log from "electron-log";
 import path from "path";
 
 // Development and test-run seams, all opt-in through environment variables.
@@ -76,6 +77,22 @@ export function isTestRun(): boolean {
 
 export function isTestClient(): boolean {
   return !!(process.env.YTMD_TEST || process.env.YTMD_TEST_PROFILE);
+}
+
+export const WATCH_HISTORY_WRITES = ["*://*.youtube.com/api/stats/playback*", "*://*.youtube.com/api/stats/watchtime*"];
+
+export function blockWatchHistoryWrites(ytmSession: Session) {
+  if (!isTestClient()) return;
+
+  const logged = new Set<string>();
+  ytmSession.webRequest.onBeforeSendHeaders({ urls: WATCH_HISTORY_WRITES }, (details, callback) => {
+    const endpoint = new URL(details.url).pathname;
+    if (!logged.has(endpoint)) {
+      logged.add(endpoint);
+      log.info(`test-seams: blocked watch history write ${endpoint}`);
+    }
+    callback({ cancel: true });
+  });
 }
 
 // Returns the hook stage the current YTM view creation should break, consuming

@@ -44,7 +44,7 @@ import VolumeRatio from "./integrations/volume-ratio";
 import NonStop from "./integrations/nonstop";
 import AdBlocker from "./integrations/ad-blocker";
 import ListenAlong from "./integrations/listen-along";
-import { initializeTestSeams, isTestClient, isTestRun } from "./test-seams";
+import { blockWatchHistoryWrites, initializeTestSeams, isTestClient, isTestRun } from "./test-seams";
 import { migrateLegacyProfile } from "./profile-migration";
 import { cancelCue, cueTrack, getPlaylists, providePlaybackView, sendPlaybackCommand } from "./playback";
 import { createLaunchPause } from "./playback/launch-pause";
@@ -1715,6 +1715,7 @@ app.on("ready", async () => {
   });
 
   session.fromPartition(app.isPackaged ? "persist:ytmview" : "persist:ytmview-dev").protocol.handle(MEDIA_SCHEME, serveMediaScheme);
+  blockWatchHistoryWrites(session.fromPartition(app.isPackaged ? "persist:ytmview" : "persist:ytmview-dev"));
 
   log.info("Setup permission handlers");
 
