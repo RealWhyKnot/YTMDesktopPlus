@@ -4,6 +4,7 @@
   "version": "2.0.11",
   "description": "Desktop app for YouTube Music with companion server, Discord presence, and Last.fm scrobbling",
   "main": ".vite/main/index.js",
+  "type": "commonjs",
   "private": true,
   "homepage": "https://github.com/RealWhyKnot/YTMDesktopPlus",
   "repository": {
