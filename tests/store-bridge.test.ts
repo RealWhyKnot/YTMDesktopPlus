@@ -67,3 +67,33 @@ describe("settings:setMany", () => {
     expect(changes).toHaveBeenCalledOnce();
   });
 });
+
+describe("memoryStore:subscribe", () => {
+  function subscriber(allowed: boolean) {
+    const listeners = new Map<string, (event: unknown, ...args: unknown[]) => void>();
+    const ipc: IpcRegistrar = {
+      on: (channel, listener) => {
+        listeners.set(channel, listener);
+      },
+      handle: () => {}
+    };
+    const state = { ytmViewLoading: true, ytmViewLoadingStatus: "Loaded" };
+    registerStoreBridgeIpc(ipc, {
+      memoryStore: { getState: () => state },
+      isMemoryStoreSender: () => allowed
+    } as unknown as StoreBridgeIpcDeps);
+    const sender = { send: vi.fn() };
+    listeners.get("memoryStore:subscribe")({ sender });
+    return { sender, state };
+  }
+
+  it("answers a known window with the whole memory state", () => {
+    const { sender, state } = subscriber(true);
+
+    expect(sender.send).toHaveBeenCalledWith("memoryStore:state", state);
+  });
+
+  it("ignores a sender that may not read the memory store", () => {
+    expect(subscriber(false).sender.send).not.toHaveBeenCalled();
+  });
+});

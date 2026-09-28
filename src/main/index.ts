@@ -1582,12 +1582,6 @@ app.on("ready", async () => {
     encryptString: value => safeStorage.encryptString(value).toString("hex")
   });
 
-  ipcMain.on("memoryStore:subscribe", event => {
-    if (!isMemoryStoreSender(event.sender)) return;
-
-    event.sender.send("memoryStore:state", memoryStore.getState());
-  });
-
   // Handle addons ipc
   ipcMain.handle("addons:getAll", event => {
     if (!isMemoryStoreSender(event.sender)) return;

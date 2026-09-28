@@ -64,6 +64,7 @@ describe("ipc channel names", () => {
     expect(capture(ipc => registerStoreBridgeIpc(ipc, deps))).toEqual([
       "memoryStore:get",
       "memoryStore:set",
+      "memoryStore:subscribe",
       "safeStorage:decryptString",
       "safeStorage:encryptString",
       "settings:get",

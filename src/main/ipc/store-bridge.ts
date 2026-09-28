@@ -29,6 +29,12 @@ export function registerStoreBridgeIpc(ipc: IpcRegistrar, deps: StoreBridgeIpcDe
     return deps.memoryStore.get(key);
   });
 
+  ipc.on("memoryStore:subscribe", event => {
+    if (!deps.isMemoryStoreSender(event.sender)) return;
+
+    event.sender.send("memoryStore:state", deps.memoryStore.getState());
+  });
+
   // Handle settings store ipc
   ipc.on("settings:set", (event, key: string, value?: unknown) => {
     if (!deps.isSettingsSender(event.sender)) return;
