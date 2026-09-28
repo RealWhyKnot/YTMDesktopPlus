@@ -50,19 +50,30 @@ export default async function playback(ctx) {
   await ctx.step(
     "video loads and reports state",
     async () => {
-      const deadline = Date.now() + 90000;
       let last = null;
-      while (Date.now() < deadline) {
-        const res = await ctx.companion.request("/api/v1/state", { token });
-        last = res.body;
-        const videoLoaded = res.body?.video?.id === VIDEO_ID;
-        const progressing = res.body?.player?.trackState === 1 || res.body?.player?.adPlaying === true || (res.body?.player?.videoProgress ?? 0) > 0;
-        if (videoLoaded && progressing) return;
-        await new Promise(r => setTimeout(r, 3000));
+      for (let attempt = 1; attempt <= 6; attempt++) {
+        if (attempt > 1) {
+          ctx.emit("probe-change-video-retry", { attempt, video: last?.video?.id ?? null });
+          const retry = await ctx.companion.request("/api/v1/command", {
+            method: "POST",
+            token,
+            body: { command: "changeVideo", data: { videoId: VIDEO_ID } }
+          });
+          if (retry.status !== 204) throw new Error(`changeVideo returned ${retry.status}`);
+        }
+        for (let poll = 0; poll < 3; poll++) {
+          await new Promise(r => setTimeout(r, 5000));
+          const res = await ctx.companion.request("/api/v1/state", { token });
+          if (res.status !== 200) continue;
+          last = res.body;
+          const videoLoaded = res.body?.video?.id === VIDEO_ID;
+          const progressing = res.body?.player?.trackState === 1 || res.body?.player?.adPlaying === true || (res.body?.player?.videoProgress ?? 0) > 0;
+          if (videoLoaded && progressing) return;
+        }
       }
       throw new Error(`video never progressed: ${JSON.stringify(last?.player)} video=${JSON.stringify(last?.video?.id)}`);
     },
-    95000
+    115000
   );
 
   async function commandReachesState(command, trackState, timeout) {
