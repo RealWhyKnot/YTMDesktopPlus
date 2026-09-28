@@ -1,6 +1,50 @@
 # Changelog
 
 ## Unreleased
+- test(harness): retry changeVideo in the playback scenario and poll state within its rate limit
+- fix(test-seams): block watch history writes from test clients
+- fix(test-seams): keep test clients away from discord, the ytmdplus handler and login items
+- test(harness): let the app pick its own cdp and inspector ports
+- test(harness): limit the process sweep to this checkout's harness runs
+- test(harness): ignore binary audio frames in the auto-room listener
+- build(deps): declare atomically and dot-prop, which the config store imports directly
+- refactor(ipc): register the memory store subscribe channel with the store bridge
+- perf(main): declare the package commonjs so node skips module format detection
+- perf(tray): create the tray after the main window first shows
+- perf(main): coalesce ytm view bounds updates while the window resizes
+- perf(ytmview): update the player bar buttons only when the queue or toggle states change
+- perf(memory-store): send only the changed key to windows
+- fix(rooms): stop the audio uplink process once hosting ends
+- fix(rooms): log a fatal uplink process error instead of throwing it in main
+- perf(rooms): send room audio to the relay from a utility process
+- fix(rooms): gate ad audio in the page and close the pause gate only on an explicit pause
+- test(harness): block main for 3s while a room streams and check batches keep arriving
+- test(harness): check settings survive quit and a revoked companion token is refused
+- fix(store): finish a config write in flight before quitting
+- perf(companion): decrypt auth tokens once per stored token list
+- perf(logging): queue log file writes, writing synchronously on crash and quit
+- perf(main): set the login item once per launch and when start on boot changes
+- perf(settings): save a settings batch or window state in one config write
+- perf(store): write config changes off the main thread
+- perf(store): copy only the requested value on a keyed config read
+- test(harness): declare the page globals the first-skip scenario reads
+- feat(main): name the work that overlapped each main thread stall
+- test(harness): add a first-skip scenario and a runner that repeats it without the app
+- fix(store): backfill addon states and settings a stored config lacks
+- test(harness): check a late remote next starts the next track from 0
+- fix(ytmview): send remote next through the player bar's Next button
+- fix(store): stop config migrations from erasing default sections
+- fix(logging): ignore preload bootstrap errors from blank initial documents
+- test(harness): retry the first play and check a muted host keeps streaming
+- fix(blend): overlap with the song that is ending and advance without restarting it
+- perf(rooms): capture room audio on the audio thread and encode it outside the page
+- perf(ytmview): send player state only when it changes, and the queue in compact form
+- fix(player): survive unreadable queue entries when detecting queue changes
+- feat(main): log when the main thread stays blocked
+- perf(store): serve config reads from memory instead of rereading the file
+- perf(taskbar): touch the thumbnail buttons and progress bar only when they change
+- fix(rooms): queue captured audio through page stalls instead of dropping it
+- fix(rooms): keep streaming to listeners while the host is muted
 - ci: let corepack replace the runner's global yarn shim
 - build: run the toolchain on node 26
 - fix(rooms): keep the leave button inside the listen along window
