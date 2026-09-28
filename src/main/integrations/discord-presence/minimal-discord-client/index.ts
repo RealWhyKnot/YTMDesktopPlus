@@ -4,6 +4,7 @@ import { DiscordActivity } from "./types";
 import { randomUUID } from "crypto";
 import log from "electron-log";
 import { existsSync, statSync } from "node:fs";
+import { isTestClient } from "../../../test-seams";
 
 function directoryExists(dirPath: string): boolean {
   try {
@@ -20,6 +21,8 @@ const IPC_ID_COUNT = 10;
 // is only reachable at all because of the matching --filesystem in
 // forge.config.ts.
 export function getIPCPaths(): string[] {
+  if (isTestClient()) return [];
+
   const ids = Array.from({ length: IPC_ID_COUNT }, (_unused, id) => id);
 
   if (process.platform === "win32") {

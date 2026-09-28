@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import DiscordPresence, { type PresenceButtonsProvider, type RemoteTrackActivity } from "../src/main/integrations/discord-presence";
@@ -363,5 +364,37 @@ describe("getIPCPaths", () => {
 
   it("uses named pipes on windows", () => {
     expect(withPlatform("win32", getIPCPaths)).toEqual(Array.from({ length: 10 }, (_unused, id) => String.raw`\\?\pipe\discord-ipc-` + id));
+  });
+});
+
+describe("test clients", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it.each([
+    ["YTMD_TEST", "1"],
+    ["YTMD_TEST_PROFILE", String.raw`C:\profiles\smoke`]
+  ])("offer no discord socket when %s is set", (variable, value) => {
+    vi.stubEnv(variable, value);
+
+    expect(withPlatform("win32", getIPCPaths)).toEqual([]);
+    expect(withPlatform("linux", getIPCPaths)).toEqual([]);
+  });
+
+  it("never open a socket with presence enabled", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("YTMD_TEST_PROFILE", String.raw`C:\profiles\smoke`);
+    const connect = vi.spyOn(Socket.prototype, "connect");
+    const presence = new DiscordPresence();
+    presence.provide({ get: () => ({}) } as never, { set: vi.fn() } as never);
+
+    presence.enable();
+    await vi.advanceTimersByTimeAsync(15_000);
+    presence.disable();
+
+    expect(connect).not.toHaveBeenCalled();
   });
 });

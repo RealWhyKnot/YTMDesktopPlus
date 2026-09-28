@@ -44,7 +44,7 @@ import VolumeRatio from "./integrations/volume-ratio";
 import NonStop from "./integrations/nonstop";
 import AdBlocker from "./integrations/ad-blocker";
 import ListenAlong from "./integrations/listen-along";
-import { initializeTestSeams, isTestRun } from "./test-seams";
+import { initializeTestSeams, isTestClient, isTestRun } from "./test-seams";
 import { migrateLegacyProfile } from "./profile-migration";
 import { cancelCue, cueTrack, getPlaylists, providePlaybackView, sendPlaybackCommand } from "./playback";
 import { createLaunchPause } from "./playback/launch-pause";
@@ -247,7 +247,7 @@ const deepLinks = createDeepLinkRouter({ hasYtmView: () => ytmView !== null });
 
 // This will register the protocol in development, this is intentional and should stay this way for development purposes
 // Test runs skip it: they should never change system-wide handler registrations.
-if (!isTestRun() && !app.isDefaultProtocolClient("ytmdplus")) {
+if (!isTestClient() && !app.isDefaultProtocolClient("ytmdplus")) {
   if (process.defaultApp) {
     if (process.argv.length >= 2) {
       log.info("Application set as default protocol client for 'ytmdplus'");
@@ -599,7 +599,7 @@ store.onDidAnyChange(async (newState, oldState) => {
   broadcastToWindows("settings:stateChanged", { includeMainWindow: false }, newState, oldState);
 
   // Setting start on boot in development tends to cause a blank electron executable to start on boot so let's never set that
-  if (process.env.NODE_ENV !== "development" && newState.general.startOnBoot !== appliedStartOnBoot) {
+  if (process.env.NODE_ENV !== "development" && !isTestClient() && newState.general.startOnBoot !== appliedStartOnBoot) {
     appliedStartOnBoot = newState.general.startOnBoot;
     stallTasks.timeSync("app.setLoginItemSettings", () =>
       app.setLoginItemSettings({

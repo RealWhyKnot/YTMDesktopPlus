@@ -1,8 +1,7 @@
 // Verifies that a room exists without anyone starting one when Discord
 // presence is enabled: the app boots, hosts automatically, and a browser bot
 // can subscribe to the room's audio channel. Local use, not suited to CI
-// runners: production relay, live YTM, and if Discord is running the app's
-// presence will briefly show the test track.
+// runners: production relay and live YTM.
 
 import WebSocket from "ws";
 import { hooksReadyStep, playbackFixture, roomIntegrationsFixture } from "./lib.mjs";

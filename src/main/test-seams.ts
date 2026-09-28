@@ -20,7 +20,7 @@ export function initializeTestSeams() {
     app.setAppLogsPath(path.join(profile, "logs"));
   }
 
-  if (!process.env.YTMD_TEST_ALLOW_AUDIO && (profile || process.env.YTMD_TEST)) {
+  if (!process.env.YTMD_TEST_ALLOW_AUDIO && isTestClient()) {
     app.commandLine.appendSwitch("mute-audio");
     app.on("web-contents-created", (_event, contents) => {
       contents.setAudioMuted(true);
@@ -72,6 +72,10 @@ export function initializeTestSeams() {
 
 export function isTestRun(): boolean {
   return !!process.env.YTMD_TEST;
+}
+
+export function isTestClient(): boolean {
+  return !!(process.env.YTMD_TEST || process.env.YTMD_TEST_PROFILE);
 }
 
 // Returns the hook stage the current YTM view creation should break, consuming
