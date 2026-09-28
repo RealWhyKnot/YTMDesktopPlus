@@ -1484,18 +1484,6 @@ app.on("ready", async () => {
     mediaHost.acceptPagePort(port);
   });
 
-  ipcMain.on("mediaHost:audioChunks", (event, packets: unknown) => {
-    if (!mediaHost.ownsWebContents(event.sender)) return;
-
-    mediaHost.receivePackets(packets);
-  });
-
-  ipcMain.on("mediaHost:captureStatus", (event, status: unknown) => {
-    if (!mediaHost.ownsWebContents(event.sender)) return;
-
-    mediaHost.receiveStatus(status);
-  });
-
   ipcMain.on("ytmView:addonMessage", (event, addonId: string, name: string, payload: unknown) => {
     if (!isYtmViewSender(event.sender)) return;
     if (typeof addonId !== "string" || typeof name !== "string") return;

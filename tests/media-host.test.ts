@@ -27,14 +27,19 @@ function fakeWindow() {
 
 function host() {
   const windows: ReturnType<typeof fakeWindow>[] = [];
-  const mediaHost = new MediaHost();
+  const channels: { port1: MessagePortMain; port2: MessagePortMain }[] = [];
+  const mediaHost = new MediaHost(() => {
+    const channel = { port1: fakePort(`host end ${channels.length}`), port2: fakePort(`uplink end ${channels.length}`) };
+    channels.push(channel);
+    return channel;
+  });
   mediaHost.provide(() => {
     const created = fakeWindow();
     windows.push(created);
     return created.window;
   });
-  const consumer = { onPackets: vi.fn(), onStatus: vi.fn() };
-  return { mediaHost, windows, consumer };
+  const consumer = { onStatus: vi.fn() };
+  return { mediaHost, windows, channels, consumer };
 }
 
 describe("media host", () => {
@@ -82,17 +87,51 @@ describe("media host", () => {
     expect(port.close).toHaveBeenCalled();
   });
 
-  it("routes packets and status from its own window to the consumer, and only then", () => {
-    const { mediaHost, windows, consumer } = host();
+  it("gives the loaded window one end of a fresh channel and the uplink the other", () => {
+    const { mediaHost, windows, channels, consumer } = host();
+    const uplink = vi.fn();
+    mediaHost.connectUplink(uplink);
     mediaHost.start(consumer);
+    expect(channels).toHaveLength(0);
 
-    expect(mediaHost.ownsWebContents(windows[0].window.webContents)).toBe(true);
-    expect(mediaHost.ownsWebContents({})).toBe(false);
-    mediaHost.receivePackets(["packet"]);
-    mediaHost.receiveStatus({ cfg: { sr: 48000 } });
+    windows[0].fire("did-finish-load");
 
-    expect(consumer.onPackets).toHaveBeenCalledWith(["packet"]);
-    expect(consumer.onStatus).toHaveBeenCalledWith({ cfg: { sr: 48000 } });
+    expect(channels).toHaveLength(1);
+    expect(windows[0].posted).toEqual([{ channel: "mediaHost:uplinkPort", ports: [channels[0].port1] }]);
+    expect(uplink).toHaveBeenCalledWith(channels[0].port2);
+  });
+
+  it("pairs again for a restarted uplink and for a new window", () => {
+    const { mediaHost, windows, channels, consumer } = host();
+    const first = vi.fn();
+    const second = vi.fn();
+    mediaHost.start(consumer);
+    windows[0].fire("did-finish-load");
+    mediaHost.connectUplink(first);
+
+    mediaHost.connectUplink(second);
+    expect(second).toHaveBeenCalledWith(channels[1].port2);
+    expect(windows[0].posted.map(entry => entry.ports)).toEqual([[channels[0].port1], [channels[1].port1]]);
+
+    mediaHost.stop();
+    mediaHost.start(consumer);
+    windows[1].fire("did-finish-load");
+
+    expect(channels).toHaveLength(3);
+    expect(windows[1].posted).toEqual([{ channel: "mediaHost:uplinkPort", ports: [channels[2].port1] }]);
+    expect(second).toHaveBeenLastCalledWith(channels[2].port2);
+    expect(first).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens no channel before an uplink connects or while no window is up", () => {
+    const { mediaHost, windows, channels, consumer } = host();
+    mediaHost.start(consumer);
+    windows[0].fire("did-finish-load");
+    mediaHost.stop();
+
+    mediaHost.connectUplink(vi.fn());
+
+    expect(channels).toHaveLength(0);
   });
 
   it("reports its renderer going away as a capture failure", () => {
@@ -111,12 +150,11 @@ describe("media host", () => {
     mediaHost.acceptPagePort(waiting);
 
     mediaHost.stop();
-    mediaHost.receivePackets(["late"]);
+    windows[0].fire("render-process-gone");
 
     expect(windows[0].isDestroyed()).toBe(true);
     expect(waiting.close).toHaveBeenCalled();
-    expect(consumer.onPackets).not.toHaveBeenCalled();
-    expect(mediaHost.ownsWebContents(windows[0].window.webContents)).toBe(false);
+    expect(consumer.onStatus).not.toHaveBeenCalled();
   });
 });
 

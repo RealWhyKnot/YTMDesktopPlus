@@ -1,4 +1,4 @@
-import type { MessagePortMain } from "electron";
+import { MessageChannelMain, type MessagePortMain } from "electron";
 import workletSource from "./room-capture.worklet?raw";
 
 export const MEDIA_SCHEME = "ytmd-media";
@@ -24,8 +24,7 @@ export type MediaHostWindow = {
 };
 
 export type MediaHostConsumer = {
-  onPackets(payload: unknown): void;
-  onStatus(status: unknown): void;
+  onStatus(status: { error: string }): void;
 };
 
 export class MediaHost {
@@ -34,6 +33,9 @@ export class MediaHost {
   private loaded = false;
   private pendingPort: MessagePortMain | null = null;
   private consumer: MediaHostConsumer | null = null;
+  private uplink: ((port: MessagePortMain) => void) | null = null;
+
+  constructor(private readonly createChannel: () => { port1: MessagePortMain; port2: MessagePortMain }) {}
 
   provide(createWindow: () => MediaHostWindow) {
     this.createWindow = createWindow;
@@ -50,6 +52,7 @@ export class MediaHost {
     window.webContents.once("did-finish-load", () => {
       if (this.window !== window) return;
       this.loaded = true;
+      this.pairUplink();
       if (this.pendingPort) this.deliver(this.pendingPort);
       this.pendingPort = null;
     });
@@ -68,10 +71,6 @@ export class MediaHost {
     if (window && !window.isDestroyed()) window.destroy();
   }
 
-  ownsWebContents(sender: unknown): boolean {
-    return !!this.window && !this.window.isDestroyed() && sender === this.window.webContents;
-  }
-
   acceptPagePort(port: MessagePortMain) {
     if (!this.window) {
       port.close();
@@ -85,12 +84,16 @@ export class MediaHost {
     this.pendingPort = port;
   }
 
-  receivePackets(payload: unknown) {
-    this.consumer?.onPackets(payload);
+  connectUplink(send: (port: MessagePortMain) => void) {
+    this.uplink = send;
+    this.pairUplink();
   }
 
-  receiveStatus(status: unknown) {
-    this.consumer?.onStatus(status);
+  private pairUplink() {
+    if (!this.uplink || !this.window || !this.loaded) return;
+    const { port1, port2 } = this.createChannel();
+    this.window.webContents.postMessage("mediaHost:uplinkPort", null, [port1]);
+    this.uplink(port2);
   }
 
   private deliver(port: MessagePortMain) {
@@ -98,4 +101,4 @@ export class MediaHost {
   }
 }
 
-export const mediaHost = new MediaHost();
+export const mediaHost = new MediaHost(() => new MessageChannelMain());

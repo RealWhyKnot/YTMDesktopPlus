@@ -1,5 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { BITRATE, CHANNELS, createCaptureEncoder, OPUS_SAMPLE_RATE, type CaptureStatus, type EncodedPacket } from "../src/renderer/windows/media-host/encoder";
+import { describe, expect, it, vi } from "vitest";
+import {
+  BITRATE,
+  CHANNELS,
+  createCaptureEncoder,
+  createUplink,
+  OPUS_SAMPLE_RATE,
+  type CaptureStatus,
+  type EncodedPacket
+} from "../src/renderer/windows/media-host/encoder";
 
 type Init = { output(chunk: { byteLength: number; timestamp: number; copyTo(target: ArrayBuffer): void }): void; error(error: unknown): void };
 
@@ -107,5 +115,46 @@ describe("media host capture encoder", () => {
 
     expect(statuses.filter(status => status.error)).toEqual([{ error: "Error: encoder closed" }]);
     expect(frames).toHaveLength(1);
+  });
+});
+
+describe("media host uplink", () => {
+  const port = () => ({ postMessage: vi.fn(), close: vi.fn() });
+  const cfg: CaptureStatus = { cfg: { sr: 48000, ch: 2, br: 128000 } };
+
+  it("posts packets and status as copies, without a transfer list, and drops them while no port is attached", () => {
+    const uplink = createUplink();
+    const packets = [{ t: 0, d: new ArrayBuffer(3) }];
+    uplink.sendPackets(packets);
+
+    const current = port();
+    uplink.attach(current);
+    uplink.sendPackets(packets);
+    uplink.sendStatus({ error: "boom" });
+
+    expect(current.postMessage.mock.calls).toEqual([[{ packets }], [{ status: { error: "boom" } }]]);
+  });
+
+  it("closes the port it replaces and replays the codec config to the new one", () => {
+    const uplink = createUplink();
+    const first = port();
+    uplink.attach(first);
+    uplink.sendStatus(cfg);
+
+    const second = port();
+    uplink.attach(second);
+
+    expect(first.close).toHaveBeenCalled();
+    expect(second.postMessage.mock.calls).toEqual([[{ status: cfg }]]);
+  });
+
+  it("replays a config sent before any port was attached", () => {
+    const uplink = createUplink();
+    uplink.sendStatus(cfg);
+
+    const current = port();
+    uplink.attach(current);
+
+    expect(current.postMessage.mock.calls).toEqual([[{ status: cfg }]]);
   });
 });

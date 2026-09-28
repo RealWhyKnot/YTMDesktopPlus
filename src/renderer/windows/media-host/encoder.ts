@@ -7,6 +7,27 @@ export const CHANNELS = 2;
 export const BITRATE = 128000;
 export const FLUSH_MS = 100;
 
+export type UplinkPort = { postMessage(message: unknown): void; close(): void };
+
+export function createUplink() {
+  let port: UplinkPort | null = null;
+  let cfg: CaptureStatus | null = null;
+  return {
+    attach(next: UplinkPort) {
+      port?.close();
+      port = next;
+      if (cfg) port.postMessage({ status: cfg });
+    },
+    sendPackets(packets: EncodedPacket[]) {
+      port?.postMessage({ packets });
+    },
+    sendStatus(status: CaptureStatus) {
+      if (status.cfg) cfg = status;
+      port?.postMessage({ status });
+    }
+  };
+}
+
 export type EncoderApi = {
   AudioEncoder: new (init: AudioEncoderInit) => Pick<AudioEncoder, "configure" | "encode" | "close" | "state">;
   AudioData: new (init: AudioDataInit) => Pick<AudioData, "close">;

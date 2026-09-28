@@ -1,21 +1,9 @@
-import type { BatchPacket } from "~shared/audio-protocol";
 import enableScript from "./scripts/audiocapture-enable.script?raw";
 import disableScript from "./scripts/audiocapture-disable.script?raw";
 import listeningOnScript from "./scripts/audiocapture-listening-on.script?raw";
 import listeningOffScript from "./scripts/audiocapture-listening-off.script?raw";
 
 type CaptureScript = "enable" | "disable" | "listening-on" | "listening-off";
-
-/** Encoded packets as the page posts them, filtered down to the well formed. */
-export function cleanAudioPackets(payload: unknown): BatchPacket[] {
-  if (!Array.isArray(payload)) return [];
-  const cleaned: BatchPacket[] = [];
-  for (const packet of payload as { t?: unknown; d?: unknown }[]) {
-    if (typeof packet?.t !== "number" || !(packet.d instanceof ArrayBuffer)) continue;
-    cleaned.push({ timestampUs: packet.t, payload: new Uint8Array(packet.d) });
-  }
-  return cleaned;
-}
 
 export default class AudioStreamCapture {
   private hasInjected = false;

@@ -1,6 +1,6 @@
 import WebSocket from "ws";
 
-import { VideoState, type PlayerState, type Thumbnail } from "../../player-state-store";
+import { VideoState, type PlayerState, type Thumbnail, type VideoDetails } from "~shared/addons/sdk";
 import {
   FATAL_AUDIO_ERRORS,
   audioUrlForRoom,
@@ -26,6 +26,10 @@ const PAUSE_GATE_MS = 5000;
 const MAX_BUFFERED_BYTES = 262_144;
 
 export type AudioCredentials = { roomId: string; hostKey: string };
+
+export type UplinkState = Pick<PlayerState, "trackState" | "videoProgress" | "adPlaying" | "hasFullMetadata"> & {
+  videoDetails: Pick<VideoDetails, "id" | "title" | "author" | "album" | "thumbnails" | "durationSeconds"> | null;
+};
 
 export type AudioCaptureStatus = {
   cfg?: { sr: number; ch: number; br: number };
@@ -133,7 +137,7 @@ export class AudioPublisher {
   private adPlaying = false;
   private sentStatus: AudioStatus | null = null;
   private pausedSince: number | null = null;
-  private lastState: PlayerState | null = null;
+  private lastState: UplinkState | null = null;
   private metaVideoId: string | null = null;
   private metaHadFullMetadata = false;
   private lastSentAnchor: RoomStateFrame | null = null;
@@ -197,7 +201,7 @@ export class AudioPublisher {
     }
   }
 
-  updateLocalState(state: PlayerState) {
+  updateLocalState(state: UplinkState) {
     this.lastState = state;
     if (state.trackState !== VideoState.Paused && state.trackState !== VideoState.Unknown) this.pausedSince = null;
     else this.pausedSince ??= this.deps.now();
@@ -309,7 +313,7 @@ export class AudioPublisher {
     this.transport?.sendText({ t: "status", s: status });
   }
 
-  private sendMetaIfChanged(state: PlayerState) {
+  private sendMetaIfChanged(state: UplinkState) {
     const details = state.videoDetails;
     if (!details?.id || state.adPlaying) return;
     const changed = details.id !== this.metaVideoId;
@@ -330,7 +334,7 @@ export class AudioPublisher {
   }
 
   // Same rule the room anchor uses: only when a listener would notice.
-  private sendAnchorIfChanged(state: PlayerState) {
+  private sendAnchorIfChanged(state: UplinkState) {
     const videoId = state.videoDetails?.id;
     if (!videoId || state.adPlaying) return;
     const playing = state.trackState === VideoState.Playing;

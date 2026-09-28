@@ -100,7 +100,7 @@ export class RoomSession {
     };
   }
 
-  /** Present only while hosting an established room. Never leaves main. */
+  /** Present only while hosting an established room. */
   get hostCredentials(): { roomId: string; hostKey: string } | null {
     if (this.mode !== "host" || !this.roomId || !this.hostKey) return null;
     return { roomId: this.roomId, hostKey: this.hostKey };

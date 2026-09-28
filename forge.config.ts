@@ -188,6 +188,11 @@ const config: ForgeConfig = {
           config: "viteconfig/main.ts",
           target: "main"
         },
+        {
+          entry: "src/main/services/audio-uplink.ts",
+          config: "viteconfig/main.ts",
+          target: "main"
+        },
         // TODO: Utilize a single config for preload so we can share chunks if needed
         {
           entry: "src/renderer/windows/main/preload.ts",

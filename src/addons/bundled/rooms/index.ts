@@ -1,13 +1,14 @@
 import { isRoomId, isRoomLive, otherListenerCount, type RoomSnapshot } from "~shared/room-protocol";
 import type { BundledAddonDefinition } from "../../../main/addons/manager";
 import type { AddonWindowHandle } from "~shared/addons/sdk";
-import AudioStreamCapture, { cleanAudioPackets } from "./audio-capture";
-import { AudioPublisher, AudioRelayClient, type AudioCaptureStatus } from "../../../main/integrations/listen-along/audio-publisher";
+import AudioStreamCapture from "./audio-capture";
+import type { AudioCaptureStatus } from "../../../main/integrations/listen-along/audio-publisher";
 import { AutoRoom } from "../../../main/integrations/listen-along/auto-room";
 import { RelayClient } from "../../../main/integrations/listen-along/relay-client";
 import { RoomSession } from "../../../main/integrations/listen-along/room-session";
 import { registerRoomIpc } from "./ipc";
 import { mediaHost } from "../../../main/media/media-host";
+import { AudioUplink, forkAudioUplink } from "../../../main/media/audio-uplink";
 
 // Listen Along rooms as a bundled addon: hosting and joining relay rooms, the
 // audio stream to browser listeners, the automatic room that follows Discord
@@ -56,16 +57,7 @@ const roomsAddon: BundledAddonDefinition = {
     // The capture scripts live under this addon's script namespace; the
     // capture class runs them through the same channel it registered on.
     const audioStreamCapture = new AudioStreamCapture(name => ctx.ytmview.runScript(name), {
-      start: () =>
-        mediaHost.start({
-          onPackets: payload => {
-            const cleaned = cleanAudioPackets(payload);
-            if (cleaned.length > 0) audioPublisher.handleChunks(cleaned);
-          },
-          onStatus: status => {
-            if (typeof status === "object" && status !== null) audioPublisher.handleCaptureStatus(status as AudioCaptureStatus);
-          }
-        }),
+      start: () => mediaHost.start({ onStatus: status => audioUplink.handleCaptureStatus(status) }),
       stop: () => mediaHost.stop()
     });
     for (const { name, script } of audioStreamCapture.getYTMScripts()) {
@@ -111,7 +103,7 @@ const roomsAddon: BundledAddonDefinition = {
         ctx.memory.set("room", snapshot);
         // The Join Room presence button follows the hosting state.
         ctx.discord.refreshActivity();
-        syncAudioPublisher();
+        syncAudioUplink();
         // A left or expired room grows back while presence is shared.
         autoRoom.evaluate();
         updateBadge(snapshot);
@@ -122,11 +114,10 @@ const roomsAddon: BundledAddonDefinition = {
     ctx.memory.set("room", roomSession.snapshot);
 
     // Streams the host's audio to browser listeners while a room is hosted.
-    // The capture runs in the YTM page; this owns the socket and send gates.
-    const audioPublisher = new AudioPublisher({
-      createTransport: (url, handlers) => new AudioRelayClient(url, handlers),
-      startCapture: () => audioStreamCapture.enable(),
-      stopCapture: () => audioStreamCapture.disable(),
+    const audioUplink = new AudioUplink({
+      fork: forkAudioUplink,
+      connectMediaHost: send => mediaHost.connectUplink(send),
+      setCapture: on => (on ? audioStreamCapture.enable() : audioStreamCapture.disable()),
       onUpdate: ({ streaming, webListeners }) => {
         audioStreamCapture.setListening(streaming && webListeners > 0);
         roomSession.setAudioStreamState(streaming, webListeners);
@@ -136,9 +127,9 @@ const roomsAddon: BundledAddonDefinition = {
     });
 
     // Idempotent: called on every room snapshot and on the toggle changing.
-    function syncAudioPublisher() {
+    function syncAudioUplink() {
       const enabled = ctx.settings.get<boolean>("audioStreamEnabled");
-      audioPublisher.setCredentials(enabled ? roomSession.hostCredentials : null);
+      audioUplink.setCredentials(enabled ? roomSession.hostCredentials : null);
     }
 
     // While Discord presence is shared, a room exists without being started,
@@ -166,11 +157,11 @@ const roomsAddon: BundledAddonDefinition = {
 
     ctx.player.onStateChanged(state => {
       roomSession.updateLocalState(state);
-      audioPublisher.updateLocalState(state);
+      audioUplink.updateLocalState(state);
     });
 
     ctx.settings.onDidChange("audioStreamEnabled", next => {
-      syncAudioPublisher();
+      syncAudioUplink();
       ctx.log.info(`Audio stream ${next ? "enabled" : "disabled"}`);
     });
     ctx.settings.onDidChange("autoRoomEnabled", () => autoRoom.syncToggles());
@@ -200,7 +191,7 @@ const roomsAddon: BundledAddonDefinition = {
 
     ctx.ytmview.onMessage("captureStatus", status => {
       if (typeof status !== "object" || status === null) return;
-      audioPublisher.handleCaptureStatus(status as AudioCaptureStatus);
+      audioUplink.handleCaptureStatus(status as AudioCaptureStatus);
     });
 
     registerRoomIpc(ctx.ipc, {
