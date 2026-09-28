@@ -30,7 +30,7 @@ function bridge() {
 }
 
 afterEach(async () => {
-  await Promise.all(stores.splice(0).map(store => vi.waitFor(() => expect(store["writing"]).toBe(false))));
+  await Promise.all(stores.splice(0).map(store => store.flush()));
 });
 
 describe("settings:setMany", () => {

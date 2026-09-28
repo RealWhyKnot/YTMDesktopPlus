@@ -23,7 +23,7 @@ describe("createAppStore", () => {
     store._closeWatcher();
 
     expect(store.get("addons")).toEqual({ states: {}, settings: {}, ...addons });
-    await vi.waitFor(() => expect(store["writing"]).toBe(false));
+    await store.flush();
     expect(JSON.parse(fs.readFileSync(file, "utf8")).addons).toEqual({ states: {}, settings: {}, ...addons });
   });
 });

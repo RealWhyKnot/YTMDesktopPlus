@@ -44,12 +44,8 @@ function makeStore() {
   return { store, file: path.join(cwd, "config.json") };
 }
 
-function settled(store: CachedConf<Schema>) {
-  return vi.waitFor(() => expect(store["writing"]).toBe(false));
-}
-
 afterEach(async () => {
-  await Promise.all(stores.splice(0).map(settled));
+  await Promise.all(stores.splice(0).map(store => store.flush()));
   vi.restoreAllMocks();
 });
 
@@ -165,7 +161,7 @@ describe("CachedConf", () => {
 
     expect(store.get("playback").volume).toBe(80);
     expect(readVolume(file)).toBe(50);
-    await settled(store);
+    await store.flush();
     expect(readVolume(file)).toBe(80);
   });
 
@@ -176,7 +172,7 @@ describe("CachedConf", () => {
     store.set("playback.volume", 60);
     store.set("playback.volume", 70);
     store.set("playback.volume", 80);
-    await settled(store);
+    await store.flush();
 
     expect(vi.mocked(writeFile).mock.calls.map(([, data]) => JSON.parse(String(data)).playback.volume)).toEqual([60, 80]);
     expect(readVolume(file)).toBe(80);
@@ -190,7 +186,7 @@ describe("CachedConf", () => {
     store.flushSync();
 
     expect(readVolume(file)).toBe(80);
-    await settled(store);
+    await store.flush();
     expect(readVolume(file)).toBe(80);
     store.set("playback.volume", 90);
     expect(readVolume(file)).toBe(90);
@@ -202,7 +198,7 @@ describe("CachedConf", () => {
     const errors = vi.spyOn(log, "error").mockImplementation(() => undefined);
 
     store.set("playback.volume", 80);
-    await settled(store);
+    await store.flush();
 
     expect(errors).toHaveBeenCalledOnce();
     expect(readVolume(file)).toBe(50);
@@ -224,7 +220,7 @@ describe("CachedConf", () => {
   it("does not reread the file for the watcher event of its own finished write", async () => {
     const { store, file } = makeStore();
     store.set("playback.volume", 80);
-    await settled(store);
+    await store.flush();
     const reads = vi.spyOn(fs, "readFileSync");
 
     store.events.dispatchEvent(new Event("change"));
@@ -236,7 +232,7 @@ describe("CachedConf", () => {
   it("reloads a change from outside the process that follows its own write", async () => {
     const { store, file } = makeStore();
     store.set("playback.volume", 80);
-    await settled(store);
+    await store.flush();
     const written = JSON.parse(fs.readFileSync(file, "utf8"));
     written.playback.volume = 5;
     fs.writeFileSync(file, JSON.stringify(written));

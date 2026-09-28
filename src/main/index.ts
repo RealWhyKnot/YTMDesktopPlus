@@ -1968,15 +1968,15 @@ app.on("before-quit", event => {
   log.info("Application quitting\n\n");
   applicationQuitting = true;
   cancelCue();
-  saveState();
   store.flushSync();
+  saveState();
   if (!addonShutdownSettled) {
     event.preventDefault();
     const finish = () => {
       addonShutdownSettled = true;
       app.quit();
     };
-    Promise.race([addonManager.shutdown(), new Promise(resolve => setTimeout(resolve, 3000))]).then(finish, finish);
+    Promise.race([Promise.all([addonManager.shutdown(), store.flush()]), new Promise(resolve => setTimeout(resolve, 3000))]).then(finish, finish);
   }
 });
 

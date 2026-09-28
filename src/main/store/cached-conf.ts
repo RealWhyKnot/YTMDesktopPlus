@@ -11,7 +11,7 @@ export class CachedConf<T extends Record<string, unknown>> extends Conf<T> {
   private cached: T | undefined;
   private pending: string | undefined;
   private written: fs.Stats | undefined;
-  private writing = false;
+  private writing: Promise<void> | undefined;
   private deferWrites = false;
 
   static {
@@ -21,7 +21,7 @@ export class CachedConf<T extends Record<string, unknown>> extends Conf<T> {
         this.cached = this["_deserialize"](this.pending);
       });
       if (!this.deferWrites) this.flushSync();
-      else if (!this.writing) void this.drain();
+      else this.writing ??= this.drain();
     };
     this.prototype["_get"] = function (this: CachedConf<Record<string, unknown>>, key: string, defaultValue: unknown) {
       return structuredClone(getProperty(this.current, key, defaultValue));
@@ -47,6 +47,10 @@ export class CachedConf<T extends Record<string, unknown>> extends Conf<T> {
     super.store = value;
   }
 
+  flush(): Promise<void> {
+    return this.writing ?? Promise.resolve();
+  }
+
   flushSync() {
     this.deferWrites = false;
     if (this.pending === undefined) return;
@@ -59,7 +63,6 @@ export class CachedConf<T extends Record<string, unknown>> extends Conf<T> {
   }
 
   private async drain() {
-    this.writing = true;
     try {
       while (this.pending !== undefined && this.deferWrites) {
         const data = this.pending;
@@ -70,7 +73,7 @@ export class CachedConf<T extends Record<string, unknown>> extends Conf<T> {
     } catch (error) {
       log.error("Failed to write config file", error);
     }
-    this.writing = false;
+    this.writing = undefined;
     if (!this.deferWrites) this.flushSync();
   }
 }
