@@ -20,15 +20,13 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { createEmitter } from "./events.mjs";
 import { cloneProfile, launchApp } from "./launch.mjs";
-import { sweep, listStrays, teardown } from "./teardown.mjs";
+import { RUNS_DIR, sweep, listStrays, teardown } from "./teardown.mjs";
 import { listTargets, evalOnTarget, matchedStylesOnTarget, screenshotOnTarget, waitForTarget, waitForValue } from "./cdp.mjs";
 import * as companion from "./companion.mjs";
 import { createLogTail, grepFile } from "./log-tail.mjs";
 
-const HARNESS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const MAIN_WINDOW = /windows\/main\/index\.html/;
 const YTM_VIEW = /music\.youtube\.com|consent\.youtube\.com|accounts\.google\.com/;
 
@@ -46,7 +44,7 @@ if (!scenarioName) {
 const scenario = await import(`./scenarios/${scenarioName}.mjs`);
 const startedAt = Date.now();
 const stamp = new Date(startedAt).toISOString().replaceAll(/[:.]/g, "-").slice(0, 19);
-const runDir = path.join(HARNESS_DIR, "runs", `${stamp}-${scenarioName}`);
+const runDir = path.join(RUNS_DIR, `${stamp}-${scenarioName}`);
 const profileDir = path.join(runDir, "profile");
 mkdirSync(profileDir, { recursive: true });
 const { emit, lastEvent } = createEmitter(path.join(runDir, "runner.jsonl"), startedAt);

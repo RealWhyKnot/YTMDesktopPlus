@@ -17,7 +17,8 @@ export function launchApp({ profileDir, cdpPort, inspectPort = null, logPath, en
   const forgeStart = path.join(REPO_ROOT, "node_modules", "@electron-forge", "cli", "dist", "electron-forge-start.js");
   const inspect = inspectPort ? { forge: ["--inspect-electron"], app: [`--inspect=${inspectPort}`] } : { forge: [], app: [] };
   const fd = openSync(logPath, "w");
-  const child = spawn(process.execPath, [forgeStart, ...inspect.forge, "--", "--disable-features=CalculateNativeWinOcclusion", ...inspect.app], {
+  const args = [forgeStart, ...inspect.forge, "--", "--disable-features=CalculateNativeWinOcclusion", `--user-data-dir=${profileDir}`, ...inspect.app];
+  const child = spawn(process.execPath, args, {
     cwd: REPO_ROOT,
     stdio: ["pipe", fd, fd],
     env: {

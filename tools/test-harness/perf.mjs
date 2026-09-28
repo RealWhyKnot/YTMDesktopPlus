@@ -17,7 +17,7 @@ const PROCESS_QUERY =
   `| Select-Object ProcessId,ParentProcessId,Name,WorkingSetSize,CommandLine ` +
   `| ConvertTo-Json -Compress -Depth 2`;
 
-function readProcesses() {
+export function readProcesses() {
   const out = ps(PROCESS_QUERY);
   if (!out.trim()) return [];
   try {

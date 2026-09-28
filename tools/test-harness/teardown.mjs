@@ -1,4 +1,7 @@
 import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { readProcesses } from "./perf.mjs";
 
 // Process cleanup for test runs. Layered: graceful stdin close first, then a
 // tree kill, then a sweep that finds re-parented orphans by command line, then
@@ -13,26 +16,25 @@ const ps = script => {
   }
 };
 
-// Matches the processes a dev run can create: the app itself, forge/vite node
-// processes, and shells wrapping yarn start. Excludes this runner and its
-// harness peers.
-const SWEEP_QUERY = `Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'electron.exe') -or ($_.Name -eq 'node.exe' -and ($_.CommandLine -like '*electron-forge*' -or $_.CommandLine -like '*vite*') -and $_.CommandLine -notlike '*test-harness*') -or ($_.Name -eq 'cmd.exe' -and $_.CommandLine -like '*yarn start*') } | Where-Object { $_.ProcessId -ne ${process.pid} }`;
+export const RUNS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "runs") + path.sep;
+
+export function selectStrays(rows, runsDir) {
+  const scope = runsDir.toLowerCase();
+  return rows.filter(row => {
+    const name = String(row.Name).toLowerCase();
+    const commandLine = String(row.CommandLine ?? "").toLowerCase();
+    return commandLine.includes(scope) && (name === "electron.exe" || (name === "node.exe" && commandLine.includes("electron-forge")));
+  });
+}
 
 export function listStrays() {
-  const out = ps(`${SWEEP_QUERY} | ForEach-Object { "$($_.ProcessId)|$($_.Name)" }`);
-  return out
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map(line => {
-      const [pid, name] = line.split("|");
-      return { pid: Number(pid), name };
-    });
+  return selectStrays(readProcesses(), RUNS_DIR).map(row => ({ pid: row.ProcessId, name: row.Name }));
 }
 
 export function sweep() {
   const strays = listStrays();
   if (strays.length) {
-    ps(`${SWEEP_QUERY} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`);
+    ps(`Stop-Process -Id ${strays.map(stray => stray.pid).join(",")} -Force -ErrorAction SilentlyContinue`);
   }
   return strays;
 }
