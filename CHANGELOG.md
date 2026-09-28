@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- build(deps): give the appimage maker's mksquashfs version check 60s instead of 3s
 - test(harness): retry changeVideo in the playback scenario and poll state within its rate limit
 - fix(test-seams): block watch history writes from test clients
 - fix(test-seams): keep test clients away from discord, the ytmdplus handler and login items
