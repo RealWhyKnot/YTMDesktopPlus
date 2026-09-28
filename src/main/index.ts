@@ -55,6 +55,7 @@ import { registerThemeIpc } from "./ipc/themes";
 import type { ThemeCss } from "~shared/themes/sdk";
 import { createAppStore } from "./store/create-store";
 import { createStoreBroadcaster } from "./windows/broadcast";
+import { coalesce } from "./windows/coalesce";
 import { createDeepLinkRouter, findProtocolUrl } from "./deep-links";
 import { anyShortcutChanged, createShortcutRegistrar } from "./shortcuts";
 import { createTrayController } from "./tray";
@@ -1079,8 +1080,9 @@ const createMainWindow = (): void => {
   }
 
   // Attach events to main window
-  mainWindow.on("resize", () => {
-    setTimeout(() => {
+  mainWindow.on(
+    "resize",
+    coalesce(() => {
       if (ytmView) {
         if (mainWindow.fullScreen) {
           ytmView.setBounds({
@@ -1098,8 +1100,8 @@ const createMainWindow = (): void => {
           });
         }
       }
-    });
-  });
+    })
+  );
 
   mainWindow.on("enter-full-screen", () => {
     setTimeout(() => {
