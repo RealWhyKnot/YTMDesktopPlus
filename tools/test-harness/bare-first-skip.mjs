@@ -25,7 +25,7 @@ cloneProfile(path.resolve(seedProfile), profileDir);
 
 const emit = (event, data = {}) => console.log(JSON.stringify({ t: Number(((Date.now() - startedAt) / 1000).toFixed(1)), event, ...data }));
 const log = openSync(path.join(runDir, "electron.log"), "w");
-const child = spawn(electronPath, [path.join(HARNESS_DIR, "bare-main.mjs")], {
+const child = spawn(String(electronPath), [path.join(HARNESS_DIR, "bare-main.mjs")], {
   env: { ...process.env, YTMD_BARE_PROFILE: profileDir, YTMD_BARE_CDP_PORT: String(CDP_PORT) },
   stdio: ["ignore", log, log]
 });
