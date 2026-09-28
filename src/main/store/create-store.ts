@@ -1,4 +1,3 @@
-import type Conf from "conf";
 import log from "electron-log";
 import { app } from "electron";
 import { StoreSchema, TrayIconStyle, UpdateChannel } from "../../shared/store/schema";
@@ -17,7 +16,7 @@ export const DEFAULT_SHORTCUTS = {
   volumeDown: ""
 };
 
-export function createAppStore(): Conf<StoreSchema> {
+export function createAppStore(): CachedConf<StoreSchema> {
   const store = new CachedConf<StoreSchema>({
     configName: "config",
     cwd: app.getPath("userData"),

@@ -162,6 +162,11 @@ log.errorHandler.startCatching({
     // Exit
     if (result === 0 || result === 1) {
       applicationExited = true;
+      try {
+        store.flushSync();
+      } catch (flushError) {
+        log.error(flushError);
+      }
       app.exit(1);
     }
   }
@@ -1133,6 +1138,7 @@ const createMainWindow = (): void => {
     store.set("state.windowBounds", mainWindow.getNormalBounds());
     store.set("state.windowMaximized", mainWindow.isMaximized());
   });
+  mainWindow.on("session-end", () => store.flushSync());
 
   mainWindow.once("closed", () => {
     mainWindow = null;
@@ -1963,6 +1969,7 @@ app.on("before-quit", event => {
   applicationQuitting = true;
   cancelCue();
   saveState();
+  store.flushSync();
   if (!addonShutdownSettled) {
     event.preventDefault();
     const finish = () => {

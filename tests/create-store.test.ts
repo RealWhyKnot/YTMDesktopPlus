@@ -14,13 +14,16 @@ describe("createAppStore", () => {
   it.each([
     ["settings", { states: { rooms: { enabled: true } } }],
     ["states", { settings: { rooms: { autoJoin: true } } }]
-  ])("backfills addons.%s when a stored addons section lacks it", (_, addons) => {
+  ])("backfills addons.%s when a stored addons section lacks it", async (_, addons) => {
     electronApp.userData = makeTempDir("ytmd-store-");
-    fs.writeFileSync(path.join(electronApp.userData, "config.json"), JSON.stringify({ addons }));
+    const file = path.join(electronApp.userData, "config.json");
+    fs.writeFileSync(file, JSON.stringify({ addons }));
 
     const store = createAppStore();
     store._closeWatcher();
 
     expect(store.get("addons")).toEqual({ states: {}, settings: {}, ...addons });
+    await vi.waitFor(() => expect(store["writing"]).toBe(false));
+    expect(JSON.parse(fs.readFileSync(file, "utf8")).addons).toEqual({ states: {}, settings: {}, ...addons });
   });
 });
