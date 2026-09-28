@@ -11,6 +11,7 @@ export type UplinkProcess = {
   postMessage(message: UplinkCommand, transfer?: MessagePortMain[]): void;
   on(event: "message", listener: (event: UplinkEvent) => void): unknown;
   on(event: "exit", listener: (code: number) => void): unknown;
+  on(event: "error", listener: (type: string) => void): unknown;
 };
 
 export type AudioUplinkDeps = {
@@ -75,6 +76,7 @@ export class AudioUplink {
     this.child = child;
     child.on("message", event => this.onEvent(event));
     child.on("exit", code => this.onExit(child, code));
+    child.on("error", type => this.deps.log("Audio uplink process failed", type));
     if (this.state) child.postMessage({ t: "state", state: this.state });
     if (this.muted !== undefined) child.postMessage({ t: "status", status: { muted: this.muted } });
     this.deps.connectMediaHost(port => child.postMessage({ t: "port" }, [port]));

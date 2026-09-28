@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import type { MessagePortMain } from "electron";
 
@@ -164,14 +165,17 @@ describe("cleanAudioPackets", () => {
 
 function fakeProcess() {
   const posted: { message: UplinkCommand; transfer?: MessagePortMain[] }[] = [];
-  const listeners: { message?: (event: UplinkEvent) => void; exit?: (code: number) => void } = {};
-  const child = {
-    postMessage: (message: UplinkCommand, transfer?: MessagePortMain[]) => posted.push({ message, transfer }),
-    on: (event: "message" | "exit", listener: (value: never) => void) => {
-      listeners[event] = listener;
-    }
-  } as UplinkProcess;
-  return { child, posted, emit: (event: UplinkEvent) => listeners.message?.(event), exit: (code = 1) => listeners.exit?.(code) };
+  const events = new EventEmitter();
+  const child = Object.assign(events, {
+    postMessage: (message: UplinkCommand, transfer?: MessagePortMain[]) => posted.push({ message, transfer })
+  }) as unknown as UplinkProcess;
+  return {
+    child,
+    posted,
+    emit: (event: UplinkEvent) => events.emit("message", event),
+    exit: (code = 1) => events.emit("exit", code),
+    fail: (type: string) => events.emit("error", type)
+  };
 }
 
 function proxy() {
@@ -265,6 +269,17 @@ describe("audio uplink process from main", () => {
     expect(p.deps.connectMediaHost).toHaveBeenCalledTimes(2);
     expect(p.processes[1].posted.map(entry => entry.message.t)).toEqual(["state", "creds"]);
     expect(p.deps.onUpdate).not.toHaveBeenCalled();
+  });
+
+  it("logs a fatal error from the process and restarts it on the exit that follows", () => {
+    const p = proxy();
+    p.uplink.setCredentials(CREDS);
+
+    expect(() => p.processes[0].fail("FatalError")).not.toThrow();
+    p.processes[0].exit(134);
+
+    expect(p.deps.log).toHaveBeenCalledWith("Audio uplink process failed", "FatalError");
+    expect(p.deps.fork).toHaveBeenCalledTimes(2);
   });
 
   it("lets a process that exits after hosting ended stay down until the next room", () => {
