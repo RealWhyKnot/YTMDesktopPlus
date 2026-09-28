@@ -40,10 +40,8 @@ export function registerStoreBridgeIpc(ipc: IpcRegistrar, deps: StoreBridgeIpcDe
     if (!deps.isSettingsSender(event.sender)) return;
     if (!Array.isArray(entries)) return;
 
-    for (const entry of entries) {
-      if (!Array.isArray(entry) || typeof entry[0] !== "string") continue;
-      deps.store.set(entry[0], entry[1]);
-    }
+    const changes = Object.fromEntries(entries.filter(entry => Array.isArray(entry) && typeof entry[0] === "string"));
+    if (Object.keys(changes).length > 0) deps.store.set(changes);
   });
 
   ipc.handle("settings:get", (event, key: string) => {

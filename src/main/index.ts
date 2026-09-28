@@ -691,9 +691,7 @@ if (store.get("playback").enableSpeakerFill) {
 
 function saveState() {
   stallTasks.timeSync("saveState", () => {
-    store.set("state.lastUrl", lastUrl);
-    store.set("state.lastVideoId", lastVideoId);
-    store.set("state.lastPlaylistId", lastPlaylistId);
+    store.set("state", { ...store.get("state"), lastUrl, lastVideoId, lastPlaylistId });
   });
 }
 
@@ -926,9 +924,7 @@ const createYTMView = (): void => {
     }
   });
   ytmView.webContents.on("render-process-gone", () => {
-    store.set("state.lastUrl", lastUrl);
-    store.set("state.lastVideoId", lastVideoId);
-    store.set("state.lastPlaylistId", lastPlaylistId);
+    saveState();
     createYTMView();
   });
   ytmView.webContents.on("page-title-updated", (_event, title) => {
@@ -1135,8 +1131,7 @@ const createMainWindow = (): void => {
       mainWindow.hide();
     }
 
-    store.set("state.windowBounds", mainWindow.getNormalBounds());
-    store.set("state.windowMaximized", mainWindow.isMaximized());
+    store.set("state", { ...store.get("state"), windowBounds: mainWindow.getNormalBounds(), windowMaximized: mainWindow.isMaximized() });
   });
   mainWindow.on("session-end", () => store.flushSync());
 
