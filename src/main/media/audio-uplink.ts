@@ -6,9 +6,11 @@ import type { UplinkCommand, UplinkEvent } from "../services/audio-uplink";
 
 const MAX_EXITS = 3;
 const EXIT_WINDOW_MS = 30_000;
+const IDLE_EXIT_MS = 5_000;
 
 export type UplinkProcess = {
   postMessage(message: UplinkCommand, transfer?: MessagePortMain[]): void;
+  kill(): boolean;
   on(event: "message", listener: (event: UplinkEvent) => void): unknown;
   on(event: "exit", listener: (code: number) => void): unknown;
   on(event: "error", listener: (type: string) => void): unknown;
@@ -59,6 +61,15 @@ export class AudioUplink {
     if (!creds) this.exits = [];
     else if (!this.child && this.exits.length < MAX_EXITS) this.spawn();
     this.child?.postMessage({ t: "creds", creds });
+    if (!creds && this.child) this.retire(this.child);
+  }
+
+  private retire(child: UplinkProcess) {
+    setTimeout(() => {
+      if (this.creds || this.child !== child) return;
+      this.child = null;
+      child.kill();
+    }, IDLE_EXIT_MS);
   }
 
   updateLocalState(state: PlayerState) {
@@ -79,7 +90,7 @@ export class AudioUplink {
     child.on("error", type => this.deps.log("Audio uplink process failed", type));
     if (this.state) child.postMessage({ t: "state", state: this.state });
     if (this.muted !== undefined) child.postMessage({ t: "status", status: { muted: this.muted } });
-    this.deps.connectMediaHost(port => child.postMessage({ t: "port" }, [port]));
+    this.deps.connectMediaHost(port => (this.child === child ? child.postMessage({ t: "port" }, [port]) : port.close()));
   }
 
   private onEvent(event: UplinkEvent) {

@@ -167,7 +167,8 @@ function fakeProcess() {
   const posted: { message: UplinkCommand; transfer?: MessagePortMain[] }[] = [];
   const events = new EventEmitter();
   const child = Object.assign(events, {
-    postMessage: (message: UplinkCommand, transfer?: MessagePortMain[]) => posted.push({ message, transfer })
+    postMessage: (message: UplinkCommand, transfer?: MessagePortMain[]) => posted.push({ message, transfer }),
+    kill: vi.fn(() => true)
   }) as unknown as UplinkProcess;
   return {
     child,
@@ -280,6 +281,35 @@ describe("audio uplink process from main", () => {
 
     expect(p.deps.log).toHaveBeenCalledWith("Audio uplink process failed", "FatalError");
     expect(p.deps.fork).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops the process 5s after hosting ends unless a room is hosted again first", () => {
+    vi.useFakeTimers();
+    try {
+      const p = proxy();
+      p.uplink.setCredentials(CREDS);
+      p.uplink.setCredentials(null);
+      vi.advanceTimersByTime(4_000);
+      p.uplink.setCredentials(CREDS);
+      vi.advanceTimersByTime(2_000);
+      expect(p.processes[0].child.kill).not.toHaveBeenCalled();
+
+      p.uplink.setCredentials(null);
+      vi.advanceTimersByTime(5_000);
+      expect(p.processes[0].child.kill).toHaveBeenCalledTimes(1);
+
+      p.processes[0].exit(0);
+      expect(p.deps.fork).toHaveBeenCalledTimes(1);
+      const port = { close: vi.fn() } as unknown as MessagePortMain;
+      p.sinks[0](port);
+      expect(port.close).toHaveBeenCalled();
+      expect(p.processes[0].posted.some(entry => entry.message.t === "port")).toBe(false);
+
+      p.uplink.setCredentials(CREDS);
+      expect(p.deps.fork).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("lets a process that exits after hosting ended stay down until the next room", () => {
