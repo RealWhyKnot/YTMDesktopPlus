@@ -27,6 +27,7 @@ function spyRendererConsole() {
 }
 
 export function setupLogging(startSilenced: boolean) {
+  log.transports.file.sync = false;
   // Scoped loggers (addons log under addon:<id>) carry their label into every
   // line; without padding, unscoped lines stay exactly as they were.
   log.scope.labelPadding = false;
@@ -67,4 +68,9 @@ export function setupLogging(startSilenced: boolean) {
 export function setLogOutputEnabled(enabled: boolean) {
   log.transports.file.level = enabled ? "silly" : false;
   log.transports.console.level = enabled ? "silly" : false;
+}
+
+export function switchLogFileToSync() {
+  if (log.transports.file.level === false) return;
+  Object.assign(log.transports.file.getFile(), { writeAsync: false });
 }

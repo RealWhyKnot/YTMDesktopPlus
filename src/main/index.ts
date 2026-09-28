@@ -32,7 +32,7 @@ import { filterLogTailForAddon } from "./addons/log-tail";
 import { migrateCustomCssSetting } from "./addons/migrate-custom-css";
 import { BUNDLED_ADDONS } from "../addons/bundled";
 import playerStateStore, { playerEvents } from "./player-state-store";
-import { setLogOutputEnabled, setupLogging } from "./logging";
+import { setLogOutputEnabled, setupLogging, switchLogFileToSync } from "./logging";
 import { instrumentIpc, stallTasks, watchMainThreadStalls } from "./stall-watch";
 import { MemoryStoreSchema, StoreSchema } from "../shared/store/schema";
 
@@ -113,6 +113,7 @@ log.errorHandler.startCatching({
     if (processType === "renderer") return;
 
     if (stateSaverInterval) clearInterval(stateSaverInterval);
+    switchLogFileToSync();
 
     // This just ensures AggregateError sub errors is being unwrapped properly and logged
     if (error instanceof AggregateError) {
@@ -1963,6 +1964,7 @@ app.on("ready", async () => {
 // so a hung addon can never wedge the app in limbo.
 let addonShutdownSettled = false;
 app.on("before-quit", event => {
+  switchLogFileToSync();
   log.info("Application quitting\n\n");
   applicationQuitting = true;
   cancelCue();
