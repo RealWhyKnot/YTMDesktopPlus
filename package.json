@@ -48,7 +48,7 @@
     "@electron-forge/publisher-github": "7.11.2",
     "@electron/fuses": "2.1.3",
     "@eslint/js": "^10.0.1",
-    "@reforged/maker-appimage": "5.3.1",
+    "@reforged/maker-appimage": "patch:@reforged/maker-appimage@npm%3A5.3.1#~/.yarn/patches/@reforged-maker-appimage-npm-5.3.1-4fb8aff634.patch",
     "@types/electron-squirrel-startup": "^1.0.2",
     "@types/node": "22.20.2",
     "@types/ws": "^8",

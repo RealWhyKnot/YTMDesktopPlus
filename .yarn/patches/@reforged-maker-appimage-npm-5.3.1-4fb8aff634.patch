@@ -1,0 +1,13 @@
+diff --git a/dist/utils.js b/dist/utils.js
+index 7b2f165029c91bb685153638188c02495f43c8f3..8a4fd308c12702e8899e9ec5944377fb40a12223 100644
+--- a/dist/utils.js
++++ b/dist/utils.js
+@@ -82,7 +82,7 @@ export function mkSquashFs(...argv) {
+ export function getSquashFsVer() {
+     let output = execFileSync("mksquashfs", ["-version"], {
+         encoding: "utf8",
+-        timeout: 3000,
++        timeout: 60000,
+         maxBuffer: 768,
+         windowsHide: true,
+         env: { PATH: process.env["PATH"] }

@@ -1819,6 +1819,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@reforged/maker-appimage@patch:@reforged/maker-appimage@npm%3A5.3.1#~/.yarn/patches/@reforged-maker-appimage-npm-5.3.1-4fb8aff634.patch":
+  version: 5.3.1
+  resolution: "@reforged/maker-appimage@patch:@reforged/maker-appimage@npm%3A5.3.1#~/.yarn/patches/@reforged-maker-appimage-npm-5.3.1-4fb8aff634.patch::version=5.3.1&hash=743bb7"
+  dependencies:
+    "@electron-forge/maker-base": "npm:^6.0.0 || ^7.0.0"
+    "@reforged/maker-types": "npm:^2.2.0"
+    "@spacingbat3/lss": "npm:^1.0.0"
+    semver: "npm:^7.3.8"
+  checksum: 10c0/3028f41789a930abe07c630a5e946c31190b39793f29704f9f6696bf9a1fd658b60f0cd99d8d7dbd3506c156d7047b423fa917a22b9676fd3d23f58a8b042368
+  languageName: node
+  linkType: hard
+
 "@reforged/maker-types@npm:^2.2.0":
   version: 2.2.0
   resolution: "@reforged/maker-types@npm:2.2.0"
@@ -9124,7 +9136,7 @@ __metadata:
     "@fastify/type-provider-typebox": "npm:^5.2.0"
     "@ghostery/adblocker-electron": "npm:^2.18.2"
     "@ghostery/adblocker-electron-preload": "npm:^2.18.2"
-    "@reforged/maker-appimage": "npm:5.3.1"
+    "@reforged/maker-appimage": "patch:@reforged/maker-appimage@npm%3A5.3.1#~/.yarn/patches/@reforged-maker-appimage-npm-5.3.1-4fb8aff634.patch"
     "@sinclair/typebox": "npm:0.34.52"
     "@types/electron-squirrel-startup": "npm:^1.0.2"
     "@types/node": "npm:22.20.2"
