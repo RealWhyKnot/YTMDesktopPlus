@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { openSync } from "node:fs";
+import { cpSync, openSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -34,6 +34,25 @@ export function launchApp({ profileDir, cdpPort, logPath, env = {} }) {
     // The pipe closing during teardown is expected.
   });
   return child;
+}
+
+const SEED_SKIP = new Set([
+  "Session Storage",
+  "blob_storage",
+  "Cache",
+  "Code Cache",
+  "GPUCache",
+  "DawnGraphiteCache",
+  "DawnWebGPUCache",
+  "Crashpad",
+  "logs",
+  "DIPS",
+  "DIPS-wal",
+  "DevToolsActivePort"
+]);
+
+export function cloneProfile(seedRoot, profileDir) {
+  cpSync(seedRoot, profileDir, { recursive: true, filter: source => !SEED_SKIP.has(path.basename(source)) || path.dirname(path.resolve(source)) !== seedRoot });
 }
 
 export { REPO_ROOT };
