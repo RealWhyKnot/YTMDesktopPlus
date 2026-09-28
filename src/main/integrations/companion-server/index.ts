@@ -4,15 +4,15 @@ import FastifyIO from "fastify-socket.io/dist/index";
 import CompanionServerAPIv1 from "./api/v1";
 import { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
 import Conf from "conf";
-import { BrowserView, safeStorage } from "electron";
+import { BrowserView } from "electron";
 import { TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
-import { AuthToken } from "~shared/integrations/companion-server/types";
 import { RemoteSocket, DefaultEventsMap } from "socket.io";
 import { WebSocketServer } from "ws";
 import cors from "@fastify/cors";
 import MemoryStore from "../../memory-store";
 import log from "electron-log";
 import { isDefinedAPIError } from "./api-shared/errors";
+import { getAuthTokens } from "./api-shared/auth";
 
 export default class CompanionServer implements IIntegration {
   private listenIp = "0.0.0.0";
@@ -95,10 +95,8 @@ export default class CompanionServer implements IIntegration {
         host: this.listenIp,
         port: this.listenPort
       });
-      this.storeListener = this.store.onDidChange("integrations", async newState => {
-        const validTokenIds: string[] = newState.companionServerAuthTokens
-          ? JSON.parse(safeStorage.decryptString(Buffer.from(newState.companionServerAuthTokens, "hex"))).map((authToken: AuthToken) => authToken.id)
-          : [];
+      this.storeListener = this.store.onDidChange("integrations.companionServerAuthTokens", async () => {
+        const validTokenIds = getAuthTokens(this.store).map(authToken => authToken.id);
         if (this.fastifyServer.server.listening) {
           const namespaces = this.fastifyServer.io._nsps.keys();
           let sockets: RemoteSocket<DefaultEventsMap, { tokenId: string }>[] = [];

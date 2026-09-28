@@ -6,6 +6,21 @@ import { StoreSchema } from "../../../../shared/store/schema";
 import { AuthToken } from "../../../../shared/integrations/companion-server/types";
 
 const temporaryCodeMap: { [code: string]: { appId: string; appVersion: string; appName: string } } = {};
+let decryptedAuthTokens: { encrypted: string | null; tokens: AuthToken[] } | undefined;
+
+export function getAuthTokens(store: Conf<StoreSchema>): AuthToken[] {
+  const encrypted = store.get("integrations.companionServerAuthTokens");
+  if (!decryptedAuthTokens || decryptedAuthTokens.encrypted !== encrypted) {
+    let tokens: AuthToken[];
+    try {
+      tokens = JSON.parse(safeStorage.decryptString(Buffer.from(encrypted, "hex")));
+    } catch {
+      tokens = [];
+    }
+    decryptedAuthTokens = { encrypted, tokens };
+  }
+  return decryptedAuthTokens.tokens;
+}
 
 async function getUnusedCode() {
   return new Promise<string>(resolve => {
@@ -56,13 +71,7 @@ export function getIsTemporaryAuthCodeValidAndRemove(appId: string, code: string
 }
 
 export function createAuthToken(store: Conf<StoreSchema>, appId: string, appVersion: string, appName: string) {
-  let authTokens: AuthToken[] = [];
-  try {
-    authTokens = JSON.parse(safeStorage.decryptString(Buffer.from(store.get("integrations").companionServerAuthTokens, "hex")));
-  } catch {
-    /* authTokens will just be an empty array */
-  }
-
+  const authTokens = [...getAuthTokens(store)];
   const currentTokenIndex = authTokens.findIndex(token => token.appId === appId);
   if (currentTokenIndex > -1) {
     authTokens.splice(currentTokenIndex, 1);
@@ -91,17 +100,9 @@ export function isAuthValid(store: Conf<StoreSchema>, authToken: string): [boole
 
   const authTokenHash = crypto.createHash("sha256").update(authToken).digest("hex");
 
-  let authTokens: AuthToken[] = [];
-  try {
-    const decryptedAuthTokens = safeStorage.decryptString(Buffer.from(store.get("integrations").companionServerAuthTokens, "hex"));
-    authTokens = JSON.parse(decryptedAuthTokens);
-  } catch {
-    /* authTokens will just be an empty array */
-  }
-
   let validSession = false;
   let id = null;
-  for (const authSession of authTokens) {
+  for (const authSession of getAuthTokens(store)) {
     if (authSession.token == authTokenHash) {
       id = authSession.id;
       validSession = true;
