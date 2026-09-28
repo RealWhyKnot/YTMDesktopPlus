@@ -493,11 +493,17 @@
     }
   });
 
+  let seenQueue;
+  let seenToggleStates;
+
   ytmStore.subscribe(() => {
     let state = ytmStore.getState();
+    if (state.queue === seenQueue && state.toggleStates === seenToggleStates) return;
+    seenQueue = state.queue;
+    seenToggleStates = state.toggleStates;
 
     // Update library button for current data
-    const currentMenu = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").getMenuRenderer();
+    const currentMenu = playerBar.getMenuRenderer();
     if (currentMenu) {
       if (playlistButton.classList.contains("hidden")) {
         playlistButton.classList.remove("hidden");
