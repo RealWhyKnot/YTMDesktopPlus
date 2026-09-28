@@ -280,8 +280,8 @@ const broadcastToWindows = createStoreBroadcaster({
   addonWebContents: () => (addonManagerCreated ? addonManager.windowWebContents() : [])
 });
 
-memoryStore.onStateChanged((newState, oldState) => {
-  broadcastToWindows("memoryStore:stateChanged", { includeMainWindow: true }, newState, oldState);
+memoryStore.onStateChanged((key, value) => {
+  broadcastToWindows("memoryStore:stateChanged", { includeMainWindow: true }, key, value);
 });
 log.info("Created memory store");
 
@@ -1574,6 +1574,12 @@ app.on("ready", async () => {
     isSettingsReader: sender => isMainWindowSender(sender) || isSettingsSender(sender) || isYtmViewSender(sender) || addonManager.ownsWebContents(sender),
     decryptString: value => safeStorage.decryptString(Buffer.from(value, "hex")),
     encryptString: value => safeStorage.encryptString(value).toString("hex")
+  });
+
+  ipcMain.on("memoryStore:subscribe", event => {
+    if (!isMemoryStoreSender(event.sender)) return;
+
+    event.sender.send("memoryStore:state", memoryStore.getState());
   });
 
   // Handle addons ipc

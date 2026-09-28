@@ -1,12 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { AddonWindowBridge } from "~shared/addons/sdk";
 import type { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
+import MemoryStore from "../../store-ipc/memory-store";
 
 // The one preload every addon-shipped window gets. It only reaches channels
 // already open to addon windows, namespaced to the owning addon.
 
 const addonId = (process.argv.find(argument => argument.startsWith("--ytmd-addon-id=")) ?? "").slice("--ytmd-addon-id=".length);
 const prefixed = (channel: string) => `addon:${addonId}:${channel}`;
+const memoryStore = new MemoryStore<MemoryStoreSchema>();
 
 const bridge: AddonWindowBridge = {
   addonId,
@@ -35,13 +37,7 @@ const bridge: AddonWindowBridge = {
       const all = (await ipcRenderer.invoke("memoryStore:get", "addonMemory")) as MemoryStoreSchema["addonMemory"] | undefined;
       return all?.[addonId] ?? {};
     },
-    onChanged: callback => {
-      const listener = (_event: Electron.IpcRendererEvent, newState: MemoryStoreSchema) => {
-        callback(newState?.addonMemory?.[addonId] ?? {});
-      };
-      ipcRenderer.on("memoryStore:stateChanged", listener);
-      return () => ipcRenderer.removeListener("memoryStore:stateChanged", listener);
-    }
+    onChanged: callback => memoryStore.onStateChanged(newState => callback(newState?.addonMemory?.[addonId] ?? {}))
   },
   closeWindow: () => ipcRenderer.send(prefixed("window:close"))
 };

@@ -17,19 +17,22 @@ export default class MemoryStore<T extends Record<string, unknown>> {
     return this.state[key as string];
   }
 
+  public getState(): T {
+    return this.state as T;
+  }
+
   public set(key: string, value: unknown) {
     stallTasks.timeSync(`MemoryStore.set ${key}`, () => {
-      const oldState = structuredClone(this.state);
       this.state[key as string] = value;
-      this.eventEmitter.emit("stateChanged", this.state, oldState);
+      this.eventEmitter.emit("stateChanged", key, value);
     });
   }
 
-  public onStateChanged(callback: (newState: T, oldState: T) => void) {
+  public onStateChanged(callback: (key: string, value: unknown) => void) {
     this.eventEmitter.addListener("stateChanged", callback);
   }
 
-  public removeOnStateChanged(callback: (newState: T, oldState: T) => void) {
+  public removeOnStateChanged(callback: (key: string, value: unknown) => void) {
     this.eventEmitter.removeListener("stateChanged", callback);
   }
 }
