@@ -70,7 +70,8 @@ export default async function autoRoom(ctx) {
       new Promise((resolve, reject) => {
         const socket = new WebSocket(`wss://ytmdesktopplus.com/audio/${roomId}`);
         const timer = setTimeout(() => reject(new Error("no ready frame")), 15000);
-        socket.on("message", data => {
+        socket.on("message", (data, isBinary) => {
+          if (isBinary) return;
           const frame = JSON.parse(data.toString("utf8"));
           if (frame.t === "ready") {
             clearTimeout(timer);
