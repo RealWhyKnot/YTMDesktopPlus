@@ -591,11 +591,14 @@ const integrationRegistrations: IntegrationRegistration[] = [
   }
 ];
 
+let appliedStartOnBoot: boolean | undefined;
+
 store.onDidAnyChange(async (newState, oldState) => {
   broadcastToWindows("settings:stateChanged", { includeMainWindow: false }, newState, oldState);
 
   // Setting start on boot in development tends to cause a blank electron executable to start on boot so let's never set that
-  if (process.env.NODE_ENV !== "development") {
+  if (process.env.NODE_ENV !== "development" && newState.general.startOnBoot !== appliedStartOnBoot) {
+    appliedStartOnBoot = newState.general.startOnBoot;
     stallTasks.timeSync("app.setLoginItemSettings", () =>
       app.setLoginItemSettings({
         openAtLogin: newState.general.startOnBoot
