@@ -33,7 +33,7 @@ import { migrateCustomCssSetting } from "./addons/migrate-custom-css";
 import { BUNDLED_ADDONS } from "../addons/bundled";
 import playerStateStore, { playerEvents } from "./player-state-store";
 import { setLogOutputEnabled, setupLogging } from "./logging";
-import { watchMainThreadStalls } from "./stall-watch";
+import { instrumentIpc, stallTasks, watchMainThreadStalls } from "./stall-watch";
 import { MemoryStoreSchema, StoreSchema } from "../shared/store/schema";
 
 import CompanionServer from "./integrations/companion-server";
@@ -76,6 +76,8 @@ declare const YTMD_DEV_TOOLS: boolean;
 // and stays dormant until launched with YTMD_REMOTE_PROBE=1, so a normal local
 // install is undisturbed. It appends its observations to logs/remote-probe.jsonl.
 const remoteProbeActive = YTMD_DEV_TOOLS && process.env.YTMD_REMOTE_PROBE === "1";
+
+instrumentIpc(ipcMain, stallTasks.timeSync);
 
 // Must run before anything reads userData (logging, single instance lock,
 // config store).
@@ -130,20 +132,22 @@ log.errorHandler.startCatching({
       `${error.stack}`;
 
     if (!app.isReady()) {
-      dialog.showErrorBox(`YTMDesktop+ Crashed`, `Application crashed before ready\n\n${dialogMessage}`);
+      stallTasks.timeSync("dialog showErrorBox", () => dialog.showErrorBox(`YTMDesktop+ Crashed`, `Application crashed before ready\n\n${dialogMessage}`));
     } else {
       const options = ["Copy to Clipboard and Exit", "Exit"];
       if (!app.isPackaged) {
         options.push("Copy to Clipboard and Continue", "Continue");
       }
 
-      result = dialog.showMessageBoxSync({
-        title: "Error",
-        message: "YTMDesktop+ Crashed",
-        detail: dialogMessage,
-        type: "error",
-        buttons: options
-      });
+      result = stallTasks.timeSync("dialog showMessageBoxSync", () =>
+        dialog.showMessageBoxSync({
+          title: "Error",
+          message: "YTMDesktop+ Crashed",
+          detail: dialogMessage,
+          type: "error",
+          buttons: options
+        })
+      );
 
       // Copy to Clipboard
       if (result === 0 || result === 2) {
@@ -173,7 +177,10 @@ if (electronSquirrelStartup) {
 }
 
 log.info("Application launched");
-watchMainThreadStalls({ report: blockedMs => log.warn(`Main thread blocked for ${blockedMs}ms`) });
+watchMainThreadStalls({
+  tasks: stallTasks,
+  report: (blockedMs, summary) => log.warn(`Main thread blocked for ${blockedMs}ms (${summary})`)
+});
 
 // Enforce sandbox on all renderers
 app.enableSandbox();
@@ -584,9 +591,11 @@ store.onDidAnyChange(async (newState, oldState) => {
 
   // Setting start on boot in development tends to cause a blank electron executable to start on boot so let's never set that
   if (process.env.NODE_ENV !== "development") {
-    app.setLoginItemSettings({
-      openAtLogin: newState.general.startOnBoot
-    });
+    stallTasks.timeSync("app.setLoginItemSettings", () =>
+      app.setLoginItemSettings({
+        openAtLogin: newState.general.startOnBoot
+      })
+    );
   }
 
   syncIntegrations(integrationRegistrations, newState, oldState);
@@ -676,9 +685,11 @@ if (store.get("playback").enableSpeakerFill) {
 }
 
 function saveState() {
-  store.set("state.lastUrl", lastUrl);
-  store.set("state.lastVideoId", lastVideoId);
-  store.set("state.lastPlaylistId", lastPlaylistId);
+  stallTasks.timeSync("saveState", () => {
+    store.set("state.lastUrl", lastUrl);
+    store.set("state.lastVideoId", lastVideoId);
+    store.set("state.lastPlaylistId", lastPlaylistId);
+  });
 }
 
 // Automatic background state saving every 5 minutes
@@ -835,24 +846,28 @@ const createYTMView = (): void => {
   memoryStore.set("ytmViewLoadingError", false);
   memoryStore.set("ytmViewLoadingStatus", "Initializing...");
 
-  ytmView = new BrowserView({
-    webPreferences: {
-      sandbox: true,
-      contextIsolation: true,
-      partition: app.isPackaged ? "persist:ytmview" : "persist:ytmview-dev",
-      preload: path.join(__dirname, `../renderer/windows/ytmview/preload.js`),
-      // Gating autoplay on a user gesture makes YTM render its blocked-autoplay
-      // hint and silently swallows every programmatic play, including restoring
-      // the last track and following another player. Pause on launch is handled
-      // by muting the restore and pausing once it reports playing instead.
-      autoplayPolicy: "no-user-gesture-required",
-      // The view is only attached to the window once its hooks are ready. A
-      // detached view is treated as a background page and gets its timers
-      // throttled, which stalls the hook polls it needs to become ready.
-      backgroundThrottling: false,
-      additionalArguments: isTestRun() ? ["--ytmd-test"] : []
-    }
-  });
+  ytmView = stallTasks.timeSync(
+    "BrowserView create",
+    () =>
+      new BrowserView({
+        webPreferences: {
+          sandbox: true,
+          contextIsolation: true,
+          partition: app.isPackaged ? "persist:ytmview" : "persist:ytmview-dev",
+          preload: path.join(__dirname, `../renderer/windows/ytmview/preload.js`),
+          // Gating autoplay on a user gesture makes YTM render its blocked-autoplay
+          // hint and silently swallows every programmatic play, including restoring
+          // the last track and following another player. Pause on launch is handled
+          // by muting the restore and pausing once it reports playing instead.
+          autoplayPolicy: "no-user-gesture-required",
+          // The view is only attached to the window once its hooks are ready. A
+          // detached view is treated as a background page and gets its timers
+          // throttled, which stalls the hook polls it needs to become ready.
+          backgroundThrottling: false,
+          additionalArguments: isTestRun() ? ["--ytmd-test"] : []
+        }
+      })
+  );
   companionServer.provide(store, memoryStore, ytmView);
   ratioVolume.provide(ytmView);
   nonStop.provide(ytmView);
@@ -950,14 +965,16 @@ const createYTMView = (): void => {
     if (mainWindow) {
       if (!applicationQuitting) {
         if (ytmView.webContents.getURL().startsWith("https://music.youtube.com/")) {
-          const choice = dialog.showMessageBoxSync(mainWindow, {
-            type: "question",
-            buttons: ["Leave", "Stay"],
-            title: "Navigation",
-            message: "YouTube Music is preventing navigation. Do you want to leave or stay?",
-            defaultId: 0,
-            cancelId: 1
-          });
+          const choice = stallTasks.timeSync("dialog showMessageBoxSync", () =>
+            dialog.showMessageBoxSync(mainWindow, {
+              type: "question",
+              buttons: ["Leave", "Stay"],
+              title: "Navigation",
+              message: "YouTube Music is preventing navigation. Do you want to leave or stay?",
+              defaultId: 0,
+              cancelId: 1
+            })
+          );
 
           if (choice !== 0) {
             return;

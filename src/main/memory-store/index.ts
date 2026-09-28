@@ -1,5 +1,6 @@
 import EventEmitter from "events";
 import log from "electron-log";
+import { stallTasks } from "../stall-watch";
 
 export default class MemoryStore<T extends Record<string, unknown>> {
   private state: Record<string, unknown>;
@@ -17,9 +18,11 @@ export default class MemoryStore<T extends Record<string, unknown>> {
   }
 
   public set(key: string, value: unknown) {
-    const oldState = structuredClone(this.state);
-    this.state[key as string] = value;
-    this.eventEmitter.emit("stateChanged", this.state, oldState);
+    stallTasks.timeSync(`MemoryStore.set ${key}`, () => {
+      const oldState = structuredClone(this.state);
+      this.state[key as string] = value;
+      this.eventEmitter.emit("stateChanged", this.state, oldState);
+    });
   }
 
   public onStateChanged(callback: (newState: T, oldState: T) => void) {

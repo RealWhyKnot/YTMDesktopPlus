@@ -1,6 +1,7 @@
 import path from "node:path";
 import log from "electron-log";
 import { BrowserWindow, shell, type BrowserWindowConstructorOptions } from "electron";
+import { stallTasks } from "../stall-watch";
 
 export const TITLE_BAR_OVERLAY = {
   color: "#000000",
@@ -35,17 +36,21 @@ type AppWindowOptions = BrowserWindowConstructorOptions & {
 
 export function createAppWindow(options: AppWindowOptions): BrowserWindow {
   const { openExternalUrls, webPreferences, ...rest } = options;
-  const window = new BrowserWindow({
-    frame: false,
-    titleBarStyle: "hidden",
-    titleBarOverlay: titleBarOverlayProvider(),
-    webPreferences: {
-      sandbox: true,
-      contextIsolation: true,
-      ...webPreferences
-    },
-    ...rest
-  });
+  const window = stallTasks.timeSync(
+    "BrowserWindow create",
+    () =>
+      new BrowserWindow({
+        frame: false,
+        titleBarStyle: "hidden",
+        titleBarOverlay: titleBarOverlayProvider(),
+        webPreferences: {
+          sandbox: true,
+          contextIsolation: true,
+          ...webPreferences
+        },
+        ...rest
+      })
+  );
 
   window.webContents.setWindowOpenHandler(details => {
     if (openExternalUrls?.includes(details.url)) {

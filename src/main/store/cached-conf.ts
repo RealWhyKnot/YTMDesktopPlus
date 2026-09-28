@@ -1,4 +1,5 @@
 import Conf, { type Options } from "conf";
+import { stallTasks } from "../stall-watch";
 
 export class CachedConf<T extends Record<string, unknown>> extends Conf<T> {
   private cached: T | undefined;
@@ -7,7 +8,7 @@ export class CachedConf<T extends Record<string, unknown>> extends Conf<T> {
     const write = Conf.prototype["_write"];
     this.prototype["_write"] = function (this: CachedConf<Record<string, unknown>>, value: unknown) {
       this.cached = undefined;
-      write.call(this, value);
+      stallTasks.timeSync("conf write", () => write.call(this, value));
     };
   }
 

@@ -2,6 +2,7 @@ import { nativeImage, type NativeImage } from "electron";
 import type Conf from "conf";
 import playerStateStore, { PlayerState, VideoState } from "./player-state-store";
 import type { StoreSchema } from "../shared/store/schema";
+import { stallTasks } from "./stall-watch";
 
 export interface TaskbarDeps {
   store: Conf<StoreSchema>;
@@ -69,7 +70,7 @@ export function createTaskbarUpdater(deps: TaskbarUpdaterDeps) {
     if (deps.icons && target.isVisible()) {
       const key = `${hasVideo}:${isPlaying}`;
       if (key !== appliedButtons) {
-        target.setThumbarButtons(buttons(hasVideo, isPlaying, deps.icons));
+        stallTasks.timeSync("taskbar setThumbarButtons", () => target.setThumbarButtons(buttons(hasVideo, isPlaying, deps.icons)));
         appliedButtons = key;
       }
     }
@@ -78,14 +79,14 @@ export function createTaskbarUpdater(deps: TaskbarUpdaterDeps) {
       const frame = progressBarFrame(state);
       const key = `${frame.value}:${frame.mode}`;
       if (key !== appliedProgress) {
-        target.setProgressBar(frame.value, { mode: frame.mode });
+        stallTasks.timeSync("taskbar setProgressBar", () => target.setProgressBar(frame.value, { mode: frame.mode }));
         appliedProgress = key;
       }
     }
   };
 
   const clearProgress = () => {
-    window?.setProgressBar(-1);
+    stallTasks.timeSync("taskbar setProgressBar", () => window?.setProgressBar(-1));
     appliedProgress = null;
   };
 
