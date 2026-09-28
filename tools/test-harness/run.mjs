@@ -23,12 +23,29 @@ import path from "node:path";
 import { createEmitter } from "./events.mjs";
 import { cloneProfile, launchApp } from "./launch.mjs";
 import { RUNS_DIR, sweep, listStrays, teardown } from "./teardown.mjs";
-import { listTargets, evalOnTarget, matchedStylesOnTarget, screenshotOnTarget, waitForTarget, waitForValue } from "./cdp.mjs";
+import {
+  devToolsActivePort,
+  inspectorPort,
+  listTargets,
+  evalOnTarget,
+  matchedStylesOnTarget,
+  screenshotOnTarget,
+  waitForTarget,
+  waitForValue
+} from "./cdp.mjs";
 import * as companion from "./companion.mjs";
 import { createLogTail, grepFile } from "./log-tail.mjs";
 
 const MAIN_WINDOW = /windows\/main\/index\.html/;
 const YTM_VIEW = /music\.youtube\.com|consent\.youtube\.com|accounts\.google\.com/;
+
+const readText = file => {
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    return null;
+  }
+};
 
 export class EnvironmentBlocked extends Error {}
 class StepFailed extends Error {}
@@ -93,19 +110,10 @@ async function finish(code, verdict, extra = {}) {
   process.exit(clean ? code : Math.max(code, 6));
 }
 
-// Pick a CDP port nothing is listening on.
-let cdpPort = 9333;
-for (; cdpPort < 9343; cdpPort++) {
-  try {
-    await listTargets(cdpPort);
-  } catch {
-    break;
-  }
-}
+let cdpPort = null;
+let inspectPort = null;
 
-const inspectPort = scenario.inspectMain ? cdpPort + 6 : null;
-
-emit("run-start", { scenario: scenarioName, runDir, cdpPort, inspectPort, timeoutSeconds });
+emit("run-start", { scenario: scenarioName, runDir, timeoutSeconds });
 
 const sweptBefore = sweep();
 if (sweptBefore.length) emit("prelaunch-sweep", { killed: sweptBefore });
@@ -168,7 +176,7 @@ logTail = createLogTail({
 });
 
 phase = "launch";
-child = launchApp({ profileDir, cdpPort, inspectPort, logPath: forgeLog, env: scenario.env ?? {} });
+child = launchApp({ profileDir, inspect: !!scenario.inspectMain, logPath: forgeLog, env: scenario.env ?? {} });
 emit("launched", { pid: child.pid });
 child.on("exit", code => emit("app-process-exit", { code }));
 
@@ -177,7 +185,9 @@ const ctx = {
   runDir,
   profileDir,
   mainLog,
-  cdpPort,
+  get cdpPort() {
+    return cdpPort;
+  },
   appPid: child.pid,
   companion,
   patterns: { MAIN_WINDOW, YTM_VIEW },
@@ -240,13 +250,23 @@ try {
       const deadline = Date.now() + 120000;
       for (;;) {
         if (child.exitCode !== null) throw new Error(`app process exited early with code ${child.exitCode}`);
-        try {
-          await listTargets(cdpPort);
+        const port = devToolsActivePort(readText(path.join(profileDir, "DevToolsActivePort")));
+        const inspect = scenario.inspectMain ? inspectorPort(grepFile(forgeLog, /Debugger listening on/)) : null;
+        if (
+          port &&
+          (inspect || !scenario.inspectMain) &&
+          (await listTargets(port).then(
+            () => true,
+            () => false
+          ))
+        ) {
+          cdpPort = port;
+          inspectPort = inspect;
+          emit("cdp-ports", { cdpPort, inspectPort });
           return;
-        } catch {
-          if (Date.now() > deadline) throw new Error("cdp never became reachable");
-          await new Promise(r => setTimeout(r, 2000));
         }
+        if (Date.now() > deadline) throw new Error(`cdp never became reachable (DevToolsActivePort ${port ?? "missing"}, inspector ${inspect ?? "n/a"})`);
+        await new Promise(r => setTimeout(r, 2000));
       }
     },
     125000

@@ -13,11 +13,10 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 // its stdin closes, and the app's test seam exits when the inherited stdin
 // closes, so if this runner dies for any reason the whole tree follows.
 // Nothing is ever written to it: forge treats input as the restart command.
-export function launchApp({ profileDir, cdpPort, inspectPort = null, logPath, env = {} }) {
+export function launchApp({ profileDir, inspect = false, logPath, env = {} }) {
   const forgeStart = path.join(REPO_ROOT, "node_modules", "@electron-forge", "cli", "dist", "electron-forge-start.js");
-  const inspect = inspectPort ? { forge: ["--inspect-electron"], app: [`--inspect=${inspectPort}`] } : { forge: [], app: [] };
   const fd = openSync(logPath, "w");
-  const args = [forgeStart, ...inspect.forge, "--", "--disable-features=CalculateNativeWinOcclusion", `--user-data-dir=${profileDir}`, ...inspect.app];
+  const args = [forgeStart, "--", "--disable-features=CalculateNativeWinOcclusion", `--user-data-dir=${profileDir}`, ...(inspect ? ["--inspect=0"] : [])];
   const child = spawn(process.execPath, args, {
     cwd: REPO_ROOT,
     stdio: ["pipe", fd, fd],
@@ -26,7 +25,7 @@ export function launchApp({ profileDir, cdpPort, inspectPort = null, logPath, en
       NODE_ENV: "development",
       YTMD_TEST_RUNNER_PID: String(process.pid),
       YTMD_TEST_PROFILE: profileDir,
-      YTMD_TEST_CDP_PORT: String(cdpPort),
+      YTMD_TEST_CDP_PORT: "0",
       ...env,
       YTMD_TEST: "1",
       YTMD_TEST_ALLOW_AUDIO: ""

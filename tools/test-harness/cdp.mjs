@@ -6,6 +6,16 @@
 const withTimeout = (promise, ms, label) =>
   Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(`timeout after ${ms}ms: ${label}`)), ms))]);
 
+export function devToolsActivePort(text) {
+  const match = /^(\d+)\r?\n/.exec(text ?? "");
+  return match ? Number(match[1]) : null;
+}
+
+export function inspectorPort(line) {
+  const match = /Debugger listening on ws:\/\/127\.0\.0\.1:(\d+)\//.exec(line ?? "");
+  return match ? Number(match[1]) : null;
+}
+
 export async function listTargets(port) {
   const res = await withTimeout(fetch(`http://127.0.0.1:${port}/json/list`), 3000, "list targets");
   return res.json();
