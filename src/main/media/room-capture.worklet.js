@@ -6,11 +6,13 @@ class RoomCapture extends AudioWorkletProcessor {
     super();
     this.out = null;
     this.stopped = false;
+    this.ad = false;
     this.left = new Float32Array(CHUNK_FRAMES);
     this.right = new Float32Array(CHUNK_FRAMES);
     this.filled = 0;
     this.port.onmessage = event => {
       if (event.data && event.data.port) this.out = event.data.port;
+      if (event.data && typeof event.data.ad === "boolean") this.ad = event.data.ad;
       if (event.data && event.data.stop) {
         this.stopped = true;
         if (this.out) this.out.close();
@@ -21,6 +23,7 @@ class RoomCapture extends AudioWorkletProcessor {
 
   process(inputs) {
     if (this.stopped) return false;
+    if (this.ad) return true;
     const input = inputs[0];
     const left = input[0];
     const right = input[1] || input[0];

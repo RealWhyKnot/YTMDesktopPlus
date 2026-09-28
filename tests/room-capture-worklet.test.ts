@@ -73,6 +73,36 @@ describe("room capture worklet", () => {
     expect(sent[0].left[1023]).toBe(4);
   });
 
+  it("emits nothing while an ad plays and carries on with the music after it", () => {
+    const { processor, sent, connect } = load();
+    connect();
+
+    for (let i = 0; i < 4; i++) processor.process([[quantum(1)]]);
+    processor.port.onmessage({ data: { ad: true } });
+    for (let i = 0; i < 16; i++) processor.process([[quantum(9)]]);
+    expect(sent).toHaveLength(0);
+
+    processor.port.onmessage({ data: { ad: false } });
+    for (let i = 0; i < 4; i++) processor.process([[quantum(2)]]);
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0].left.slice(0, 512)).toEqual(quantum(1, 512));
+    expect(sent[0].left.slice(512)).toEqual(quantum(2, 512));
+  });
+
+  it("starts gated when its channel arrives during an ad", () => {
+    const { processor, sent, out } = load();
+
+    processor.port.onmessage({ data: { port: out, ad: true } });
+    for (let i = 0; i < 8; i++) processor.process([[quantum(9)]]);
+    expect(sent).toHaveLength(0);
+
+    processor.port.onmessage({ data: { ad: false } });
+    for (let i = 0; i < 8; i++) processor.process([[quantum(1)]]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].left).toEqual(quantum(1, 1024));
+  });
+
   it("drops audio until its channel arrives, then stops for good when told to", () => {
     const { processor, sent, out, connect } = load();
 

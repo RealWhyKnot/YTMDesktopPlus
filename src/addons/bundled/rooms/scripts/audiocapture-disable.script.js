@@ -17,6 +17,9 @@
   const video = document.querySelector("video");
 
   step(() => {
+    if (state.unsubscribeAd) state.unsubscribeAd();
+  });
+  step(() => {
     if (state.node) state.node.port.postMessage({ stop: true });
   });
 

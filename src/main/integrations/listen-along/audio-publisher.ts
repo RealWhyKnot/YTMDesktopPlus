@@ -132,7 +132,7 @@ export class AudioPublisher {
   private muted = false;
   private adPlaying = false;
   private sentStatus: AudioStatus | null = null;
-  private lastPlayingAt = 0;
+  private pausedSince: number | null = null;
   private lastState: PlayerState | null = null;
   private metaVideoId: string | null = null;
   private metaHadFullMetadata = false;
@@ -164,8 +164,8 @@ export class AudioPublisher {
     if (packets.length === 0) return;
     if (this.phase !== "ready" || !this.transport?.isOpen) return;
 
-    const paused = this.deps.now() - this.lastPlayingAt > PAUSE_GATE_MS;
-    if (this.adPlaying || paused || this.transport.bufferedAmount > MAX_BUFFERED_BYTES) {
+    const paused = this.pausedSince !== null && this.deps.now() - this.pausedSince > PAUSE_GATE_MS;
+    if (paused || this.transport.bufferedAmount > MAX_BUFFERED_BYTES) {
       this.pendingDiscontinuity = true;
       return;
     }
@@ -199,7 +199,8 @@ export class AudioPublisher {
 
   updateLocalState(state: PlayerState) {
     this.lastState = state;
-    if (state.trackState === VideoState.Playing) this.lastPlayingAt = this.deps.now();
+    if (state.trackState !== VideoState.Paused && state.trackState !== VideoState.Unknown) this.pausedSince = null;
+    else this.pausedSince ??= this.deps.now();
     if (this.adPlaying !== state.adPlaying) {
       this.adPlaying = state.adPlaying;
       if (!state.adPlaying) this.pendingDiscontinuity = true;

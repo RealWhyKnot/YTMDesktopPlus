@@ -71,6 +71,17 @@
   const onVolumeChange = () => postMuted();
   video.addEventListener("volumechange", onVolumeChange);
 
+  const hook = window.__YTMD_HOOK__;
+  let adPlaying = false;
+  const readAdPlaying = () => {
+    try {
+      return hook.ytmStore.getState().player.adPlaying === true;
+    } catch {
+      return adPlaying;
+    }
+  };
+  adPlaying = readAdPlaying();
+
   const state = {
     localGain,
     node: null,
@@ -80,9 +91,19 @@
     virtualMuted: () => virtualMuted,
     setListening,
     onVolumeChange,
+    unsubscribeAd: null,
     stopped: false
   };
   window.__ytmdAudioStream = state;
+
+  if (hook && hook.ytmStore) {
+    state.unsubscribeAd = hook.ytmStore.subscribe(() => {
+      const next = readAdPlaying();
+      if (next === adPlaying) return;
+      adPlaying = next;
+      if (state.node) state.node.port.postMessage({ ad: adPlaying });
+    });
+  }
 
   context.audioWorklet
     .addModule("ytmd-media://capture/worklet.js")
@@ -96,7 +117,7 @@
         channelInterpretation: "speakers"
       });
       const channel = new MessageChannel();
-      node.port.postMessage({ port: channel.port1 }, [channel.port1]);
+      node.port.postMessage({ port: channel.port1, ad: adPlaying }, [channel.port1]);
       base.source.connect(node);
       state.node = node;
       window.postMessage({ type: "ytmd-room-capture-port" }, "*", [channel.port2]);

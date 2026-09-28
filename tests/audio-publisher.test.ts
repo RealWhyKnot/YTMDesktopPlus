@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { AudioPublisher, type AudioTransport, type AudioTransportHandlers } from "../src/main/integrations/listen-along/audio-publisher";
-import { VideoState, type PlayerState } from "../src/main/player-state-store";
+import { VideoState, type PlayerState } from "../src/shared/addons/sdk";
 import type { AudioClientFrame, BatchPacket } from "../src/shared/audio-protocol";
 import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
 
@@ -227,20 +227,71 @@ describe("AudioPublisher chunk gates", () => {
     expect(h.binaryFrames).toHaveLength(0);
   });
 
-  it("gates ads and flags the discontinuity on resume", () => {
+  it("reports an ad in the status, leaves gating its audio to the page and flags the discontinuity after it", () => {
     const h = readyHarness();
     h.publisher.handleChunks(packets(0));
 
     h.publisher.updateLocalState(playerState("dQw4w9WgXcQ", VideoState.Playing, 10, { adPlaying: true }));
-    h.publisher.handleChunks(packets(250_000));
-    expect(h.binaryFrames).toHaveLength(1);
     expect(h.ofType("status").pop()).toEqual({ t: "status", s: "ad" });
+    h.publisher.handleChunks(packets(250_000));
+    expect(h.binaryFrames).toHaveLength(2);
+    expect(new DataView(h.binaryFrames[1].buffer).getUint8(1)).toBe(0);
 
     h.publisher.updateLocalState(playerState("dQw4w9WgXcQ", VideoState.Playing, 40));
     h.publisher.handleChunks(packets(500_000));
-    expect(h.binaryFrames).toHaveLength(2);
-    expect(new DataView(h.binaryFrames[1].buffer).getUint8(1)).toBe(1);
+    expect(h.binaryFrames).toHaveLength(3);
+    expect(new DataView(h.binaryFrames[2].buffer).getUint8(1)).toBe(1);
     expect(h.ofType("status").pop()).toEqual({ t: "status", s: "live" });
+  });
+
+  it("keeps sending while player state stops arriving", () => {
+    const h = readyHarness();
+
+    h.advance(10_000);
+    h.publisher.handleChunks(packets(0));
+    h.advance(60_000);
+    h.publisher.handleChunks(packets(250_000));
+
+    expect(h.binaryFrames).toHaveLength(2);
+  });
+
+  it("sends before any player state has arrived", () => {
+    const h = makeHarness();
+    h.publisher.setCredentials(CREDS);
+    h.open();
+    h.ready();
+
+    h.advance(10_000);
+    h.publisher.handleChunks(packets());
+
+    expect(h.binaryFrames).toHaveLength(1);
+  });
+
+  it("measures a pause from its start, however many updates follow", () => {
+    const h = readyHarness();
+    h.publisher.updateLocalState(playerState("dQw4w9WgXcQ", VideoState.Paused, 10));
+    h.advance(4000);
+    h.publisher.updateLocalState(playerState("dQw4w9WgXcQ", VideoState.Paused, 10));
+    h.publisher.handleChunks(packets(0));
+    expect(h.binaryFrames).toHaveLength(1);
+
+    h.advance(1500);
+    h.publisher.updateLocalState(playerState("dQw4w9WgXcQ", VideoState.Paused, 10));
+    h.publisher.handleChunks(packets(250_000));
+    expect(h.binaryFrames).toHaveLength(1);
+  });
+
+  it("closes the gate for a stopped track but not for buffering", () => {
+    const h = readyHarness();
+    h.publisher.updateLocalState(playerState("dQw4w9WgXcQ", VideoState.Buffering, 10));
+    h.advance(6000);
+    h.publisher.handleChunks(packets(0));
+    expect(h.binaryFrames).toHaveLength(1);
+
+    h.publisher.updateLocalState(playerState("dQw4w9WgXcQ", VideoState.Unknown, 10));
+    h.advance(6000);
+    h.publisher.handleChunks(packets(250_000));
+    expect(h.binaryFrames).toHaveLength(1);
   });
 
   it("stops sending after a pause outlives the gate", () => {

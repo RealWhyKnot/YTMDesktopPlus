@@ -151,7 +151,7 @@ describe("rooms audio capture enable", () => {
     const [node] = workletNodes;
     expect(node.name).toBe("ytmd-room-capture");
     expect(node.options).toMatchObject({ numberOfOutputs: 0, channelCount: 2 });
-    expect(node.port.postMessage).toHaveBeenCalledWith({ port: { name: "worklet end" } }, [{ name: "worklet end" }]);
+    expect(node.port.postMessage).toHaveBeenCalledWith({ port: { name: "worklet end" }, ad: false }, [{ name: "worklet end" }]);
     expect(graphSource.connect).toHaveBeenCalledWith(node);
     expect(graphSource.connect).not.toHaveBeenCalledWith(graphOut);
     expect(pagePosts).toEqual([{ data: { type: "ytmd-room-capture-port" }, ports: [{ name: "outgoing end" }] }]);
@@ -174,6 +174,93 @@ describe("rooms audio capture enable", () => {
 
     expect(workletNodes).toHaveLength(0);
     expect(pagePosts).toEqual([]);
+  });
+});
+
+describe("rooms audio capture ad gate", () => {
+  function hookStore(player: unknown) {
+    const store = {
+      player,
+      unreadable: false,
+      listeners: [] as (() => void)[],
+      unsubscribe: vi.fn(),
+      set(next: unknown) {
+        store.player = next;
+        for (const listener of store.listeners) listener();
+      }
+    };
+    (globalThis as unknown as { window: Record<string, unknown> }).window.__YTMD_HOOK__ = {
+      ytmStore: {
+        getState: () => {
+          if (store.unreadable) throw new Error("store gone");
+          return { player: store.player };
+        },
+        subscribe: (listener: () => void) => {
+          store.listeners.push(listener);
+          return store.unsubscribe;
+        }
+      }
+    };
+    return store;
+  }
+
+  it("tells the capture node once per change when an ad starts and ends", async () => {
+    const store = hookStore({ adPlaying: false });
+    run(enableSource);
+    await settle();
+    const port = workletNodes[0].port;
+    expect(port.postMessage).toHaveBeenLastCalledWith({ port: { name: "worklet end" }, ad: false }, [{ name: "worklet end" }]);
+
+    store.set({ adPlaying: true });
+    store.set({ adPlaying: true });
+    expect(port.postMessage).toHaveBeenLastCalledWith({ ad: true });
+    expect(port.postMessage).toHaveBeenCalledTimes(2);
+
+    store.set({ adPlaying: false });
+    expect(port.postMessage).toHaveBeenLastCalledWith({ ad: false });
+    expect(port.postMessage).toHaveBeenCalledTimes(3);
+  });
+
+  it("starts the capture node gated when an ad is already playing", async () => {
+    hookStore({ adPlaying: true });
+    run(enableSource);
+    await settle();
+
+    expect(workletNodes[0].port.postMessage).toHaveBeenCalledWith({ port: { name: "worklet end" }, ad: true }, [{ name: "worklet end" }]);
+  });
+
+  it("carries an ad that starts while the capture module loads", async () => {
+    const store = hookStore({ adPlaying: false });
+    run(enableSource);
+    store.set({ adPlaying: true });
+    await settle();
+
+    expect(workletNodes[0].port.postMessage).toHaveBeenCalledWith({ port: { name: "worklet end" }, ad: true }, [{ name: "worklet end" }]);
+  });
+
+  it("reads a missing flag as no ad and holds the last state while the store cannot be read", async () => {
+    const store = hookStore({ adPlaying: true });
+    run(enableSource);
+    await settle();
+    const port = workletNodes[0].port;
+
+    store.unreadable = true;
+    store.set({ adPlaying: false });
+    expect(port.postMessage).toHaveBeenCalledTimes(1);
+
+    store.unreadable = false;
+    store.set({});
+    expect(port.postMessage).toHaveBeenLastCalledWith({ ad: false });
+  });
+
+  it("stops following the store on teardown", async () => {
+    const store = hookStore({ adPlaying: false });
+    run(enableSource);
+    await settle();
+
+    run(disableSource);
+
+    expect(store.unsubscribe).toHaveBeenCalled();
   });
 });
 
