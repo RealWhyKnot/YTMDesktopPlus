@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v2026.929.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.929.0-beta) - 2026-09-29
+
 ## [v2026.928.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.928.0-beta) - 2026-09-28
 - build(deps): give the appimage maker's mksquashfs version check 60s instead of 3s
 - test(harness): retry changeVideo in the playback scenario and poll state within its rate limit
