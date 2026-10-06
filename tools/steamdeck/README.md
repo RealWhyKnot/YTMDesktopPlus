@@ -33,7 +33,8 @@ node tools/steamdeck/run.mjs shell                  # shell in the distro, as th
 wsl --install archlinux --no-launch
 ```
 
-Set `YTMD_DECK_DISTRO` to point the tool at a different distro name.
+Set `YTMD_DECK_DISTRO` to point the tool at a different distro name. `setup` also works on an
+apt-based distro such as Ubuntu; the flatpak runtime is the same one a Deck uses either way.
 
 ## Notes
 
