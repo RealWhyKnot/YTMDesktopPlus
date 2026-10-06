@@ -17,6 +17,7 @@
       handlers: null,
       shadow: null,
       shadowVideoId: null,
+      failedUrl: null,
       phase: "idle",
       pendingFadeIn: false,
       awaitingAdvance: false,
@@ -141,6 +142,7 @@
       reportOnce("arm", "armFailed", { reason: "no audio segment url yet" });
       return;
     }
+    if (url === state.failedUrl) return;
     releaseShadow();
     const shadow = new Audio();
     shadow.preload = "auto";
@@ -160,6 +162,7 @@
     shadow.addEventListener("error", () => {
       if (state.shadow !== shadow) return;
       report("armFailed", { videoId, reason: "media error " + (shadow.error ? shadow.error.code : "?") });
+      state.failedUrl = url;
       state.shadow = null;
       state.shadowVideoId = null;
     });

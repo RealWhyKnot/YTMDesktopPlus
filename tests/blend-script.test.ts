@@ -296,6 +296,26 @@ describe("blend script", () => {
     expect(new URL(audios[0].src).searchParams.get("id")).toBe("current");
   });
 
+  it("does not re-arm a segment URL that already failed, only a fresh one", () => {
+    run();
+    video.currentTime = 30;
+    dispatch("timeupdate");
+    audios[0].error = { code: 4 };
+    audios[0].emit("error");
+    for (let i = 0; i < 50; i++) {
+      video.currentTime += 0.25;
+      dispatch("timeupdate");
+    }
+    expect(audios).toHaveLength(1);
+    expect(events().filter(event => event === "armFailed")).toHaveLength(1);
+
+    resourceEntries.push({ name: SEGMENT_URL.replace("sig=xyz", "sig=fresh") });
+    armAt(45);
+    expect(audios).toHaveLength(2);
+    expect(new URL(audios[1].src).searchParams.get("sig")).toBe("fresh");
+    expect(events()).toContain("armed");
+  });
+
   it("corrects shadow drift while it is silent, and never during a blend", () => {
     run();
     armAt(30);
