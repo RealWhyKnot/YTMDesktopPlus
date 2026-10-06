@@ -44,7 +44,7 @@ import VolumeRatio from "./integrations/volume-ratio";
 import NonStop from "./integrations/nonstop";
 import AdBlocker from "./integrations/ad-blocker";
 import ListenAlong from "./integrations/listen-along";
-import { blockWatchHistoryWrites, initializeTestSeams, isTestClient, isTestRun } from "./test-seams";
+import { blockWatchHistoryWrites, initializeTestSeams, injectYtmExperimentFlags, isTestClient, isTestRun } from "./test-seams";
 import { migrateLegacyProfile } from "./profile-migration";
 import { cancelCue, cueTrack, getPlaylists, providePlaybackView, sendPlaybackCommand } from "./playback";
 import { createLaunchPause } from "./playback/launch-pause";
@@ -886,6 +886,7 @@ const createYTMView = (): void => {
   // while the page is still loading, which runs well past Node's default ceiling
   // of ten and logs a listener-leak warning at error level.
   ytmView.webContents.setMaxListeners(64);
+  injectYtmExperimentFlags(ytmView.webContents);
 
   // Attach events to ytm view
   ytmView.webContents.on("will-navigate", event => {

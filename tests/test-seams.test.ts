@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { blockWatchHistoryWrites, WATCH_HISTORY_WRITES } from "../src/main/test-seams";
+import { blockWatchHistoryWrites, injectYtmExperimentFlags, injectYtmFlags, parseYtmFlagSpec, WATCH_HISTORY_WRITES } from "../src/main/test-seams";
 
 function fakeSession() {
   const onBeforeSendHeaders = vi.fn();
@@ -37,5 +37,36 @@ describe("blockWatchHistoryWrites", () => {
       listener({ url }, callback);
       expect(callback).toHaveBeenCalledWith({ cancel: true });
     }
+  });
+});
+
+describe("YTM experiment flag injection", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("parses a flag spec into booleans and strings", () => {
+    expect(parseYtmFlagSpec("music_web_enable_wiz_miniplayer, other=false,level=3,")).toEqual({
+      music_web_enable_wiz_miniplayer: true,
+      other: false,
+      level: "3"
+    });
+  });
+
+  it("buckets every EXPERIMENT_FLAGS block in the page into the experiment", () => {
+    const html = '<script>ytcfg.set({"EXPERIMENT_FLAGS":{"ab_det_apm":true}});</script><script>ytcfg.set({"EXPERIMENT_FLAGS":{}});</script>';
+    const rewritten = injectYtmFlags(html, { music_web_enable_wiz_miniplayer: true });
+    expect(rewritten).toBe(
+      '<script>ytcfg.set({"EXPERIMENT_FLAGS":{"music_web_enable_wiz_miniplayer":true,"ab_det_apm":true}});</script><script>ytcfg.set({"EXPERIMENT_FLAGS":{"music_web_enable_wiz_miniplayer":true,}});</script>'
+    );
+    expect(injectYtmFlags(html, {})).toBe(html);
+  });
+
+  it("never attaches a debugger outside a test run", () => {
+    vi.stubEnv("YTMD_TEST", "");
+    vi.stubEnv("YTMD_TEST_YTM_FLAGS", "music_web_enable_wiz_miniplayer");
+    const attach = vi.fn();
+    injectYtmExperimentFlags({ debugger: { attach, on: vi.fn(), sendCommand: vi.fn() } } as never);
+    expect(attach).not.toHaveBeenCalled();
   });
 });

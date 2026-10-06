@@ -1,4 +1,4 @@
-import { app, ipcMain, type Session } from "electron";
+import { app, ipcMain, type Session, type WebContents } from "electron";
 import log from "electron-log";
 import path from "path";
 
@@ -92,6 +92,53 @@ export function blockWatchHistoryWrites(ytmSession: Session) {
       log.info(`test-seams: blocked watch history write ${endpoint}`);
     }
     callback({ cancel: true });
+  });
+}
+
+export function parseYtmFlagSpec(spec: string): Record<string, boolean | string> {
+  const flags: Record<string, boolean | string> = {};
+  for (const pair of spec.split(",")) {
+    const [name, value = "true"] = pair.split("=").map(part => part.trim());
+    if (!name) continue;
+    flags[name] = value === "true" ? true : value === "false" ? false : value;
+  }
+  return flags;
+}
+
+export function injectYtmFlags(html: string, flags: Record<string, boolean | string>): string {
+  const injected = JSON.stringify(flags).slice(1, -1);
+  if (!injected) return html;
+  return html.replaceAll('"EXPERIMENT_FLAGS":{', `"EXPERIMENT_FLAGS":{${injected},`);
+}
+
+export function injectYtmExperimentFlags(contents: WebContents) {
+  const spec = process.env.YTMD_TEST_YTM_FLAGS;
+  if (!spec || !isTestRun() || app.isPackaged) return;
+
+  const flags = parseYtmFlagSpec(spec);
+  const debuggerSession = contents.debugger;
+  debuggerSession.attach("1.3");
+  debuggerSession.on("message", async (_event, method, params) => {
+    if (method !== "Fetch.requestPaused") return;
+    try {
+      const body = await debuggerSession.sendCommand("Fetch.getResponseBody", { requestId: params.requestId });
+      const html = body.base64Encoded ? Buffer.from(body.body, "base64").toString("utf8") : body.body;
+      const rewritten = injectYtmFlags(html, flags);
+      log.info(`test-seams: YTM experiment flags ${spec} ${rewritten === html ? "not injected, no flag block" : "injected"}`);
+      const headers = (params.responseHeaders ?? []).filter((header: { name: string }) => !/^content-(length|encoding)$/i.test(header.name));
+      await debuggerSession.sendCommand("Fetch.fulfillRequest", {
+        requestId: params.requestId,
+        responseCode: params.responseStatusCode ?? 200,
+        responseHeaders: headers,
+        body: Buffer.from(rewritten, "utf8").toString("base64")
+      });
+    } catch (error) {
+      log.warn("test-seams: YTM experiment flag injection failed", error);
+      debuggerSession.sendCommand("Fetch.continueRequest", { requestId: params.requestId }).catch((): undefined => undefined);
+    }
+  });
+  debuggerSession.sendCommand("Fetch.enable", {
+    patterns: [{ urlPattern: "https://music.youtube.com/*", resourceType: "Document", requestStage: "Response" }]
   });
 }
 

@@ -31,6 +31,7 @@ describe("playerBarProbeSource", () => {
     vi.stubGlobal("document", { querySelector: (): null => null });
     expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)()).toEqual({
       playerBarPresent: false,
+      miniplayerPresent: false,
       playerApiPresent: false,
       playerApiReady: false,
       resolverPresent: false,
@@ -41,10 +42,19 @@ describe("playerBarProbeSource", () => {
     });
   });
 
+  it("names the miniplayer when it took the player bar's place", () => {
+    vi.stubGlobal("document", { querySelector: (selector: string) => (selector === "ytmusic-app-layout>ytmusic-miniplayer" ? {} : null) });
+    const snapshot = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)();
+    expect(snapshot.playerBarPresent).toBe(false);
+    expect(snapshot.miniplayerPresent).toBe(true);
+    expect(snapshot.playerApiReady).toBe(false);
+  });
+
   it("does not throw when the player api is missing", () => {
     vi.stubGlobal("document", { querySelector: () => ({}) });
     expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)()).toEqual({
       playerBarPresent: true,
+      miniplayerPresent: false,
       playerApiPresent: false,
       playerApiReady: false,
       resolverPresent: false,
@@ -67,6 +77,7 @@ describe("playerBarProbeSource", () => {
     });
     expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)()).toEqual({
       playerBarPresent: true,
+      miniplayerPresent: false,
       playerApiPresent: true,
       playerApiReady: false,
       resolverPresent: false,
@@ -81,6 +92,7 @@ describe("playerBarProbeSource", () => {
     vi.stubGlobal("document", { querySelector: () => ({ playerApi: fullApi() }) });
     expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)()).toEqual({
       playerBarPresent: true,
+      miniplayerPresent: false,
       playerApiPresent: true,
       playerApiReady: true,
       resolverPresent: false,
@@ -106,6 +118,7 @@ describe("playerBarProbeSource", () => {
     const probe = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource);
     expect(probe()).toEqual({
       playerBarPresent: true,
+      miniplayerPresent: false,
       playerApiPresent: false,
       playerApiReady: false,
       resolverPresent: true,

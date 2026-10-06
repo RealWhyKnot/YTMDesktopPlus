@@ -11,6 +11,7 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
 import Store from "../store-ipc/store";
 import { AD_PRUNE_CONTRACT } from "~shared/ad-contract";
+import { PINNED_EXPERIMENT_FLAGS } from "~shared/ytm-contract";
 import { StoreSchema } from "~shared/store/schema";
 import {
   HOOK_POLL_INTERVAL,
@@ -23,6 +24,7 @@ import {
 } from "~shared/hook-probes";
 import { mergeScript, type ScriptTable } from "./script-table";
 import { installAdPrune } from "./ad-prune";
+import { installExperimentFlagPins } from "./experiment-flags";
 import { installQueueProjection } from "~shared/queue-projection";
 
 import playerBarControlsScript from "./scripts/playerbarcontrols.script?raw";
@@ -46,7 +48,7 @@ const store = new Store<StoreSchema>();
 // renderer processes (and their argv) can be reused across view recreations.
 const brokenHookStage: string | null = process.argv.includes("--ytmd-test") ? ipcRenderer.sendSync("ytmdTest:getBrokenHookStage") : null;
 const failingBooleanProbeSource = `(function() { return false; })`;
-const failingPlayerBarProbeSource = `(function() { return { playerBarPresent: false, playerApiPresent: false, playerApiReady: false, resolverPresent: false, resolveError: null, resolvedVia: null, candidateKeys: [], missingMembers: [] }; })`;
+const failingPlayerBarProbeSource = `(function() { return { playerBarPresent: false, miniplayerPresent: false, playerApiPresent: false, playerApiReady: false, resolverPresent: false, resolveError: null, resolvedVia: null, candidateKeys: [], missingMembers: [] }; })`;
 
 const MAX_CONTRACT_MISSES = 50;
 const reportedContractMisses = new Set<string>();
@@ -260,6 +262,7 @@ function getYTMTextRun(runs: { text: string }[]) {
 const adBlockEnabled: boolean = ipcRenderer.sendSync("ytmView:adBlockEnabled") === true;
 contextBridge.executeInMainWorld({ func: installAdPrune, args: [adBlockEnabled, AD_PRUNE_CONTRACT] });
 contextBridge.executeInMainWorld({ func: installQueueProjection });
+contextBridge.executeInMainWorld({ func: installExperimentFlagPins, args: [PINNED_EXPERIMENT_FLAGS] });
 
 // This hooks YTM's internal store. YouTube Music defines
 // PolymerFakeBaseClassWithoutHtml itself, so whichever side defines the

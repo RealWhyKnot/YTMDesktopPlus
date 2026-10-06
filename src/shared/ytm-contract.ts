@@ -21,6 +21,8 @@ export const PLAYER_API_MEMBERS = [
 
 export const PLAYER_API_DUCK_TYPE = ["isReady", "getPlayerState", "getVolume"] as const;
 
+export const PINNED_EXPERIMENT_FLAGS: Readonly<Record<string, boolean>> = { music_web_enable_wiz_miniplayer: false };
+
 export const KNOWN_PLAYER_API_RESOLVER = "resolvePlayerApi";
 
 export const PLAYER_API_RESOLVER_PATTERN = /^(resolve|get|fetch|ensure|load|await)[A-Za-z0-9_$]*(player|api)/i;

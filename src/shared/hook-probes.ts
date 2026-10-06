@@ -23,6 +23,7 @@ export type PlayerApiSource = "property" | "scan" | "resolver" | "movie-player";
 
 export type PlayerBarProbeSnapshot = {
   playerBarPresent: boolean;
+  miniplayerPresent: boolean;
   playerApiPresent: boolean;
   playerApiReady: boolean;
   resolverPresent: boolean;
@@ -155,6 +156,7 @@ export const playerBarProbeSource = `
 
     return {
       playerBarPresent: !!playerBar,
+      miniplayerPresent: !playerBar && !!document.querySelector("ytmusic-app-layout>ytmusic-miniplayer"),
       playerApiPresent: !!playerApi,
       playerApiReady: ready,
       resolverPresent: resolverKey !== null,
