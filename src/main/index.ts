@@ -11,6 +11,7 @@ import {
   MenuItemConstructorOptions,
   nativeTheme,
   net,
+  powerMonitor,
   protocol,
   Notification,
   safeStorage,
@@ -33,7 +34,7 @@ import { migrateCustomCssSetting } from "./addons/migrate-custom-css";
 import { BUNDLED_ADDONS } from "../addons/bundled";
 import playerStateStore, { playerEvents } from "./player-state-store";
 import { setLogOutputEnabled, setupLogging, switchLogFileToSync } from "./logging";
-import { instrumentIpc, stallTasks, watchMainThreadStalls } from "./stall-watch";
+import { instrumentIpc, markSystemEvents, markWindowMessages, stallTasks, watchMainThreadStalls } from "./stall-watch";
 import { MemoryStoreSchema, StoreSchema } from "../shared/store/schema";
 
 import CompanionServer from "./integrations/companion-server";
@@ -1071,6 +1072,7 @@ const createMainWindow = (): void => {
       devTools: store.get("developer").enableDevTools
     }
   });
+  if (process.platform === "win32") markWindowMessages(mainWindow, stallTasks);
   const windowMaximized = store.get("state").windowMaximized;
   // Even though bounds are set when creating the main window we set the bounds again to fix scaling issues. This is classified as an upstream chromium bug.
   if (windowBounds) {
@@ -1177,6 +1179,7 @@ const createMainWindow = (): void => {
 // Some APIs can only be used after this event occurs.
 app.on("ready", async () => {
   log.info("Application ready");
+  markSystemEvents({ screen, powerMonitor }, stallTasks, label => log.info(`System event: ${label}`));
 
   // First run checks
   const firstRunPath = path.join(app.getPath("userData"), ".first-run");

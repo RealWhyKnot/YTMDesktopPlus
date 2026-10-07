@@ -1,6 +1,14 @@
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTaskRing, instrumentIpc, watchMainThreadStalls, type IpcListener, type IpcRegistrationSource } from "../src/main/stall-watch";
+import {
+  createTaskRing,
+  instrumentIpc,
+  markSystemEvents,
+  markWindowMessages,
+  watchMainThreadStalls,
+  type IpcListener,
+  type IpcRegistrationSource
+} from "../src/main/stall-watch";
 
 function stepClock(values: number[]): () => number {
   let index = 0;
@@ -102,6 +110,39 @@ describe("watchMainThreadStalls", () => {
 
     expect(seen).toEqual([[0, 650]]);
   });
+
+  it("names the system events behind every stall of a monitor-removal burst", () => {
+    const reports: string[] = [];
+    const ring = createTaskRing(10, () => clock);
+    const stop = watchMainThreadStalls({ now: () => clock, tasks: ring, report: (ms, summary) => reports.push(`${ms} ${summary}`) });
+
+    tick(0);
+    ring.mark("display change");
+    ring.mark("display metrics changed");
+    ring.mark("display metrics changed");
+    tick(1161);
+    tick(1044);
+    ring.mark("display removed");
+    tick(7213);
+    stop();
+
+    expect(reports).toEqual([
+      "1161 no labelled work; system: display change, display metrics changed x2",
+      "1044 no labelled work; system: display change, display metrics changed x2",
+      "7213 no labelled work; system: display change, display metrics changed x2, display removed"
+    ]);
+  });
+
+  it("keeps labelled work first when a system event is also near", () => {
+    const reports: string[] = [];
+    const tasks = { overlapping: () => [{ label: "conf write", start: 0, duration: 380 }], marksNear: () => ["resume"] };
+    const stop = watchMainThreadStalls({ now: () => clock, tasks, report: (_ms, summary) => reports.push(summary) });
+
+    tick(400);
+    stop();
+
+    expect(reports).toEqual(["conf write 380ms; system: resume"]);
+  });
 });
 
 describe("createTaskRing", () => {
@@ -154,6 +195,72 @@ describe("createTaskRing", () => {
         .map(task => task.label)
         .sort()
     ).toEqual(["b", "c"]);
+  });
+});
+
+describe("system event marks", () => {
+  it("returns marks from 15s before the window up to its end", () => {
+    let clock = 0;
+    const ring = createTaskRing(10, () => clock);
+
+    for (const [at, label] of [
+      [1_000, "too old"],
+      [6_000, "lookback edge"],
+      [20_000, "inside"],
+      [21_001, "after"]
+    ] as const) {
+      clock = at;
+      ring.mark(label);
+    }
+
+    expect(ring.marksNear(21_000, 21_000)).toEqual(["lookback edge", "inside"]);
+  });
+
+  it("keeps only the newest 64 marks", () => {
+    let clock = 0;
+    const ring = createTaskRing(10, () => clock);
+
+    for (let i = 0; i < 70; i++) {
+      clock = i;
+      ring.mark(`m${i}`);
+    }
+
+    const marks = ring.marksNear(0, 100);
+    expect(marks).toHaveLength(64);
+    expect(marks[0]).toBe("m6");
+  });
+
+  it("marks and logs display and power events", () => {
+    const screen = new EventEmitter();
+    const powerMonitor = new EventEmitter();
+    const marked: string[] = [];
+    const logged: string[] = [];
+
+    markSystemEvents({ screen, powerMonitor }, { mark: label => marked.push(label) }, label => logged.push(label));
+    screen.emit("display-removed", {}, { id: 1 });
+    screen.emit("display-metrics-changed", {}, { id: 2 }, ["workArea"]);
+    powerMonitor.emit("resume");
+    powerMonitor.emit("lock-screen");
+
+    expect(marked).toEqual(["display removed", "display metrics changed", "resume", "screen locked"]);
+    expect(logged).toEqual(marked);
+  });
+
+  it("marks WM_DISPLAYCHANGE and the device-tree WM_DEVICECHANGE, ignoring other device notifications", () => {
+    const hooks = new Map<number, (wParam: Buffer, lParam: Buffer) => void>();
+    const marked: string[] = [];
+    const wParam = (value: number) => {
+      const buffer = Buffer.alloc(8);
+      buffer.writeUInt32LE(value, 0);
+      return buffer;
+    };
+
+    markWindowMessages({ hookWindowMessage: (message, callback) => hooks.set(message, callback) }, { mark: label => marked.push(label) });
+    hooks.get(0x007e)(wParam(32), Buffer.alloc(8));
+    hooks.get(0x0219)(wParam(0x8000), Buffer.alloc(8));
+    hooks.get(0x0219)(wParam(0x0007), Buffer.alloc(8));
+
+    expect(marked).toEqual(["display change", "device change"]);
   });
 });
 
