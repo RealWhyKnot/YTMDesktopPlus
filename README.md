@@ -8,7 +8,7 @@ YouTube Music in a desktop app, using the player from music.youtube.com.
 
 Get the app from the [releases page](https://github.com/RealWhyKnot/YTMDesktopPlus/releases). Nightly betas are published when there are new changes. Debug logging defaults to on in nightlies and off in stable builds.
 
-On Windows, the app can update itself on launch. The app asks on first use; you can change the setting later. Updates follow your installed channel unless you select another one in settings.
+On Windows, the app can update itself on launch. It asks on first use, and you can change the setting later. Updates follow your installed channel unless you select another one in settings.
 
 For Debian or Ubuntu, use the `.deb`. For Fedora, use the `.rpm`.
 
@@ -47,15 +47,15 @@ You sign in with your YouTube Music account. Settings and sign-in from an older 
 
 Start a room from the tray menu. Friends can join through the link, the Listen Along button on your Discord presence, or an 8 letter code. Listeners follow your playback. You can promote them to let them change tracks, skip, seek and pause for the room.
 
-The link also opens a web player with live audio, track title and artwork, which follows you from one track to the next. Web listeners are anonymous, so you see how many are there rather than who. Your volume setting doesn't affect their audio, but muting the app mutes the stream.
+The link also opens a web player with live audio, track title and artwork, which follows you from one track to the next. Web listeners are anonymous. You see how many are there, not who they are. Your volume setting doesn't affect their audio, but muting the app mutes the stream.
 
 Discord presence starts a room automatically and notifies you. You can disable automatic rooms in settings.
 
-You choose a display name before hosting or joining; it isn't taken from your account. The room service doesn't retain names, members or rooms after they close. With Listen Along disabled, the app makes no connection to the room service.
+You choose a display name before hosting or joining. It isn't taken from your account. The room service doesn't retain names, members or rooms after they close. With Listen Along disabled, the app doesn't connect to the room service.
 
 ## Development
 
-You'll need Node.js 22.12 or newer and Git. Node 25 and later no longer bundle corepack, so install it first with `npm install --global corepack`.
+You'll need Node.js 22.12 or newer and Git. Node 25 and later don't bundle corepack. Install it first with `npm install --global corepack`.
 
 ```bash
 git clone https://github.com/RealWhyKnot/YTMDesktopPlus.git
@@ -65,10 +65,10 @@ yarn install
 yarn start
 ```
 
-- `yarn lint`, `yarn typecheck`, `yarn prettier` - static checks
-- `yarn test` - unit tests
-- `node tools/test-harness/run.mjs boot-hooks` - check hooks against the live YouTube Music page. Other scenarios are in `tools/test-harness/scenarios`
-- `yarn make` - build installers in `out/make`
+- `yarn lint`, `yarn typecheck` and `yarn prettier` run the static checks
+- `yarn test` runs the unit tests
+- `node tools/test-harness/run.mjs boot-hooks` checks hooks against the live YouTube Music page. Other scenarios are in `tools/test-harness/scenarios`
+- `yarn make` builds the installers into `out/make`
 
 Linux package builds need `fakeroot`, `dpkg` and `rpm`. AppImage builds need `mksquashfs` from `squashfs-tools`. For Flatpak, install `flatpak`, `flatpak-builder` and `elfutils`, then add Flathub:
 
@@ -80,6 +80,6 @@ To build one format, use `yarn make --arch x64 --targets flatpak` or `--targets 
 
 ## License
 
-GPL-3.0. Based on [ytmdesktop](https://github.com/ytmdesktop/ytmdesktop) (GPL-3.0), modified since August 2026. The original history is on the `upstream` branch.
+GPL-3.0. Based on [ytmdesktop](https://github.com/ytmdesktop/ytmdesktop) (GPL-3.0), modified since August 2026. The original history is in that repository.
 
 YTMDesktop+ is not affiliated with Google or YouTube.

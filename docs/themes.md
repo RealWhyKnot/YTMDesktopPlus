@@ -1,39 +1,39 @@
 # Themes
 
 A theme restyles YTMDesktop+: the app's own windows and the YouTube Music page
-inside it. Colours, spacing, corners, fonts. It is CSS and nothing else, so a
-theme cannot run code, add buttons, or reach the network. That is what makes
-one safe to pass around: unlike an addon, installing a theme does not ask you
-to trust anybody.
+inside it. Colours, spacing, corners, fonts. It's CSS and nothing else. A theme
+can't run code, add buttons or reach the network, and that's what makes one safe
+to pass around. Installing a theme doesn't ask you to trust anybody, which an
+addon does.
 
-If you want to add behaviour or new UI rather than restyle what is there, you
-want an [addon](addons.md) instead. The loader will tell you so if you put
-`main` or `ytmScripts` in a theme manifest.
+If you want to add behaviour or new UI instead of restyling what's there, you
+want an [addon](addons.md). The loader tells you that if you put `main` or
+`ytmScripts` in a theme manifest.
 
-Sixteen themes ship with the app, from pure palettes to themes with their own
+Sixteen themes come with the app, from pure palettes to themes with their own
 fonts, structure and motion, and all of them are meant to be copied. Five are
-light themes; setting `--ytmd-scheme: light` next to a light palette is all it
-takes to get one, native controls and YouTube's stubborn dark corners included.
+light themes. Setting `--ytmd-scheme: light` next to a light palette is all it
+takes to make one, native controls and YouTube's stubborn dark corners included.
 
 ## Making one
 
-The fastest start is to steal a working theme.
+The quickest start is to copy a working theme.
 
 1. Open Settings, go to Themes and pick the one closest to what you want.
 2. Click **Duplicate to edit**. You get a copy in your themes folder with a new
    id, it becomes the active theme, and the folder opens.
-3. Edit `theme.css` and save. The app repaints as you type. No restart.
+3. Edit `theme.css` and save. The app repaints as you type, without a restart.
 
 That live loop is the whole workflow. The card shows an eye next to any theme
-being watched, so you can tell at a glance that editing is live.
+being watched, which tells you editing is live.
 
-**New theme** starts from a blank palette instead, if nothing bundled is close.
-If a pair of your colours would be hard to read, the card says so with the
-measured ratio, the same check the bundled themes have to pass.
+"New theme" starts from a blank palette instead, if nothing bundled is close.
+If a pair of your colours would be hard to read, the card warns you and shows
+the measured contrast ratio. The bundled themes have to pass the same check.
 
-When you are happy, **Export as zip** gives you one file to hand to someone
-else. They install it with **Install from file**. A theme folder copied in by
-hand shows up after **Rescan**; no restart needed.
+When you're happy with it, "Export as zip" gives you one file to hand to someone
+else. They install it with "Install from file". A theme folder you copy in by
+hand shows up after "Rescan", and that doesn't need a restart either.
 
 ## Anatomy
 
@@ -71,31 +71,31 @@ other files are there for when you want to go further.
 
 | Field             | Required | Meaning                                                                     |
 | ----------------- | -------- | --------------------------------------------------------------------------- |
-| `id`              | yes      | Lowercase letters, digits and dashes; must equal the folder name.           |
+| `id`              | yes      | Lowercase letters, digits and dashes. Must equal the folder name.           |
 | `name`            | yes      | Shown on the card.                                                          |
-| `version`         | yes      | Your theme's own version, semver shaped.                                    |
+| `version`         | yes      | Your theme's own version, semver style.                                     |
 | `author`          | yes      | Shown on the card.                                                          |
 | `description`     | yes      | Shown on the card.                                                          |
 | `homepage`        | no       | An http(s) link.                                                            |
 | `apiVersion`      | no       | Theme API generation this targets. Current: 1.                              |
-| `minAppVersion`   | no       | Oldest app version it works with; an older app lists it but never loads it. |
-| `styles`          | no       | CSS applied to every surface. Where your tokens belong.                     |
+| `minAppVersion`   | no       | Oldest app version it works with. An older app lists it but never loads it. |
+| `styles`          | no       | CSS applied to the app windows and the music page. Put your tokens here.    |
 | `appStyles`       | no       | CSS for the app's own windows and addon panels only.                        |
 | `ytmStyles`       | no       | CSS for the YouTube Music page only.                                        |
-| `titleBarOverlay` | no       | Colours for the Windows caption buttons; the main process cannot read CSS.  |
+| `titleBarOverlay` | no       | Colours for the Windows caption buttons. The main process can't read CSS.   |
 | `preview`         | no       | An image for the card. Without one the card shows your colours instead.     |
 
 All paths are relative and must stay inside the theme folder.
 
 ## Tokens
 
-Set tokens, not selectors. The app ships a base layer that maps both its own
-components and YouTube Music's markup onto these, so overriding `--bg` restyles
-the app and the music page together. That is also why a theme keeps working
-when YouTube changes their markup: the mapping lives in the app and gets fixed
-in a release, not in your theme.
+Set tokens, not selectors. The app has a base layer that maps both its own
+components and YouTube Music's markup onto these. Overriding `--bg` restyles the
+app and the music page together. It's also why a theme keeps working when
+YouTube changes their markup: the mapping is in the app, and a release fixes it
+there instead of in your theme.
 
-The app surface:
+App tokens:
 
 | Token | What it colours |
 | --- | --- |
@@ -119,7 +119,7 @@ The app surface:
 | `--titlebar-symbol` | Title bar glyphs |
 | `--titlebar-separator` | Title bar dividers |
 | `--shadow` | Default box shadow |
-| `--radius` | Corner radius; set `0px` for a squared off look |
+| `--radius` | Corner radius. Set `0px` for a squared off look |
 | `--radius-lg` | Corner radius for larger surfaces |
 | `--space-xs` | Spacing step |
 | `--space-sm` | Spacing step |
@@ -134,8 +134,8 @@ The app surface:
 | `--motion-slow` | Duration for entrances and larger movement |
 | `--ease` | The easing curve motion uses |
 
-The YouTube Music surface, which defaults to the matching app token so you
-usually do not touch these:
+YouTube Music page tokens. Each one defaults to the matching app token, and you
+usually don't need to touch them:
 
 | Token | What it colours |
 | --- | --- |
@@ -153,8 +153,8 @@ usually do not touch these:
 | `--ytmd-on-accent` | Text drawn on top of the accent |
 | `--ytmd-danger` | Warnings on the page, such as the boosted part of the volume bar |
 | `--ytmd-overlay` | Scrims over artwork |
-| `--ytmd-scheme` | `light` or `dark`; drives native scrollbars and form controls. Set it in `styles`, not `ytmStyles`, so the app's own windows flip too |
-| `--ytmd-font` | Page font; leave it alone to keep YouTube's own |
+| `--ytmd-scheme` | `light` or `dark`. Controls native scrollbars and form controls. Set it in `styles`, not `ytmStyles`, and the app's own windows switch too |
+| `--ytmd-font` | Page font. Leave it alone to keep YouTube's own |
 
 A palette theme is one `:root` block setting the ones it cares about:
 
@@ -168,9 +168,9 @@ A palette theme is one `:root` block setting the ones it cares about:
 ```
 
 Beyond tokens you can write ordinary CSS. YouTube Music runs Polymer in a mode
-that flattens component styles into the page, so normal selectors reach inside
-its components. `Cathode` and `Millennium` both do this, and they are the ones
-to read when you want to go past colours.
+that flattens component styles into the page, and normal selectors work inside
+its components. `Cathode` and `Millennium` both do this. Read those two when you
+want to go past colours.
 
 ## Motion
 
@@ -194,10 +194,10 @@ ytmusic-shelf {
 }
 ```
 
-The base layer zeroes the three duration tokens when the OS asks for reduced
-motion, so anything timed through them stops on its own. An ambient loop with a
-literal duration (a 60s background drift, a spinning record) does not get that
-for free; give it your own block:
+When reduced motion is turned on in the OS, the base layer sets the three
+duration tokens to zero, and anything timed through them stops. An ambient loop
+with a literal duration (a 60s background drift, a spinning record) isn't
+covered by that. Give it your own block:
 
 ```css
 @media (prefers-reduced-motion: reduce) {
@@ -207,17 +207,16 @@ for free; give it your own block:
 }
 ```
 
-Three things to keep motion away from. The progress bar
-(`#primaryProgress`) is painted by the base layer and repainted by the volume
-boost addon, so animating it fights both. The slider knob box (`#sliderKnob`)
-is positioned by YouTube and is also the volume knob; touching it moves the
-dot off the timeline, so decorate `.slider-knob-inner` under `#progress-bar`
-instead. And a full-page overlay should only animate `transform` and
-`opacity`; animating anything else there repaints the whole window every
-frame.
+Keep motion away from the progress bar (`#primaryProgress`). The base layer
+paints it and the volume boost addon repaints it, and animating it fights both.
+Leave the slider knob box (`#sliderKnob`) alone too: YouTube positions it, it's
+also the volume knob, and touching it moves the dot off the timeline. Decorate
+`.slider-knob-inner` under `#progress-bar` instead. A full-page overlay should
+only animate `transform` and `opacity`, because animating anything else there
+repaints the whole window every frame.
 
-Animated image assets: `.gif` is not on the install allowlist, so a zip of your
-theme would drop it. Use animated WebP, SVG, or plain CSS.
+Animated images: `.gif` isn't on the install allowlist and a zip of your theme
+would drop it. Use animated WebP, SVG or plain CSS.
 
 ## Fonts
 
@@ -236,40 +235,39 @@ Drop a `.woff2` in your theme folder and point at it with a relative path:
 }
 ```
 
-The file is read off disk and embedded when the theme loads, so it works on the
-music page as well as in the app. Put `--font-ui` in `styles` rather than
-`appStyles` and both surfaces pick it up.
+The file is read off disk and embedded when the theme loads. That's how it works
+on the music page as well as in the app. Put `--font-ui` in `styles` instead of
+`appStyles` and both the app and the page use it.
 
-If you ship someone else's font, ship its licence next to it. The four bundled
-fonts each sit beside their `OFL.txt`.
+If you include someone else's font, include its licence next to it. Each bundled
+font has its `OFL.txt` beside it.
 
-## What a theme cannot do
+## Network and file limits
 
-A theme makes no network requests. `@import` is stripped, and so is any `url()`
-pointing at `http`, `https` or `//`. Only relative paths inside your own folder
-survive, and those are embedded rather than fetched. Anything removed this way
-shows up as a note on the theme's card, so you are not left guessing why your
-webfont did nothing.
+A theme doesn't make network requests. `@import` is stripped, and so is any
+`url()` pointing at `http`, `https` or `//`. Only relative paths inside your own
+folder are kept, and those are embedded instead of fetched. Anything removed
+this way shows up as a note on the theme's card. If your webfont did nothing,
+check there first.
 
-This is deliberate. A stylesheet that can fetch is a stylesheet that can report
-what you are listening to, and a theme should never be able to do that.
+I did that on purpose. A stylesheet that can fetch can report what you're
+listening to, and a theme shouldn't be able to.
 
-Installing from a zip is checked too: entries that try to escape the folder are
-refused, only the file types above are unpacked, and there are caps on how many
-files and how much they unpack to.
+Installing from a zip is checked too. Entries that try to escape the folder are
+refused, only the file types above are extracted, and there are limits on the
+number of files and their total size once extracted.
 
 ## Themes and addons together
 
-Both can style the music page. Theme CSS goes in first, so an addon that
-restyles the player bar still wins over the theme. Addons can read your theme's
+Both can style the music page. Theme CSS goes in first, and an addon that
+restyles the player bar still overrides the theme. Addons can read your theme's
 tokens and follow it, and the bundled ones do.
 
 ## When something is wrong
 
-A broken theme never stops the app from starting, and it is never silently
-ignored. A bad manifest, a folder name that does not match the id, a missing
-stylesheet, a stripped remote url: all of it lands on that theme's card in
-Settings, with more detail in `logs/main.log`.
+A broken theme never stops the app from starting. A bad manifest, a folder name
+that doesn't match the id, a missing stylesheet or a stripped remote url shows
+up on that theme's card in Settings, with more detail in `logs/main.log`.
 
-If a theme is listed under **Not loaded**, the reason is on the row. The
-commonest one is a folder name that does not match the `id` in `theme.json`.
+If a theme is listed under **Not loaded**, the reason is on the row. The most
+common one is a folder name that doesn't match the `id` in `theme.json`.
