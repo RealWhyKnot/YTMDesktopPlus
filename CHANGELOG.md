@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- docs: rewrite the addon and theme guides and drop the README's upstream branch link
+- feat(main): tag main thread stalls with nearby display, device and power events
 - fix(ytmview): pin YouTube Music's wiz miniplayer experiment off
 - fix(blend): stop re-arming a shadow segment URL that already failed
 - fix(main): stop the YTM permission handlers throwing after the main window closes
