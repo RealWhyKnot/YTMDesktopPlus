@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- test(themes): match the reworded no-network line in the themes guide
 - docs: rewrite the addon and theme guides and drop the README's upstream branch link
 - feat(main): tag main thread stalls with nearby display, device and power events
 - fix(ytmview): pin YouTube Music's wiz miniplayer experiment off
