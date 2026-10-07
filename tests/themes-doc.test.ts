@@ -65,7 +65,7 @@ describe("themes documentation", () => {
 
   it("states the no network rule", () => {
     expect(doc).toContain("@import");
-    expect(doc).toMatch(/makes no network requests/);
+    expect(doc).toMatch(/doesn't make network requests/);
   });
 
   it("points addon authors at the addon docs instead", () => {
