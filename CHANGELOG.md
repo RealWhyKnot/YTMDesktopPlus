@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- fix(ytmview): pin YouTube Music's wiz miniplayer experiment off
+- fix(blend): stop re-arming a shadow segment URL that already failed
+- fix(main): stop the YTM permission handlers throwing after the main window closes
+- feat(steamdeck): provision apt-based distros and preinstall the flatpak SDK
 
 ## [v2026.929.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.929.0-beta) - 2026-09-29
 
