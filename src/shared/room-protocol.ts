@@ -181,6 +181,12 @@ export function buildRoomShareUrl(roomId: string) {
   return `${SHARE_URL_BASE}${roomId}`;
 }
 
+export const RELAY_ROOM_QUERY = "ytmdproom";
+
+export function relayUrlFor(roomId: string | null) {
+  return roomId ? `${RELAY_URL}?${RELAY_ROOM_QUERY}=${encodeURIComponent(roomId)}` : RELAY_URL;
+}
+
 // View model the main process publishes for the room UI.
 export type RoomPhase = "idle" | "connecting" | "hosting" | "listening" | "failed";
 

@@ -1,4 +1,4 @@
-import { isRoomId, isRoomLive, otherListenerCount, type RoomSnapshot } from "~shared/room-protocol";
+import { isRoomId, isRoomLive, otherListenerCount, relayUrlFor, type RoomSnapshot } from "~shared/room-protocol";
 import type { BundledAddonDefinition } from "../../../main/addons/manager";
 import type { AddonWindowHandle } from "~shared/addons/sdk";
 import AudioStreamCapture from "./audio-capture";
@@ -96,7 +96,7 @@ const roomsAddon: BundledAddonDefinition = {
     // One relay room at a time, hosted or joined. Opens a connection only
     // when the user starts or joins a room.
     const roomSession = new RoomSession({
-      createClient: handlers => new RelayClient(handlers),
+      createClient: (handlers, roomId) => new RelayClient(handlers, relayUrlFor(roomId)),
       cueTrack: request => ctx.playback.cueTrack(request),
       sendCommand: (command, value) => ctx.playback.sendPlaybackCommand(command, value),
       publish: snapshot => {
@@ -109,7 +109,8 @@ const roomsAddon: BundledAddonDefinition = {
         updateBadge(snapshot);
       },
       getPlayerState: () => ctx.player.getState(),
-      now: () => Date.now()
+      now: () => Date.now(),
+      log: message => ctx.log.info(message)
     });
     ctx.memory.set("room", roomSession.snapshot);
 
@@ -138,6 +139,7 @@ const roomsAddon: BundledAddonDefinition = {
     const autoRoom = new AutoRoom({
       enabled: () => ctx.discord.isEnabled() && ctx.settings.get<boolean>("autoRoomEnabled"),
       phase: () => roomSession.snapshot.phase,
+      isHost: () => roomSession.snapshot.isHost,
       savedDisplayName: () => ctx.settings.get<string | null>("displayName") ?? null,
       host: displayName => {
         roomSession.host(displayName);
@@ -152,7 +154,8 @@ const roomsAddon: BundledAddonDefinition = {
           });
         }
       },
-      leave: () => roomSession.leave()
+      leave: () => roomSession.leave(),
+      log: message => ctx.log.info(message)
     });
 
     ctx.player.onStateChanged(state => {
@@ -223,6 +226,7 @@ const roomsAddon: BundledAddonDefinition = {
 
     return {
       destroy() {
+        autoRoom.dispose();
         roomSession.leave();
         windowHandle?.close();
       }

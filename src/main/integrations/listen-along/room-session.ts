@@ -37,12 +37,13 @@ export interface RelayTransport {
 }
 
 export interface RoomSessionDeps {
-  createClient(handlers: RelayHandlers): RelayTransport;
+  createClient(handlers: RelayHandlers, roomId: string | null): RelayTransport;
   cueTrack(request: { videoId: string; anchor: { kind: "anchor"; epochMs: number } | null }): Promise<CueResult>;
   sendCommand(command: RemoteCommandName, value?: unknown): void;
   publish(snapshot: RoomSnapshot): void;
   getPlayerState(): PlayerState;
   now(): number;
+  log(message: string): void;
 }
 
 export class RoomSession {
@@ -69,6 +70,8 @@ export class RoomSession {
   private attempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private intentionalClose = false;
+  private loggedPhase: RoomPhase = "idle";
+  private loggedError: string | null = null;
 
   private engine: FollowerEngine;
 
@@ -182,16 +185,25 @@ export class RoomSession {
   }
 
   private publish() {
-    this.deps.publish(this.snapshot);
+    const snapshot = this.snapshot;
+    if (snapshot.phase !== this.loggedPhase || snapshot.error !== this.loggedError) {
+      this.loggedPhase = snapshot.phase;
+      this.loggedError = snapshot.error;
+      this.deps.log(snapshot.error ? `Room ${snapshot.phase}: ${snapshot.error}` : `Room ${snapshot.phase}`);
+    }
+    this.deps.publish(snapshot);
   }
 
   private dial() {
     this.client?.close();
-    this.client = this.deps.createClient({
-      onOpen: () => this.onOpen(),
-      onFrame: frame => this.onFrame(frame),
-      onClose: () => this.onClose()
-    });
+    this.client = this.deps.createClient(
+      {
+        onOpen: () => this.onOpen(),
+        onFrame: frame => this.onFrame(frame),
+        onClose: () => this.onClose()
+      },
+      this.mode === "host" && this.hostKey ? this.roomId : null
+    );
     this.client.connect();
   }
 
@@ -327,6 +339,10 @@ export class RoomSession {
       return;
     }
     if (message === "cannot reclaim room" || message === "reclaim that room on the node that owns it") {
+      if (this.mode === "host") {
+        this.reopenRoom(message);
+        return;
+      }
       this.phase = "failed";
       this.error = "The room has expired";
       this.stopClient();
@@ -335,6 +351,22 @@ export class RoomSession {
     }
     this.error = message;
     this.publish();
+  }
+
+  private reopenRoom(reason: string) {
+    this.deps.log(`Room could not be reclaimed (${reason}), opening a new one`);
+    this.stopClient();
+    this.roomId = null;
+    this.hostKey = null;
+    this.memberId = null;
+    this.members = [];
+    this.listenerCount = 0;
+    this.lastSentAnchor = null;
+    this.attempts = 0;
+    this.error = null;
+    this.phase = "connecting";
+    this.publish();
+    this.dial();
   }
 
   private onClose() {

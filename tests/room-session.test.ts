@@ -19,11 +19,12 @@ function makeHarness() {
   const commands: Array<[string, unknown]> = [];
   const cues: Array<{ videoId: string }> = [];
   const snapshots: RoomSnapshot[] = [];
-  const clients: Array<{ handlers: RelayHandlers; connected: boolean; closed: boolean }> = [];
+  const logs: string[] = [];
+  const clients: Array<{ handlers: RelayHandlers; roomId: string | null; connected: boolean; closed: boolean }> = [];
 
   const session = new RoomSession({
-    createClient(handlers) {
-      const entry = { handlers, connected: false, closed: false };
+    createClient(handlers, roomId) {
+      const entry = { handlers, roomId, connected: false, closed: false };
       clients.push(entry);
       const transport: RelayTransport = {
         connect: () => {
@@ -44,11 +45,13 @@ function makeHarness() {
     sendCommand: (command, value) => commands.push([command, value]),
     publish: snapshot => snapshots.push(snapshot),
     getPlayerState: () => playerState(null, VideoState.Unknown),
-    now: () => nowMs
+    now: () => nowMs,
+    log: message => logs.push(message)
   });
 
   return {
     session,
+    logs,
     sentFrames,
     commands,
     cues,
@@ -136,6 +139,63 @@ describe("RoomSession hosting", () => {
     vi.useRealTimers();
   });
 
+  it("pins a host's reconnect to the room it reclaims", () => {
+    vi.useFakeTimers();
+    expect(h.current().roomId).toBeNull();
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+    h.current().handlers.onClose();
+    vi.advanceTimersByTime(1000);
+    expect(h.clients).toHaveLength(2);
+    expect(h.current().roomId).toBe("abcdefgh");
+    vi.useRealTimers();
+  });
+
+  for (const refusal of ["reclaim that room on the node that owns it", "cannot reclaim room"]) {
+    it(`opens a new room when the relay answers "${refusal}"`, () => {
+      vi.useFakeTimers();
+      h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 2, c: 1 });
+      h.current().handlers.onClose();
+      vi.advanceTimersByTime(1000);
+      h.current().handlers.onOpen();
+      h.current().handlers.onFrame({ t: "e", m: refusal });
+
+      expect(h.lastSnapshot().phase).toBe("connecting");
+      expect(h.lastSnapshot().roomId).toBeNull();
+      expect(h.lastSnapshot().error).toBeNull();
+      expect(h.clients).toHaveLength(3);
+      expect(h.current().roomId).toBeNull();
+
+      h.current().handlers.onOpen();
+      expect(h.sentFrames[h.sentFrames.length - 1]).toEqual({ t: "h", d: "DJ" });
+      h.current().handlers.onFrame({ t: "r", r: "bcdefghj", k: HOST_KEY, u: "bcdefg", role: 0, n: 0, c: 1 });
+      expect(h.lastSnapshot().phase).toBe("hosting");
+      expect(h.lastSnapshot().shareUrl).toBe("https://ytmdesktopplus.com/r/bcdefghj");
+      vi.useRealTimers();
+    });
+  }
+
+  it("logs phase changes without the room id or key", () => {
+    vi.useFakeTimers();
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+    h.current().handlers.onFrame({ t: "n", n: 3 });
+    h.current().handlers.onClose();
+    vi.advanceTimersByTime(1000);
+    h.current().handlers.onOpen();
+    h.current().handlers.onFrame({ t: "e", m: "reclaim that room on the node that owns it" });
+    vi.useRealTimers();
+
+    expect(h.logs).toEqual([
+      "Room connecting",
+      "Room hosting",
+      "Room connecting",
+      "Room could not be reclaimed (reclaim that room on the node that owns it), opening a new one"
+    ]);
+    for (const line of h.logs) {
+      expect(line).not.toContain("abcdefgh");
+      expect(line).not.toContain(HOST_KEY);
+    }
+  });
+
   it("keeps the roster and count from the relay", () => {
     h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 0, c: 1 });
     h.current().handlers.onFrame({ t: "m", members: [{ u: "aaaaaa", r: 1, d: "Alice" }], h: "DJ" });
@@ -188,6 +248,15 @@ describe("RoomSession listening", () => {
       { t: "c", a: "pause" },
       { t: "c", a: "seek", m: 90 }
     ]);
+  });
+
+  it("keeps listener connections unpinned", () => {
+    vi.useFakeTimers();
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", u: "aaaaaa", role: 0, n: 1, c: 1 });
+    h.current().handlers.onClose();
+    vi.advanceTimersByTime(1000);
+    expect(h.clients.map(client => client.roomId)).toEqual([null, null]);
+    vi.useRealTimers();
   });
 
   it("treats fatal relay errors as terminal", () => {

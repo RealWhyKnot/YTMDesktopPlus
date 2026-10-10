@@ -10,6 +10,7 @@ import {
   otherListenerCount,
   parseServerFrame,
   positionMsFrom,
+  relayUrlFor,
   sanitizeDisplayName,
   type RoomSnapshot
 } from "../src/shared/room-protocol";
@@ -103,6 +104,11 @@ describe("helpers", () => {
   it("builds share urls and encodes frames", () => {
     expect(buildRoomShareUrl("abcdefgh")).toBe("https://ytmdesktopplus.com/r/abcdefgh");
     expect(encodeClientFrame({ t: "j", r: "abcdefgh", d: "Alice" })).toBe('{"t":"j","r":"abcdefgh","d":"Alice"}');
+  });
+
+  it("names the room in the relay url only when one is given", () => {
+    expect(relayUrlFor(null)).toBe("wss://ytmdesktopplus.com/relay");
+    expect(relayUrlFor("czuupyef")).toBe("wss://ytmdesktopplus.com/relay?ytmdproom=czuupyef");
   });
 });
 

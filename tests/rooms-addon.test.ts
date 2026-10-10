@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import roomsAddon from "../src/addons/bundled/rooms";
+import type { RelayHandlers } from "../src/main/integrations/listen-along/relay-client";
 import type { AudioUplinkDeps } from "../src/main/media/audio-uplink";
-import { VideoState } from "../src/shared/addons/sdk";
+import { VideoState, type AddonInstance } from "../src/shared/addons/sdk";
 import { fakeAddonContext, makePlayerState } from "./helpers/fake-addon-context";
 
 const uplink = vi.hoisted(() => ({
@@ -18,6 +19,17 @@ vi.mock("../src/main/media/audio-uplink", () => ({
   })
 }));
 vi.mock("../src/main/media/media-host", () => ({ mediaHost: host }));
+
+type FakeRelay = { handlers: RelayHandlers; url: string; sent: unknown[] };
+const relay = vi.hoisted(() => ({ clients: [] as FakeRelay[] }));
+
+vi.mock("../src/main/integrations/listen-along/relay-client", () => ({
+  RelayClient: vi.fn(function (handlers: RelayHandlers, url: string) {
+    const entry: FakeRelay = { handlers, url, sent: [] };
+    relay.clients.push(entry);
+    return { connect: vi.fn(), send: (frame: unknown) => entry.sent.push(frame), close: vi.fn(), isOpen: true };
+  })
+}));
 
 describe("rooms bundled addon", () => {
   it("declares the expected manifest", () => {
@@ -122,5 +134,77 @@ describe("rooms audio uplink wiring", () => {
     captured.settingsListeners["audioStreamEnabled"](false, true);
 
     expect(uplink.instance.setCredentials).toHaveBeenLastCalledWith(null);
+  });
+});
+
+describe("rooms relay reconnects", () => {
+  const KEY = "f".repeat(32);
+
+  async function hostAutomatically() {
+    vi.clearAllMocks();
+    relay.clients.length = 0;
+    const { ctx, captured } = fakeAddonContext({ manifest: roomsAddon.manifest, discordEnabled: true });
+    const instance = (await roomsAddon.activate(ctx)) as AddonInstance;
+    for (const loaded of captured.loadedCallbacks) loaded();
+    const lastBadge = () => captured.badges[captured.badges.length - 1];
+    const logged = () => vi.mocked(ctx.log.info).mock.calls.map(call => String(call[0]));
+    return { ctx, instance, lastBadge, logged };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("reclaims the room through its owner, and opens a new one when the relay refuses", async () => {
+    const { ctx, lastBadge, logged } = await hostAutomatically();
+    expect(relay.clients.map(client => client.url)).toEqual(["wss://ytmdesktopplus.com/relay"]);
+    relay.clients[0].handlers.onOpen();
+    relay.clients[0].handlers.onFrame({ t: "r", r: "czuupyef", k: KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+    expect(lastBadge()?.icon).toBe("headphones");
+
+    relay.clients[0].handlers.onClose();
+    expect(lastBadge()).toBeNull();
+    vi.advanceTimersByTime(1000);
+    expect(relay.clients[1].url).toBe("wss://ytmdesktopplus.com/relay?ytmdproom=czuupyef");
+    relay.clients[1].handlers.onOpen();
+    expect(relay.clients[1].sent).toEqual([{ t: "h", r: "czuupyef", k: KEY }]);
+
+    relay.clients[1].handlers.onFrame({ t: "e", m: "reclaim that room on the node that owns it" });
+    expect(relay.clients[2].url).toBe("wss://ytmdesktopplus.com/relay");
+    relay.clients[2].handlers.onOpen();
+    relay.clients[2].handlers.onFrame({ t: "r", r: "aaaaaaaa", k: KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+    expect(lastBadge()?.icon).toBe("headphones");
+    expect(ctx.memory.get("room")).toMatchObject({ phase: "hosting", shareUrl: "https://ytmdesktopplus.com/r/aaaaaaaa" });
+
+    expect(logged()).toContain("Room hosting");
+    expect(logged().filter(line => line.includes("czuupyef") || line.includes("aaaaaaaa"))).toEqual([]);
+  });
+
+  it("regrows the automatic room after the relay refuses it outright", async () => {
+    const { lastBadge, logged } = await hostAutomatically();
+    relay.clients[0].handlers.onOpen();
+    relay.clients[0].handlers.onFrame({ t: "e", m: "server busy" });
+    expect(logged()).toContain("Room failed: server busy");
+
+    vi.advanceTimersByTime(4999);
+    expect(relay.clients).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(relay.clients).toHaveLength(2);
+    relay.clients[1].handlers.onOpen();
+    relay.clients[1].handlers.onFrame({ t: "r", r: "czuupyef", k: KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+    expect(lastBadge()?.icon).toBe("headphones");
+  });
+
+  it("stops touching the relay once the addon is destroyed", async () => {
+    const { instance } = await hostAutomatically();
+    relay.clients[0].handlers.onOpen();
+    relay.clients[0].handlers.onFrame({ t: "e", m: "server busy" });
+    instance.destroy();
+    vi.advanceTimersByTime(600_000);
+    expect(relay.clients).toHaveLength(1);
   });
 });
