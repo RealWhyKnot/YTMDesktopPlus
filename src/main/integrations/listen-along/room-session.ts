@@ -26,6 +26,7 @@ import type { RelayHandlers } from "./relay-client";
 
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000, 30000];
 const MAX_CONNECTION_ATTEMPTS = 30;
+const ROOM_PIN_GRACE_MS = 30_000;
 
 export type { RoomPhase, RoomMemberView, RoomSnapshot };
 
@@ -72,6 +73,8 @@ export class RoomSession {
   private intentionalClose = false;
   private loggedPhase: RoomPhase = "idle";
   private loggedError: string | null = null;
+  private droppedAt: number | null = null;
+  private pinReleased = false;
 
   private engine: FollowerEngine;
 
@@ -202,7 +205,7 @@ export class RoomSession {
         onFrame: frame => this.onFrame(frame),
         onClose: () => this.onClose()
       },
-      this.mode === "host" && this.hostKey ? this.roomId : null
+      this.reconnectPin()
     );
     this.client.connect();
   }
@@ -224,7 +227,12 @@ export class RoomSession {
   private onFrame(frame: RoomServerFrame) {
     switch (frame.t) {
       case "r": {
-        if (this.roomId !== null && frame.r !== this.roomId) this.clearRoom();
+        if (this.roomId !== null && frame.r !== this.roomId) {
+          if (this.mode === "host") this.deps.log("Room could not be reclaimed, the relay opened a new one");
+          this.clearRoom();
+        }
+        this.droppedAt = null;
+        this.pinReleased = false;
         this.attempts = 0;
         this.memberId = frame.u;
         this.clockOffsetMs = frame.c - this.deps.now();
@@ -367,9 +375,20 @@ export class RoomSession {
 
   private onClose() {
     if (this.intentionalClose || this.mode === "idle" || this.phase === "failed") return;
+    this.droppedAt ??= this.deps.now();
     this.phase = "connecting";
     this.publish();
     this.scheduleReconnect();
+  }
+
+  private reconnectPin(): string | null {
+    if (this.mode !== "host" || !this.hostKey || !this.roomId) return null;
+    if (this.droppedAt === null || this.deps.now() - this.droppedAt < ROOM_PIN_GRACE_MS) return this.roomId;
+    if (!this.pinReleased) {
+      this.pinReleased = true;
+      this.deps.log("Room's server unreachable for 30s, reconnecting through any node");
+    }
+    return null;
   }
 
   private scheduleReconnect() {
@@ -401,6 +420,8 @@ export class RoomSession {
     this.lastSentAnchor = null;
     this.audioStreaming = false;
     this.webListenerCount = 0;
+    this.droppedAt = null;
+    this.pinReleased = false;
   }
 
   private stopSession() {

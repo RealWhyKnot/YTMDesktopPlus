@@ -196,10 +196,36 @@ describe("RoomSession hosting", () => {
     expect(snapshot.webListenerCount).toBe(0);
     expect(snapshot.audioStreaming).toBe(false);
     expect(h.session.hostCredentials).toEqual({ roomId: "bcdefghj", hostKey: "e".repeat(32) });
+    expect(h.logs).toContain("Room could not be reclaimed, the relay opened a new one");
 
     h.current().handlers.onClose();
     vi.advanceTimersByTime(1000);
     expect(h.current().roomId).toBe("bcdefghj");
+    vi.useRealTimers();
+  });
+
+  it("stops pinning a reconnect once the room's node has been unreachable for 30s", () => {
+    vi.useFakeTimers();
+    const wait = (ms: number) => {
+      h.advance(ms);
+      vi.advanceTimersByTime(ms);
+    };
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+    h.current().handlers.onClose();
+    for (const delay of [1000, 2000, 4000, 8000]) {
+      wait(delay);
+      h.current().handlers.onClose();
+    }
+    wait(15000);
+    expect(h.clients.map(client => client.roomId)).toEqual([null, "abcdefgh", "abcdefgh", "abcdefgh", "abcdefgh", null]);
+    expect(h.logs.filter(line => line === "Room's server unreachable for 30s, reconnecting through any node")).toHaveLength(1);
+    h.current().handlers.onOpen();
+    expect(h.sentFrames[h.sentFrames.length - 1]).toEqual({ t: "h", r: "abcdefgh", k: HOST_KEY, d: "DJ" });
+
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+    h.current().handlers.onClose();
+    wait(1000);
+    expect(h.current().roomId).toBe("abcdefgh");
     vi.useRealTimers();
   });
 
