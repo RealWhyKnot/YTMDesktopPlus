@@ -24,7 +24,8 @@ export function generateAddonDts() {
     declaration: true,
     emitDeclarationOnly: true,
     strict: true,
-    skipLibCheck: true
+    skipLibCheck: true,
+    types: []
   });
 
   const diagnostics = ts.getPreEmitDiagnostics(program);
