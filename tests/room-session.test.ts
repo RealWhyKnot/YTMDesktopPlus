@@ -154,6 +154,7 @@ describe("RoomSession hosting", () => {
     it(`opens a new room when the relay answers "${refusal}"`, () => {
       vi.useFakeTimers();
       h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 2, c: 1 });
+      h.session.setAudioStreamState(true, 2);
       h.current().handlers.onClose();
       vi.advanceTimersByTime(1000);
       h.current().handlers.onOpen();
@@ -162,7 +163,10 @@ describe("RoomSession hosting", () => {
       expect(h.lastSnapshot().phase).toBe("connecting");
       expect(h.lastSnapshot().roomId).toBeNull();
       expect(h.lastSnapshot().error).toBeNull();
+      expect(h.lastSnapshot().webListenerCount).toBe(0);
+      expect(h.lastSnapshot().audioStreaming).toBe(false);
       expect(h.clients).toHaveLength(3);
+      expect(h.clients[1].closed).toBe(true);
       expect(h.current().roomId).toBeNull();
 
       h.current().handlers.onOpen();
@@ -173,6 +177,43 @@ describe("RoomSession hosting", () => {
       vi.useRealTimers();
     });
   }
+
+  it("adopts a fresh room the relay hands back for a reclaim and drops the old room's people", () => {
+    vi.useFakeTimers();
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 1, c: 1 });
+    h.current().handlers.onFrame({ t: "m", members: [{ u: "aaaaaa", r: 1, d: "Alice" }], h: "DJ" });
+    h.session.setAudioStreamState(true, 2);
+    h.current().handlers.onClose();
+    vi.advanceTimersByTime(1000);
+    h.current().handlers.onOpen();
+    h.current().handlers.onFrame({ t: "r", r: "bcdefghj", k: "e".repeat(32), u: "bcdefg", role: 0, n: 0, c: 1 });
+
+    const snapshot = h.lastSnapshot();
+    expect(snapshot.phase).toBe("hosting");
+    expect(snapshot.shareUrl).toBe("https://ytmdesktopplus.com/r/bcdefghj");
+    expect(snapshot.members).toEqual([]);
+    expect(snapshot.listenerCount).toBe(0);
+    expect(snapshot.webListenerCount).toBe(0);
+    expect(snapshot.audioStreaming).toBe(false);
+    expect(h.session.hostCredentials).toEqual({ roomId: "bcdefghj", hostKey: "e".repeat(32) });
+
+    h.current().handlers.onClose();
+    vi.advanceTimersByTime(1000);
+    expect(h.current().roomId).toBe("bcdefghj");
+    vi.useRealTimers();
+  });
+
+  it("keeps the roster when the relay gives the same room back", () => {
+    vi.useFakeTimers();
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 1, c: 1 });
+    h.current().handlers.onFrame({ t: "m", members: [{ u: "aaaaaa", r: 1, d: "Alice" }], h: "DJ" });
+    h.current().handlers.onClose();
+    vi.advanceTimersByTime(1000);
+    h.current().handlers.onOpen();
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 1, c: 1 });
+    expect(h.lastSnapshot().members).toEqual([{ id: "aaaaaa", name: "Alice", role: 1 }]);
+    vi.useRealTimers();
+  });
 
   it("logs phase changes without the room id or key", () => {
     vi.useFakeTimers();

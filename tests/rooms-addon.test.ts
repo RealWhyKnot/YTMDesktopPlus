@@ -187,15 +187,22 @@ describe("rooms relay reconnects", () => {
   it("regrows the automatic room after the relay refuses it outright", async () => {
     const { lastBadge, logged } = await hostAutomatically();
     relay.clients[0].handlers.onOpen();
-    relay.clients[0].handlers.onFrame({ t: "e", m: "server busy" });
+    relay.clients[0].handlers.onFrame({ t: "r", r: "czuupyef", k: KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+    expect(lastBadge()?.icon).toBe("headphones");
+    relay.clients[0].handlers.onClose();
+    vi.advanceTimersByTime(1000);
+    relay.clients[1].handlers.onOpen();
+    relay.clients[1].handlers.onFrame({ t: "e", m: "server busy" });
+    expect(lastBadge()).toBeNull();
     expect(logged()).toContain("Room failed: server busy");
 
     vi.advanceTimersByTime(4999);
-    expect(relay.clients).toHaveLength(1);
-    vi.advanceTimersByTime(1);
     expect(relay.clients).toHaveLength(2);
-    relay.clients[1].handlers.onOpen();
-    relay.clients[1].handlers.onFrame({ t: "r", r: "czuupyef", k: KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+    vi.advanceTimersByTime(1);
+    expect(relay.clients).toHaveLength(3);
+    expect(relay.clients[2].url).toBe("wss://ytmdesktopplus.com/relay");
+    relay.clients[2].handlers.onOpen();
+    relay.clients[2].handlers.onFrame({ t: "r", r: "aaaaaaaa", k: KEY, u: "abcdef", role: 0, n: 0, c: 1 });
     expect(lastBadge()?.icon).toBe("headphones");
   });
 

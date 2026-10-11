@@ -224,6 +224,7 @@ export class RoomSession {
   private onFrame(frame: RoomServerFrame) {
     switch (frame.t) {
       case "r": {
+        if (this.roomId !== null && frame.r !== this.roomId) this.clearRoom();
         this.attempts = 0;
         this.memberId = frame.u;
         this.clockOffsetMs = frame.c - this.deps.now();
@@ -356,12 +357,7 @@ export class RoomSession {
   private reopenRoom(reason: string) {
     this.deps.log(`Room could not be reclaimed (${reason}), opening a new one`);
     this.stopClient();
-    this.roomId = null;
-    this.hostKey = null;
-    this.memberId = null;
-    this.members = [];
-    this.listenerCount = 0;
-    this.lastSentAnchor = null;
+    this.clearRoom();
     this.attempts = 0;
     this.error = null;
     this.phase = "connecting";
@@ -396,24 +392,28 @@ export class RoomSession {
     this.client = null;
   }
 
-  private stopSession() {
-    this.stopClient();
-    this.engine.reset();
-    this.mode = "idle";
-    this.phase = "idle";
+  private clearRoom() {
     this.roomId = null;
     this.hostKey = null;
     this.memberId = null;
-    this.role = ROLE_LISTENER;
-    this.hostName = null;
     this.members = [];
     this.listenerCount = 0;
+    this.lastSentAnchor = null;
+    this.audioStreaming = false;
+    this.webListenerCount = 0;
+  }
+
+  private stopSession() {
+    this.stopClient();
+    this.engine.reset();
+    this.clearRoom();
+    this.mode = "idle";
+    this.phase = "idle";
+    this.role = ROLE_LISTENER;
+    this.hostName = null;
     this.error = null;
     this.syncStatus = null;
     this.syncDetail = null;
-    this.lastSentAnchor = null;
     this.attempts = 0;
-    this.audioStreaming = false;
-    this.webListenerCount = 0;
   }
 }
