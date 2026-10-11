@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- fix(rooms): let the edge pick a node once the room's own node is down for 30s
+- fix(rooms): drop the old room's people when the relay hands back a new one
+- fix(rooms): drop a pending room regrow once a room is back up
+- fix(sdk): emit the addon declarations without loading every @types package
+- fix(rooms): keep a hosted room through relay reconnects and regrow it when it fails
 - test(themes): match the reworded no-network line in the themes guide
 - docs: rewrite the addon and theme guides and drop the README's upstream branch link
 - feat(main): tag main thread stalls with nearby display, device and power events
