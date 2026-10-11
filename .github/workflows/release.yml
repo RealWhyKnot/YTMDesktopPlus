@@ -177,22 +177,27 @@ jobs:
       # the retry then dies on already_exists and the leg goes red with its
       # assets half-attached. Clearing this leg's names first makes re-running
       # a failed leg safe.
-      - name: Clear this leg's assets from any earlier attempt
+      - name: Publish to release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           TAG: ${{ needs.validate.outputs.tag }}
           REPO: ${{ github.repository }}
         run: |
-          foreach ($file in Get-ChildItem out/make -Recurse -File) {
-            gh release delete-asset $env:TAG $file.Name --repo $env:REPO --yes 2>$null
-            if ($LASTEXITCODE -eq 0) { Write-Output "Deleted stale asset $($file.Name)" }
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            foreach ($file in Get-ChildItem out/make -Recurse -File) {
+              foreach ($name in (@($file.Name, ($file.Name -replace ' ', '.')) | Select-Object -Unique)) {
+                gh release delete-asset $env:TAG $name --repo $env:REPO --yes 2>$null
+                if ($LASTEXITCODE -eq 0) { Write-Output "Deleted stale asset $name" }
+              }
+            }
+            yarn publish:fromdry
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Write-Output "::warning::Publish attempt $attempt of 3 failed"
+            if ($attempt -lt 3) { Start-Sleep -Seconds (20 * $attempt) }
           }
-          exit 0
-      - name: Publish to release
-        run: yarn publish:fromdry
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+          exit 1
 
   # Installs the flatpak asset exactly as a user would, from the release,
   # and requires the YTM page to actually load and hook inside the sandbox.
