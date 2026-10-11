@@ -162,8 +162,30 @@ describe("AutoRoom", () => {
     failHostedRoom(autoRoom, state);
     autoRoom.evaluate();
     autoRoom.evaluate();
+    expect(vi.getTimerCount()).toBe(1);
+    expect(state.logs).toEqual(["Room failed, opening a new one in 5s"]);
     vi.advanceTimersByTime(600_000);
     expect(state.hosts).toHaveLength(2);
+  });
+
+  it("drops a pending regrow once a room is back up, so the next failure regrows quickly", () => {
+    const { autoRoom, state } = makeHarness();
+    autoRoom.evaluate();
+    failHostedRoom(autoRoom, state);
+    vi.advanceTimersByTime(5_000);
+    failHostedRoom(autoRoom, state);
+    vi.advanceTimersByTime(30_000);
+    failHostedRoom(autoRoom, state);
+    expect(state.hosts).toHaveLength(3);
+
+    state.phase = "hosting";
+    autoRoom.evaluate();
+    expect(vi.getTimerCount()).toBe(0);
+
+    vi.advanceTimersByTime(10_000);
+    failHostedRoom(autoRoom, state);
+    vi.advanceTimersByTime(5_000);
+    expect(state.hosts).toHaveLength(4);
   });
 
   it("drops a pending regrow after a manual leave", () => {

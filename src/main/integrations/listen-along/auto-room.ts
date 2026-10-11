@@ -35,6 +35,7 @@ export class AutoRoom {
     const phase = this.deps.phase();
     if (phase === "hosting") {
       this.regrowAttempts = 0;
+      this.cancelRegrow();
       return;
     }
     if (phase === "failed" && this.deps.isHost()) {
