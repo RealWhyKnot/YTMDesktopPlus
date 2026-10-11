@@ -181,7 +181,6 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          GITHUB_TOKEN: ${{ github.token }}
           TAG: ${{ needs.validate.outputs.tag }}
           REPO: ${{ github.repository }}
         run: |
@@ -192,36 +191,38 @@ jobs:
             (Split-Path $path -Leaf) -replace '[^\w.@+-]+', '.' -replace '\.+', '.' -replace '^\.|\.$', ''
           }
 
-          function Test-LegPublished {
+          function Get-UnpublishedArtifacts {
             $assets = (gh release view $env:TAG --repo $env:REPO --json assets | ConvertFrom-Json).assets
             foreach ($artifact in $artifacts) {
               $asset = $assets | Where-Object { $_.name -eq (Get-AssetName $artifact) } | Select-Object -First 1
-              if (-not $asset -or $asset.state -ne 'uploaded') { return $false }
+              if (-not $asset -or $asset.state -ne 'uploaded') { $artifact; continue }
               $local = Get-Item -LiteralPath $artifact
               if ($asset.digest) {
                 $hash = (Get-FileHash -LiteralPath $local.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-                if ($asset.digest -ne "sha256:$hash") { return $false }
+                if ($asset.digest -ne "sha256:$hash") { $artifact }
               } elseif ($asset.size -ne $local.Length) {
-                return $false
+                $artifact
               }
             }
-            return $true
           }
 
+          $pending = @($artifacts | Sort-Object { (Get-Item -LiteralPath $_).Length } -Descending)
           for ($attempt = 1; $attempt -le 3; $attempt++) {
-            foreach ($artifact in $artifacts) {
+            foreach ($artifact in $pending) {
               foreach ($name in (@((Split-Path $artifact -Leaf), (Get-AssetName $artifact)) | Select-Object -Unique)) {
                 gh release delete-asset $env:TAG $name --repo $env:REPO --yes 2>$null
                 if ($LASTEXITCODE -eq 0) { Write-Output "Deleted stale asset $name" }
               }
+              gh release upload $env:TAG $artifact --repo $env:REPO --clobber
+              if ($LASTEXITCODE -ne 0) { Write-Output "::warning::Upload of $(Split-Path $artifact -Leaf) reported an error; the release decides" }
             }
-            yarn publish:fromdry
-            if (Test-LegPublished) {
+            $pending = @(Get-UnpublishedArtifacts)
+            if ($pending.Count -eq 0) {
               Write-Output "All $($artifacts.Count) assets on the release match this build"
               exit 0
             }
-            Write-Output "::warning::Publish attempt $attempt of 3 left this leg's assets missing or different"
-            if ($attempt -lt 3) { Start-Sleep -Seconds (20 * $attempt) }
+            Write-Output "::warning::Attempt $attempt of 3 left $($pending.Count) asset(s) missing or different: $(($pending | ForEach-Object { Split-Path $_ -Leaf }) -join ', ')"
+            if ($attempt -lt 3) { Start-Sleep -Seconds (15 * $attempt) }
           }
           exit 1
 
