@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [v2026.1011.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.1011.0-beta) - 2026-10-11
 - ci(release): upload each leg's files with gh, one at a time, and keep what landed
 - ci(release): judge a leg's publish by what reached the release
 - ci(release): retry a leg's publish after clearing its assets
