@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- ci(release): retry a leg's publish after clearing its assets
 - fix(rooms): let the edge pick a node once the room's own node is down for 30s
 - fix(rooms): drop the old room's people when the relay hands back a new one
 - fix(rooms): drop a pending room regrow once a room is back up
