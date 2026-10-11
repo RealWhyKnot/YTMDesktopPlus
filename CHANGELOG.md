@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- ci(release): upload each leg's files with gh, one at a time, and keep what landed
 - ci(release): judge a leg's publish by what reached the release
 - ci(release): retry a leg's publish after clearing its assets
 - fix(rooms): let the edge pick a node once the room's own node is down for 30s
