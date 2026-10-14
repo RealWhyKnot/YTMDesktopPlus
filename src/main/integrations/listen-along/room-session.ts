@@ -203,7 +203,7 @@ export class RoomSession {
       {
         onOpen: () => this.onOpen(),
         onFrame: frame => this.onFrame(frame),
-        onClose: () => this.onClose()
+        onClose: detail => this.onClose(detail)
       },
       this.reconnectPin()
     );
@@ -373,8 +373,9 @@ export class RoomSession {
     this.dial();
   }
 
-  private onClose() {
+  private onClose(detail?: string) {
     if (this.intentionalClose || this.mode === "idle" || this.phase === "failed") return;
+    this.deps.log(`Room connection closed: ${detail ?? "unknown"}`);
     this.droppedAt ??= this.deps.now();
     this.phase = "connecting";
     this.publish();

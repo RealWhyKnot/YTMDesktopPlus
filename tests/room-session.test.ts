@@ -139,6 +139,14 @@ describe("RoomSession hosting", () => {
     vi.useRealTimers();
   });
 
+  it("logs why the relay connection closed", () => {
+    vi.useFakeTimers();
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+    h.current().handlers.onClose("1006 (socket hang up)");
+    expect(h.logs).toContain("Room connection closed: 1006 (socket hang up)");
+    vi.useRealTimers();
+  });
+
   it("pins a host's reconnect to the room it reclaims", () => {
     vi.useFakeTimers();
     expect(h.current().roomId).toBeNull();
@@ -254,6 +262,7 @@ describe("RoomSession hosting", () => {
     expect(h.logs).toEqual([
       "Room connecting",
       "Room hosting",
+      "Room connection closed: unknown",
       "Room connecting",
       "Room could not be reclaimed (reclaim that room on the node that owns it), opening a new one"
     ]);

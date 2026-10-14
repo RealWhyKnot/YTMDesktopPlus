@@ -8,8 +8,13 @@ import { RELAY_URL, encodeClientFrame, parseServerFrame, type RoomClientFrame, t
 export type RelayHandlers = {
   onOpen(): void;
   onFrame(frame: RoomServerFrame): void;
-  onClose(): void;
+  onClose(detail?: string): void;
 };
+
+export function describeClose(code: number, reason: Buffer, failure: string): string {
+  const text = reason.toString("utf8");
+  return [String(code), text, failure && `(${failure})`].filter(Boolean).join(" ");
+}
 
 export class RelayClient {
   private socket: WebSocket | null = null;
@@ -34,12 +39,13 @@ export class RelayClient {
       const frame = parseServerFrame(typeof data === "string" ? data : data.toString("utf8"));
       if (frame) this.handlers.onFrame(frame);
     });
-    socket.on("close", () => {
+    let failure = "";
+    socket.on("close", (code, reason) => {
       if (this.socket === socket) this.socket = null;
-      this.handlers.onClose();
+      this.handlers.onClose(describeClose(code, reason, failure));
     });
-    socket.on("error", () => {
-      // The close event follows and carries the reconnect decision.
+    socket.on("error", error => {
+      failure = error.message;
     });
   }
 

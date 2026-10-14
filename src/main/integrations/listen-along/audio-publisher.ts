@@ -12,6 +12,7 @@ import {
   type BatchPacket
 } from "~shared/audio-protocol";
 import { anchorFrameFrom, isMeaningfulChange, type RoomStateFrame } from "~shared/room-protocol";
+import { describeClose } from "./relay-client";
 
 // Publishes the host's captured audio to the relay's /audio channel while a
 // room is being hosted. Track metadata and anchors ride the same socket so a
@@ -40,7 +41,7 @@ export type AudioCaptureStatus = {
 export type AudioTransportHandlers = {
   onOpen(): void;
   onFrame(frame: AudioServerFrame): void;
-  onClose(): void;
+  onClose(detail?: string): void;
 };
 
 export interface AudioTransport {
@@ -79,12 +80,13 @@ export class AudioRelayClient implements AudioTransport {
       const frame = parseAudioServerFrame(typeof data === "string" ? data : data.toString("utf8"));
       if (frame) this.handlers.onFrame(frame);
     });
-    socket.on("close", () => {
+    let failure = "";
+    socket.on("close", (code, reason) => {
       if (this.socket === socket) this.socket = null;
-      this.handlers.onClose();
+      this.handlers.onClose(describeClose(code, reason, failure));
     });
-    socket.on("error", () => {
-      // The close event follows and carries the reconnect decision.
+    socket.on("error", error => {
+      failure = error.message;
     });
   }
 
@@ -252,7 +254,7 @@ export class AudioPublisher {
         if (this.creds) this.transport?.sendText({ t: "pub", r: this.creds.roomId, k: this.creds.hostKey });
       },
       onFrame: frame => this.onFrame(frame),
-      onClose: () => this.onClose()
+      onClose: detail => this.onClose(detail)
     });
     this.transport.connect();
   }
@@ -286,8 +288,9 @@ export class AudioPublisher {
     }
   }
 
-  private onClose() {
+  private onClose(detail?: string) {
     if (this.phase === "idle" || this.phase === "failed") return;
+    this.deps.log("audio publisher connection closed", detail ?? "unknown");
     this.phase = "connecting";
     this.publishUpdate(false, this.webListeners);
     if (this.attempts >= MAX_CONNECTION_ATTEMPTS) {
