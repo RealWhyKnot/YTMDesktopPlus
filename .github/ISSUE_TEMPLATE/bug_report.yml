@@ -1,0 +1,67 @@
+name: Bug report
+description: Something in the app breaks, misbehaves or stops working.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: YTMDesktop+ version
+      description: Shown under Settings > About.
+      placeholder: "2026.1015.0-beta"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you installed it
+      options:
+        - Windows installer (.exe)
+        - macOS zip
+        - .deb
+        - .rpm
+        - Flatpak
+        - AppImage
+        - Built from source
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Windows 11 24H2, macOS 15, SteamOS 3.7, Ubuntu 24.04"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Turn on Settings > General > Debug logging, make the bug happen again, then paste the end of `main.log`. Remove anything you don't want public.
+
+        Windows: `%APPDATA%\YTMDesktopPlus\logs\main.log`
+        macOS: `~/Library/Logs/YTMDesktopPlus/main.log`
+        Linux: `~/.config/YTMDesktopPlus/logs/main.log`
+        Flatpak: `~/.var/app/dev.whyknot.YTMDesktopPlus/config/YTMDesktopPlus/logs/main.log`
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, the theme or addons you use, or whether it started after an update.
+    validations:
+      required: false
