@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- docs: add a downloads badge to the README
 - docs: add a README banner, badges, issue templates, SECURITY.md and CONTRIBUTING.md
 
 ## [v2026.1015.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.1015.0-beta) - 2026-10-15
