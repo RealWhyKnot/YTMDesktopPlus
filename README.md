@@ -5,6 +5,7 @@
 <p align="center">
   <a href="https://github.com/RealWhyKnot/YTMDesktopPlus/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/RealWhyKnot/YTMDesktopPlus/ci.yml?branch=main&label=ci&style=flat-square&labelColor=212121"></a>
   <a href="https://github.com/RealWhyKnot/YTMDesktopPlus/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/RealWhyKnot/YTMDesktopPlus?label=release&style=flat-square&labelColor=212121&color=ff0033"></a>
+  <a href="https://github.com/RealWhyKnot/YTMDesktopPlus/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/RealWhyKnot/YTMDesktopPlus/total?label=downloads&style=flat-square&labelColor=212121&color=ff0033"></a>
   <a href="https://ytmdesktopplus.com"><img alt="ytmdesktopplus.com status" src="https://img.shields.io/website?url=https%3A%2F%2Fytmdesktopplus.com%2Fhealth&label=ytmdesktopplus.com&up_message=online&down_message=offline&style=flat-square&labelColor=212121"></a>
   <img alt="Windows, macOS and Linux" src="https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-ff0033?style=flat-square&labelColor=212121">
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-ff0033?style=flat-square&labelColor=212121"></a>
