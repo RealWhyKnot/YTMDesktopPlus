@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- test(logging): check the queue without racing the write
 - ci: find the macOS app without parsing ls
 - ci: move checks onto the shared workflows
 - fix(last-fm): scrobble on time actually played
