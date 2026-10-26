@@ -53,11 +53,13 @@
     "@types/node": "22.20.2",
     "@types/ws": "^8",
     "@vitejs/plugin-vue": "5.2.4",
+    "@vue/test-utils": "^2.5.1",
     "electron": "44.3.0",
     "eslint": "10.10.0",
     "eslint-config-prettier": "^10.0.0",
     "eslint-plugin-vue": "10.11.0",
     "globals": "17.12.0",
+    "happy-dom": "^21.0.4",
     "husky": "^9.1.7",
     "lint-staged": "17.5.1",
     "prettier": "3.9.6",
@@ -105,6 +107,7 @@
   },
   "packageManager": "yarn@4.18.0",
   "resolutions": {
-    "extract-zip/yauzl": "^3.4.0"
+    "extract-zip/yauzl": "^3.4.0",
+    "socket.io-adapter": "~2.5.8"
   }
 }

@@ -1,11 +1,12 @@
 # Continuous integration for pushes and pull requests.
 #
 # Three layers:
-#   checks   - lint, typecheck, formatting, unit tests. Fast, runs on ubuntu.
+#   checks   - lint, typecheck, formatting, unit tests. Fast, runs on ubuntu,
+#              with the unit tests repeated on windows.
 #   build    - electron-forge make across the release matrix, artifacts kept
 #              two weeks. windows arm64 is excluded to match the publish matrix.
-#   validate - installs the built flatpak, Squirrel setup, and macOS app, then
-#              checks the installed copy actually starts.
+#   validate - installs the built flatpak, Squirrel setup, deb, rpm, and macOS
+#              app, then checks the installed copy actually starts.
 name: ci
 
 on:
@@ -23,8 +24,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -48,6 +49,23 @@ jobs:
         run: yarn typecheck
       - name: Formatting
         run: yarn prettier
+      - name: Unit tests
+        run: yarn test
+
+  windows-tests:
+    name: tests (windows)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-deps
+      - name: Script self-tests
+        shell: pwsh
+        run: |
+          ./scripts/Test-Update-Changelog.ps1
+          ./scripts/Test-Generate-ReleaseNotes.ps1
       - name: Unit tests
         run: yarn test
 
@@ -124,7 +142,7 @@ jobs:
   # it creates its user data directory. Log files are not a reliable marker
   # here because stable-version builds keep debug logging off.
   validate:
-    name: install smoke (${{ matrix.os }})
+    name: install smoke (${{ matrix.os }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.image }}
     timeout-minutes: 20
     needs: build
@@ -141,6 +159,9 @@ jobs:
           - os: macos
             image: macos-latest
             arch: arm64
+          - os: macos
+            image: macos-15-intel
+            arch: x64
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -213,7 +234,7 @@ jobs:
       - name: Extract and launch the macOS app
         if: matrix.os == 'macos'
         run: |
-          ditto -x -k ./dist/zip/darwin/arm64/*.zip extracted
+          ditto -x -k ./dist/zip/darwin/${{ matrix.arch }}/*.zip extracted
           app=$(ls -d extracted/*.app | head -1)
           "$app/Contents/MacOS/ytmdesktop-plus" &
           app_pid=$!
@@ -221,3 +242,39 @@ jobs:
           kill -0 "$app_pid"
           [ -d "$HOME/Library/Application Support/YTMDesktopPlus" ]
           kill "$app_pid"
+
+  package-smoke:
+    name: install smoke (${{ matrix.format }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 20
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - format: deb
+            arch: x64
+            image: ubuntu-latest
+            container: ubuntu:24.04
+          - format: rpm
+            arch: x64
+            image: ubuntu-latest
+            container: fedora:latest
+          - format: deb
+            arch: arm64
+            image: ubuntu-24.04-arm
+            container: ubuntu:24.04
+          - format: rpm
+            arch: arm64
+            image: ubuntu-24.04-arm
+            container: fedora:latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist-linux-${{ matrix.arch }}-${{ github.sha }}
+          path: dist
+      - name: Install and launch the ${{ matrix.format }} in a clean container
+        run: bash packaging/smoke/linux-package.sh "$(ls dist/${{ matrix.format }}/${{ matrix.arch }}/*.${{ matrix.format }})" "${{ matrix.container }}"

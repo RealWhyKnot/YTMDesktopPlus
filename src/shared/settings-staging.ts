@@ -20,6 +20,7 @@ export const STAGED_SETTING_KEYS = [
   "playback.preventIdlePause",
   "integrations.companionServerEnabled",
   "integrations.companionServerCORSWildcardEnabled",
+  "integrations.companionServerLANEnabled",
   "integrations.discordPresenceEnabled",
   "integrations.discordPresenceHideOnPause",
   "integrations.lastFMEnabled",

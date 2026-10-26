@@ -18,11 +18,28 @@ function isSafeEntryPath(name: string): boolean {
   return !name.split("/").some(segment => segment === ".." || segment === "");
 }
 
+class ArchiveLimitError extends Error {}
+
 export function readThemeArchive(bytes: Uint8Array): { files: Map<string, Uint8Array> } | { reason: string } {
   let unzipped: Record<string, Uint8Array>;
+  let fileCount = 0;
+  let entryCount = 0;
+  let declaredTotal = 0;
   try {
-    unzipped = unzipSync(bytes);
+    unzipped = unzipSync(bytes, {
+      filter: file => {
+        entryCount++;
+        if (entryCount > MAX_THEME_ENTRIES * 2) throw new ArchiveLimitError(`the archive holds more than ${MAX_THEME_ENTRIES * 2} entries`);
+        if (file.name.endsWith("/")) return false;
+        fileCount++;
+        if (fileCount > MAX_THEME_ENTRIES) throw new ArchiveLimitError(`the archive holds more than ${MAX_THEME_ENTRIES} files`);
+        declaredTotal += Math.max(file.size, file.originalSize);
+        if (declaredTotal > MAX_THEME_BYTES) throw new ArchiveLimitError("the archive unpacks to more than 32MB");
+        return true;
+      }
+    });
   } catch (error) {
+    if (error instanceof ArchiveLimitError) return { reason: error.message };
     return { reason: `the archive could not be read: ${error}` };
   }
 

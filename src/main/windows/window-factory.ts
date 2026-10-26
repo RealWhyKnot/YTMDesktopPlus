@@ -29,6 +29,15 @@ export function refreshTitleBarOverlays(): void {
   }
 }
 
+export function isDevServerUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" && parsed.hostname === "localhost";
+  } catch {
+    return false;
+  }
+}
+
 type AppWindowOptions = BrowserWindowConstructorOptions & {
   // window.open targets opened in the system browser; everything else is denied.
   openExternalUrls?: string[];
@@ -60,7 +69,7 @@ export function createAppWindow(options: AppWindowOptions): BrowserWindow {
   });
 
   window.webContents.on("will-navigate", event => {
-    if (process.env.NODE_ENV === "development" && event.url.startsWith("http://localhost")) return;
+    if (process.env.NODE_ENV === "development" && isDevServerUrl(event.url)) return;
 
     event.preventDefault();
   });

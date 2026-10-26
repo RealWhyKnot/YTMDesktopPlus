@@ -6,8 +6,10 @@ runs inside the app. The bundled Listen Along rooms feature is an addon itself. 
 available to yours too.
 
 Before anything else: an addon with a `main` entry runs in the app's main process with the same
-access as the app itself. There's no sandbox. Only install addons you trust. The app shows a
-confirmation the first time you enable one.
+access as the app itself. There's no sandbox. Files under `ytmScripts` run inside the YouTube
+Music page with your signed-in session. Only install addons you trust. The app asks you to confirm
+the first time you enable one. If its `manifest.json`, `main` file or `ytmScripts` files change
+after that, the app turns it off at the next launch and asks again when you turn it back on.
 
 ## Quickstart
 
@@ -33,6 +35,9 @@ reload described under Testing and debugging.
 3. Restart the app. The addon appears in the Addons tab, disabled.
 4. Enable it and restart once more. Disabling works the same way: the addon
    is fully unloaded on the next launch.
+
+To remove an addon, delete its folder. Its saved settings are cleared on the
+next launch.
 
 ## Anatomy of an addon
 
@@ -80,6 +85,10 @@ my-addon/
 
 All paths are relative and must stay inside the addon folder.
 
+Text fields have length limits: 64 characters for `name` and `author`, 32 for
+`version` and `minAppVersion`, 300 for `description` and 2048 for `homepage`.
+A longer value makes the manifest invalid.
+
 ## Types and your editor
 
 The whole SDK is declared in one self-contained file, `ytmd-addon.d.ts`,
@@ -110,8 +119,10 @@ setting.
 
 ### ytmScripts
 
-Each file runs in the YouTube Music page on every page load. A script file
-must evaluate to a function, which is called after evaluation:
+Each file runs in the YouTube Music page on every page load. It runs in the
+page's own JavaScript world, so it shares the page's globals and acts with the
+signed-in session. A script file must evaluate to a function, which is called
+after evaluation:
 
 ```js
 (function () {
@@ -141,6 +152,12 @@ module.exports.activate = ctx => {
 };
 ```
 
+Addons activate one after another while the app starts, and the app window
+doesn't wait for them. `activate` gets 10 seconds. If it hasn't finished by
+then, the app unloads everything the addon registered and its card shows the
+error. The YouTube Music page may not exist yet while `activate` runs, so do
+page work from `ctx.ytmview.onLoaded`.
+
 `destroy` runs when the app quits (it gets a few seconds to finish) and on a
 dev reload. Everything registered through the context is unwound automatically
 as well. `destroy` only needs to release what the context doesn't know about:
@@ -149,9 +166,9 @@ sockets, timers, files.
 ## The context
 
 Subscriptions return an unsubscribe function, and they're all released
-automatically when the addon unloads. A callback that throws doesn't take the
-addon down. The error goes to the log and shows on the addon's card as a recent
-error, and the addon keeps running.
+automatically when the addon unloads. A callback that throws, or returns a
+promise that rejects, doesn't take the addon down. The error goes to the log
+and shows on the addon's card as a recent error, and the addon keeps running.
 
 - `ctx.manifest`: the addon's own manifest, as loaded.
 - `ctx.log`: a scoped logger writing to the app log under `addon:<id>`.
@@ -193,10 +210,13 @@ error, and the addon keeps running.
   `onMessage(name, callback)` receives messages page scripts send up (see the
   cookbook). `insertCSS`/`watchCSSFile` add styles, and both return a handle
   with `update` and `remove`. `onLoaded` registers a hook that runs each time
-  the page finishes loading.
+  the page finishes loading, and once straight away if the page loaded before
+  the addon activated. While there's no page, `invokeScript` rejects at once
+  with an error telling you to call it from `onLoaded`.
 - `ctx.innertube`: `request(endpoint, body?)` calls YouTube Music's own API
   (`music.youtube.com/youtubei/v1/...`) with the page's signed-in session.
-  See the cookbook below.
+  Like `invokeScript`, it rejects at once while there's no page. See the
+  cookbook below.
 - `ctx.windows`: `create(options)` for a window of your own. See Addon
   windows below.
 - `ctx.ipc`: `handle`/`on` for channels namespaced to the addon
@@ -211,6 +231,7 @@ error, and the addon keeps running.
   show. `refreshActivity` re-renders after either provider's answer changes.
 - `ctx.titlebar`: `setBadge`/`onBadgeClick` for an indicator in the main
   window's title bar. The badge's `icon` is a Material Symbols ligature name.
+  Badge text is cut to 12 characters and the tooltip to 200.
 - `ctx.tray`: `setMenuItems(items)` for entries in the app's tray menu. Each
   item is `{ label, click, enabled? }`, and an empty list removes the section.
 - `ctx.theme`: the theme the user picked. `get()` returns its id, name and
@@ -284,7 +305,8 @@ for its history polling.
 
 `ctx.windows.create` opens a frameless window and takes exactly one of:
 
-- `entry`, a renderer folder compiled into the app (bundled addons only), or
+- `entry`, a renderer folder compiled into the app (bundled addons only; an
+  external addon that passes it gets an error), or
 - `file`, an HTML file inside your addon folder.
 
 Pass `show: false` to keep the window hidden and exempt from background
@@ -333,7 +355,9 @@ when the user clicks Save. Defaults come from `registerDefaults`. Field types:
 - `toggle`: a switch bound to a boolean.
 - `text`: a text input, with optional `placeholder` and `maxlength`.
 - `number`: a slider by default, or a plain input with `display: "input"`.
-  Optional `min`, `max`, `step`.
+  Optional `min`, `max`, `step`. The app keeps the stored value inside `min`
+  and `max`, and replaces a value that isn't a finite number with the last
+  good one or the default. `ctx.settings.set` throws on `NaN` or infinity.
 - `select`: a dropdown over `options: [{ label, value }]`. Values can be
   strings or numbers and come back with that exact type.
 - `button`: a clickable row with no stored value. `buttonText` is the label
@@ -374,7 +398,8 @@ An addon loads only if it passes both of these checks:
 ## Troubleshooting
 
 A broken addon never stops the app from starting. Whatever went wrong (a bad
-manifest, a folder name mismatch, an `activate` that throws) shows up on the
+manifest, a folder name mismatch, an `activate` that throws or takes more than
+10 seconds) shows up on the
 addon's card in Settings, and the details go to the app log. Runtime errors
 after activation appear on the card too, without disabling the addon. On quit,
 `destroy` gets a few seconds before the app closes anyway.

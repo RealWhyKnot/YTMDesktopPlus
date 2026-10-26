@@ -8,6 +8,16 @@ export const SUPPORTED_ADDON_API_VERSION = 1;
 
 const SEMVER_SHAPE = /^\d+\.\d+\.\d+(-.+)?$/;
 
+export const MANIFEST_TEXT_LIMITS = { name: 64, author: 64, version: 32, description: 300, minAppVersion: 32, homepage: 2048 } as const;
+
+export function manifestTextTooLong(m: Record<string, unknown>): string | null {
+  for (const [field, limit] of Object.entries(MANIFEST_TEXT_LIMITS)) {
+    const value = m[field];
+    if (typeof value === "string" && Array.from(value).length > limit) return `${field} is longer than ${limit} characters`;
+  }
+  return null;
+}
+
 /** Returns the reason the manifest is invalid, or null when it is usable. */
 export function validateManifest(manifest: unknown): string | null {
   if (manifest === null || typeof manifest !== "object") return "manifest is not an object";
@@ -19,6 +29,8 @@ export function validateManifest(manifest: unknown): string | null {
   }
   if (m.minAppVersion !== undefined && typeof m.minAppVersion !== "string") return "minAppVersion must be a string";
   if (m.homepage !== undefined && typeof m.homepage !== "string") return "homepage must be a string";
+  const tooLong = manifestTextTooLong(m);
+  if (tooLong) return tooLong;
   if (m.apiVersion !== undefined && (typeof m.apiVersion !== "number" || !Number.isInteger(m.apiVersion) || m.apiVersion < 1)) {
     return "apiVersion must be a positive integer";
   }

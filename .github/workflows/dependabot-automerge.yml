@@ -3,13 +3,45 @@ name: Dependabot auto-merge
 on: pull_request
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: dependabot-automerge-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
+  scope:
+    name: Check every update is an npm dev dependency
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      allowed: ${{ steps.check.outputs.allowed }}
+    steps:
+      - name: Fetch dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v3
+      - name: Check the dependency types
+        id: check
+        env:
+          ECOSYSTEM: ${{ steps.meta.outputs.package-ecosystem }}
+          UPDATED: ${{ steps.meta.outputs.updated-dependencies-json }}
+        run: |
+          set -euo pipefail
+          if [ "$ECOSYSTEM" = "npm_and_yarn" ] && printf '%s' "$UPDATED" | jq -e 'length > 0 and all(.[]; .dependencyType == "direct:development")' > /dev/null; then
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Not only npm dev dependencies; leaving this PR for review."
+            printf '%s' "$UPDATED" | jq -r '.[] | "\(.dependencyName) \(.dependencyType)"'
+          fi
+
   automerge:
+    needs: scope
+    if: needs.scope.outputs.allowed == 'true'
+    permissions:
+      contents: write
+      pull-requests: write
     uses: RealWhyKnot/workflows/.github/workflows/dependabot-automerge.yml@v1

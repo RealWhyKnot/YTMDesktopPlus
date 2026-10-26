@@ -38,6 +38,7 @@ import { instrumentIpc, markSystemEvents, markWindowMessages, stallTasks, watchM
 import { MemoryStoreSchema, StoreSchema } from "../shared/store/schema";
 
 import CompanionServer from "./integrations/companion-server";
+import { watchCompanionAuthWindow } from "./integrations/companion-server/auth-window-timer";
 import DiscordPresence from "./integrations/discord-presence";
 import LastFM from "./integrations/last-fm";
 import NowPlayingNotifications from "./integrations/notifications";
@@ -49,7 +50,17 @@ import { blockWatchHistoryWrites, initializeTestSeams, injectYtmExperimentFlags,
 import { migrateLegacyProfile } from "./profile-migration";
 import { cancelCue, cueTrack, getPlaylists, providePlaybackView, sendPlaybackCommand } from "./playback";
 import { createLaunchPause } from "./playback/launch-pause";
-import { createSenderGuards, senderIsView } from "./ipc/sender-guards";
+import { appWindowPermissionAllowed, createSenderGuards, senderIsView } from "./ipc/sender-guards";
+import { canOpenExternally, classifyYtmNavigation, isPremiumRequiredRedirect, YTM_ORIGIN, YTM_SIGN_IN_ORIGINS } from "./ytm-navigation";
+import {
+  createPayloadRejectLog,
+  isAlbumPayload,
+  isFiniteNumber,
+  isOptionalString,
+  isQueuePayload,
+  isStoreStatePayload,
+  isVideoDetailsPayload
+} from "./ipc/ytm-view-payloads";
 import { createAppWindow, loadWindowEntry, refreshTitleBarOverlays, setTitleBarOverlayProvider } from "./windows/window-factory";
 import { ThemeManager } from "./themes/manager";
 import { registerThemeIpc } from "./ipc/themes";
@@ -221,7 +232,6 @@ let lastUrl = "";
 let lastVideoId = "";
 let lastPlaylistId = "";
 
-let companionAuthWindowEnableTimeout: NodeJS.Timeout | null = null;
 let ytmViewLoadTimeout: NodeJS.Timeout | null = null;
 
 // These are global accelerators: they fire whether or not the window is
@@ -285,6 +295,7 @@ const broadcastToWindows = createStoreBroadcaster({
 memoryStore.onStateChanged((key, value) => {
   broadcastToWindows("memoryStore:stateChanged", { includeMainWindow: true }, key, value);
 });
+watchCompanionAuthWindow(memoryStore, () => store.get("integrations").companionServerEnabled === true);
 log.info("Created memory store");
 
 // Pauses the restored track once it reports playing, see playback/launch-pause
@@ -646,36 +657,16 @@ store.onDidAnyChange(async (newState, oldState) => {
   }
 
   // Integrations
-  let companionServerAuthWindowEnabled = memoryStore.get("companionServerAuthWindowEnabled") ?? false;
-
-  if (!newState.integrations.companionServerEnabled && oldState.integrations.companionServerEnabled && companionServerAuthWindowEnabled) {
+  if (!newState.integrations.companionServerEnabled && oldState.integrations.companionServerEnabled && memoryStore.get("companionServerAuthWindowEnabled")) {
     memoryStore.set("companionServerAuthWindowEnabled", false);
-    clearInterval(companionAuthWindowEnableTimeout);
-    companionAuthWindowEnableTimeout = null;
-    companionServerAuthWindowEnabled = false;
   }
 
-  if (companionServerAuthWindowEnabled) {
-    if (!companionAuthWindowEnableTimeout) {
-      companionAuthWindowEnableTimeout = setTimeout(() => {
-        memoryStore.set("companionServerAuthWindowEnabled", null);
-        companionAuthWindowEnableTimeout = null;
-      }, 300 * 1000);
-    }
-  }
-
-  if (newState.integrations.companionServerCORSWildcardEnabled && !oldState.integrations.companionServerCORSWildcardEnabled) {
-    // Check if the companion server has been enabled and needs a restart from CORS wildcard change
-    if (newState.integrations.companionServerEnabled && oldState.integrations.companionServerEnabled) {
-      await companionServer.disable();
-      await companionServer.enable();
-    }
-  } else if (!newState.integrations.companionServerCORSWildcardEnabled && oldState.integrations.companionServerCORSWildcardEnabled) {
-    // Check if the companion server has been disabled and needs a restart from CORS wildcard change
-    if (newState.integrations.companionServerEnabled && oldState.integrations.companionServerEnabled) {
-      await companionServer.disable();
-      await companionServer.enable();
-    }
+  const companionServerRestartNeeded =
+    Boolean(newState.integrations.companionServerCORSWildcardEnabled) !== Boolean(oldState.integrations.companionServerCORSWildcardEnabled) ||
+    Boolean(newState.integrations.companionServerLANEnabled) !== Boolean(oldState.integrations.companionServerLANEnabled);
+  if (companionServerRestartNeeded && newState.integrations.companionServerEnabled && oldState.integrations.companionServerEnabled) {
+    await companionServer.disable();
+    await companionServer.enable();
   }
 
   if (newState.integrations.discordPresenceHideOnPause !== oldState.integrations.discordPresenceHideOnPause) {
@@ -761,11 +752,7 @@ function sendSettingsWindowStateIpc() {
 
 // Handles any navigation or window opening from ytmView
 function openExternalFromYtmView(urlString: string) {
-  const url = new URL(urlString);
-  const domainSplit = url.hostname.split(".");
-  domainSplit.reverse();
-  const domain = `${domainSplit[1]}.${domainSplit[0]}`;
-  if (domain === "google.com" || domain === "youtube.com") {
+  if (canOpenExternally(urlString)) {
     shell.openExternal(urlString);
   }
 }
@@ -810,6 +797,10 @@ const createOrShowSettingsWindow = (): void => {
   settingsWindow.on("minimize", sendSettingsWindowStateIpc);
   settingsWindow.on("restore", sendSettingsWindowStateIpc);
 
+  settingsWindow.webContents.on("will-prevent-unload", () => {
+    applicationQuitting = false;
+  });
+
   settingsWindow.once("closed", () => {
     settingsWindow = null;
   });
@@ -827,27 +818,6 @@ const createOrShowSettingsWindow = (): void => {
   // and load the index.html of the app.
   loadWindowEntry(settingsWindow, "settings", ALL_WINDOWS_VITE_DEV_SERVER_URL);
 };
-
-function urlIsGoogleAccountsDomain(url: URL): boolean {
-  // https://www.google.com/supported_domains
-  // prettier-ignore
-  const supportedDomains = [".google.com",".google.ad",".google.ae",".google.com.af",".google.com.ag",".google.al",".google.am",".google.co.ao",".google.com.ar",".google.as",".google.at",".google.com.au",".google.az",".google.ba",".google.com.bd",".google.be",".google.bf",".google.bg",".google.com.bh",".google.bi",".google.bj",".google.com.bn",".google.com.bo",".google.com.br",".google.bs",".google.bt",".google.co.bw",".google.by",".google.com.bz",".google.ca",".google.cd",".google.cf",".google.cg",".google.ch",".google.ci",".google.co.ck",".google.cl",".google.cm",".google.cn",".google.com.co",".google.co.cr",".google.com.cu",".google.cv",".google.com.cy",".google.cz",".google.de",".google.dj",".google.dk",".google.dm",".google.com.do",".google.dz",".google.com.ec",".google.ee",".google.com.eg",".google.es",".google.com.et",".google.fi",".google.com.fj",".google.fm",".google.fr",".google.ga",".google.ge",".google.gg",".google.com.gh",".google.com.gi",".google.gl",".google.gm",".google.gr",".google.com.gt",".google.gy",".google.com.hk",".google.hn",".google.hr",".google.ht",".google.hu",".google.co.id",".google.ie",".google.co.il",".google.im",".google.co.in",".google.iq",".google.is",".google.it",".google.je",".google.com.jm",".google.jo",".google.co.jp",".google.co.ke",".google.com.kh",".google.ki",".google.kg",".google.co.kr",".google.com.kw",".google.kz",".google.la",".google.com.lb",".google.li",".google.lk",".google.co.ls",".google.lt",".google.lu",".google.lv",".google.com.ly",".google.co.ma",".google.md",".google.me",".google.mg",".google.mk",".google.ml",".google.com.mm",".google.mn",".google.com.mt",".google.mu",".google.mv",".google.mw",".google.com.mx",".google.com.my",".google.co.mz",".google.com.na",".google.com.ng",".google.com.ni",".google.ne",".google.nl",".google.no",".google.com.np",".google.nr",".google.nu",".google.co.nz",".google.com.om",".google.com.pa",".google.com.pe",".google.com.pg",".google.com.ph",".google.com.pk",".google.pl",".google.pn",".google.com.pr",".google.ps",".google.pt",".google.com.py",".google.com.qa",".google.ro",".google.ru",".google.rw",".google.com.sa",".google.com.sb",".google.sc",".google.se",".google.com.sg",".google.sh",".google.si",".google.sk",".google.com.sl",".google.sn",".google.so",".google.sm",".google.sr",".google.st",".google.com.sv",".google.td",".google.tg",".google.co.th",".google.com.tj",".google.tl",".google.tm",".google.tn",".google.to",".google.com.tr",".google.tt",".google.com.tw",".google.co.tz",".google.com.ua",".google.co.ug",".google.co.uk",".google.com.uy",".google.co.uz",".google.com.vc",".google.co.ve",".google.co.vi",".google.com.vn",".google.vu",".google.ws",".google.rs",".google.co.za",".google.co.zm",".google.co.zw",".google.cat"];
-  const domain = url.hostname.split("accounts")[1];
-  if (supportedDomains.includes(domain)) return true;
-  return false;
-}
-function isPreventedNavOrRedirect(url: URL): boolean {
-  return (
-    url.hostname !== "consent.youtube.com" &&
-    url.hostname !== "accounts.youtube.com" &&
-    url.hostname !== "music.youtube.com" &&
-    !(
-      (url.hostname === "www.youtube.com" || url.hostname === "youtube.com") &&
-      (url.pathname === "/signin" || url.pathname === "/premium" || url.pathname === "/musicpremium" || url.pathname === "/signin_prompt")
-    ) &&
-    !urlIsGoogleAccountsDomain(url)
-  );
-}
 
 const createYTMView = (): void => {
   memoryStore.set("ytmViewLoadTimedout", false);
@@ -891,27 +861,21 @@ const createYTMView = (): void => {
 
   // Attach events to ytm view
   ytmView.webContents.on("will-navigate", event => {
-    const url = new URL(event.url);
-    if (isPreventedNavOrRedirect(url)) {
+    const navigation = classifyYtmNavigation(event.url);
+    if (navigation !== "allow") {
       event.preventDefault();
       log.info(`Blocking YTM View navigation to ${event.url}`);
 
-      openExternalFromYtmView(event.url);
+      if (navigation === "openExternal") openExternalFromYtmView(event.url);
     }
   });
   ytmView.webContents.on("will-redirect", event => {
-    const url = new URL(event.url);
-    if (isPreventedNavOrRedirect(url)) {
+    if (classifyYtmNavigation(event.url) !== "allow") {
       event.preventDefault();
       log.info(`Blocking YTM View redirect to ${event.url}`);
     }
 
-    if (
-      (url.hostname === "www.youtube.com" && url.pathname === "/premium") ||
-      (url.hostname === "youtube.com" && url.pathname === "/premium") ||
-      (url.hostname === "www.youtube.com" && url.pathname === "/musicpremium") ||
-      (url.hostname === "youtube.com" && url.pathname === "/musicpremium")
-    ) {
+    if (isPremiumRequiredRedirect(event.url)) {
       // This users region requires a premium subscription to use YTM
       ytmView.webContents.loadURL(
         "https://accounts.google.com/ServiceLogin?ltmpl=music&service=youtube&continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26next%3Dhttps%253A%252F%252Fmusic.youtube.com%252F"
@@ -1204,6 +1168,7 @@ app.on("ready", async () => {
       if (migrateDialog.response === 1) {
         if ("settings-companion-server" in v1Config) {
           store.set("integrations.companionServerEnabled", v1Config["settings-companion-server"]);
+          store.set("integrations.companionServerLANEnabled", v1Config["settings-companion-server"] === true);
         }
 
         if ("settings-continue-where-left-of" in v1Config) {
@@ -1328,7 +1293,7 @@ app.on("ready", async () => {
     memoryStore.set("safeStorageAvailable", true);
   }
 
-  const { isMainWindowSender, isSettingsSender, isYtmViewSender, isMemoryStoreSender } = createSenderGuards({
+  const { isMainWindowSender, isSettingsSender, isYtmViewSender, isYtmViewPage, isMemoryStoreSender } = createSenderGuards({
     getMainWindow: () => mainWindow,
     getSettingsWindow: () => settingsWindow,
     getYtmView: () => ytmView,
@@ -1351,9 +1316,12 @@ app.on("ready", async () => {
   });
 
   // Handle ytm view ipc
+  const rejectYtmViewPayload = createPayloadRejectLog(message => log.warn(message));
+  const ytmViewLoadedOrigins = [YTM_ORIGIN, ...YTM_SIGN_IN_ORIGINS];
+
   ipcMain.on("ytmView:loaded", event => {
     if (ytmView !== null && mainWindow !== null) {
-      if (!isYtmViewSender(event.sender)) return;
+      if (!isYtmViewPage(event, ytmViewLoadedOrigins)) return;
 
       memoryStore.set("ytmViewLoading", false);
       clearTimeout(ytmViewLoadTimeout);
@@ -1385,10 +1353,10 @@ app.on("ready", async () => {
   if (YTMD_DEV_TOOLS) {
     const probeLogPath = path.join(app.getPath("userData"), "logs", "remote-probe.jsonl");
     ipcMain.on("ytmView:devProbeEnabled", event => {
-      event.returnValue = remoteProbeActive && isYtmViewSender(event.sender);
+      event.returnValue = remoteProbeActive && isYtmViewPage(event);
     });
     ipcMain.on("ytmView:devProbe", async (event, batch: unknown[]) => {
-      if (!remoteProbeActive || !isYtmViewSender(event.sender)) return;
+      if (!remoteProbeActive || !isYtmViewPage(event)) return;
       if (!Array.isArray(batch) || batch.length === 0) return;
       try {
         await fs.mkdir(path.dirname(probeLogPath), { recursive: true });
@@ -1406,14 +1374,16 @@ app.on("ready", async () => {
     event.returnValue = isYtmViewSender(event.sender) && store.get("playback").adBlockerEnabled === true;
   });
 
-  ipcMain.on("ytmView:adBlockEvent", (event, kind: string, detail: unknown) => {
-    if (!isYtmViewSender(event.sender)) return;
+  ipcMain.on("ytmView:adBlockEvent", (event, kind: unknown, detail: unknown) => {
+    if (!isYtmViewPage(event)) return;
+    if (typeof kind !== "string") return rejectYtmViewPayload("ytmView:adBlockEvent");
 
     log.info(detail === undefined || detail === null ? `Ad blocker: ${kind}` : `Ad blocker: ${kind} ${String(detail)}`);
   });
 
-  ipcMain.on("ytmView:hookFailed", (event, stage, detail) => {
-    if (!isYtmViewSender(event.sender)) return;
+  ipcMain.on("ytmView:hookFailed", (event, stage: unknown, detail: unknown) => {
+    if (!isYtmViewPage(event)) return;
+    if (typeof stage !== "string") return rejectYtmViewPayload("ytmView:hookFailed");
 
     clearTimeout(ytmViewLoadTimeout);
     log.error(`YTM view hook failed at stage '${stage}'`, detail);
@@ -1423,26 +1393,30 @@ app.on("ready", async () => {
 
   // Optional setup modules degrade alone; the failure is recorded here so a
   // "feature X stopped working" report has the module name in the log.
-  ipcMain.on("ytmView:optionalModuleFailed", (event, name, detail) => {
-    if (!isYtmViewSender(event.sender)) return;
+  ipcMain.on("ytmView:optionalModuleFailed", (event, name: unknown, detail: unknown) => {
+    if (!isYtmViewPage(event)) return;
+    if (typeof name !== "string") return rejectYtmViewPayload("ytmView:optionalModuleFailed");
 
     log.warn(`YTM view optional module '${name}' failed`, detail);
   });
 
-  ipcMain.on("ytmView:contractMiss", (event, what, detail) => {
-    if (!isYtmViewSender(event.sender)) return;
+  ipcMain.on("ytmView:contractMiss", (event, what: unknown, detail: unknown) => {
+    if (!isYtmViewPage(event)) return;
+    if (typeof what !== "string") return rejectYtmViewPayload("ytmView:contractMiss");
 
     log.warn(`YTM contract miss: ${what}`, detail);
   });
 
-  ipcMain.on("ytmView:videoProgressChanged", (event, progress) => {
-    if (!isYtmViewSender(event.sender)) return;
+  ipcMain.on("ytmView:videoProgressChanged", (event, progress: unknown) => {
+    if (!isYtmViewPage(event)) return;
+    if (!isFiniteNumber(progress)) return rejectYtmViewPayload("ytmView:videoProgressChanged");
 
     playerStateStore.updateVideoProgress(progress);
   });
 
-  ipcMain.on("ytmView:videoStateChanged", (event, state) => {
-    if (!isYtmViewSender(event.sender)) return;
+  ipcMain.on("ytmView:videoStateChanged", (event, state: unknown) => {
+    if (!isYtmViewPage(event)) return;
+    if (!isFiniteNumber(state)) return rejectYtmViewPayload("ytmView:videoStateChanged");
 
     // ytm state mapping definitions
     // -1 -> Unstarted
@@ -1462,31 +1436,53 @@ app.on("ready", async () => {
     playerStateStore.updateVideoState(state);
   });
 
-  ipcMain.on("ytmView:videoDataChanged", (event, videoDetails, playlistId, album, likeStatus, hasFullMetadata) => {
-    if (!isYtmViewSender(event.sender)) return;
+  ipcMain.on("ytmView:videoDataChanged", (event, videoDetails: unknown, playlistId: unknown, album: unknown, likeStatus: unknown, hasFullMetadata: unknown) => {
+    if (!isYtmViewPage(event)) return;
+    if (
+      !isVideoDetailsPayload(videoDetails) ||
+      !isOptionalString(playlistId) ||
+      !isAlbumPayload(album) ||
+      !isOptionalString(likeStatus) ||
+      (hasFullMetadata !== undefined && typeof hasFullMetadata !== "boolean")
+    ) {
+      return rejectYtmViewPayload("ytmView:videoDataChanged");
+    }
 
     lastVideoId = videoDetails.videoId;
     lastPlaylistId = playlistId;
 
-    playerStateStore.updateVideoDetails(videoDetails, playlistId, album, likeStatus, hasFullMetadata);
+    playerStateStore.updateVideoDetails(
+      videoDetails as Parameters<typeof playerStateStore.updateVideoDetails>[0],
+      playlistId,
+      album ?? null,
+      likeStatus as Parameters<typeof playerStateStore.updateVideoDetails>[3],
+      hasFullMetadata as boolean
+    );
   });
 
-  ipcMain.on("ytmView:queueChanged", (event, queue) => {
-    if (!isYtmViewSender(event.sender)) return;
+  ipcMain.on("ytmView:queueChanged", (event, queue: unknown) => {
+    if (!isYtmViewPage(event)) return;
+    if (!isQueuePayload(queue)) return rejectYtmViewPayload("ytmView:queueChanged");
 
     playerStateStore.updateQueue(queue);
   });
 
-  ipcMain.on("ytmView:storeStateChanged", (event, likeStatus, volume, muted, adPlaying) => {
-    if (!isYtmViewSender(event.sender)) return;
+  ipcMain.on("ytmView:storeStateChanged", (event, likeStatus: unknown, volume: unknown, muted: unknown, adPlaying: unknown) => {
+    if (!isYtmViewPage(event)) return;
+    if (!isStoreStatePayload(likeStatus, volume, muted, adPlaying)) return rejectYtmViewPayload("ytmView:storeStateChanged");
 
-    playerStateStore.updateFromStore(likeStatus, volume, muted, adPlaying);
+    playerStateStore.updateFromStore(
+      likeStatus as Parameters<typeof playerStateStore.updateFromStore>[0],
+      volume as number | null,
+      muted as boolean | null,
+      adPlaying as boolean | null
+    );
   });
 
   ipcMain.on("ytmView:roomCapturePort", event => {
     const port = event.ports[0];
     if (!port) return;
-    if (!isYtmViewSender(event.sender)) {
+    if (!isYtmViewPage(event)) {
       port.close();
       return;
     }
@@ -1495,14 +1491,14 @@ app.on("ready", async () => {
   });
 
   ipcMain.on("ytmView:addonMessage", (event, addonId: string, name: string, payload: unknown) => {
-    if (!isYtmViewSender(event.sender)) return;
+    if (!isYtmViewPage(event)) return;
     if (typeof addonId !== "string" || typeof name !== "string") return;
 
     addonManager.handleViewMessage(addonId, name, payload);
   });
 
   ipcMain.on("ytmView:launchPauseArmed", (event, videoId: string, wasMuted: boolean) => {
-    if (!isYtmViewSender(event.sender)) return;
+    if (!isYtmViewPage(event)) return;
     if (typeof videoId !== "string" || videoId.length === 0) return;
 
     launchPause.arm(videoId, wasMuted === true).then(result => {
@@ -1511,14 +1507,14 @@ app.on("ready", async () => {
   });
 
   ipcMain.on("ytmView:switchFocus", (event, context) => {
-    if (!isYtmViewSender(event.sender) && !isMainWindowSender(event.sender)) return;
+    if (!isYtmViewPage(event) && !isMainWindowSender(event.sender)) return;
 
     if (context === "main") {
-      if (mainWindow && ytmView.webContents.isFocused()) {
+      if (mainWindow && ytmView && ytmView.webContents.isFocused()) {
         mainWindow.webContents.focus();
       }
     } else if (context === "ytm") {
-      if (ytmView && mainWindow.webContents.isFocused()) {
+      if (ytmView && mainWindow && mainWindow.webContents.isFocused()) {
         ytmView.webContents.focus();
       }
     }
@@ -1549,7 +1545,7 @@ app.on("ready", async () => {
   });
 
   ipcMain.handle("ytmView:getIntegrationScripts", event => {
-    if (!isYtmViewSender(event.sender)) return;
+    if (!isYtmViewPage(event)) return;
 
     return ytmViewIntegrationScripts;
   });
@@ -1581,7 +1577,11 @@ app.on("ready", async () => {
     memoryStore,
     isMemoryStoreSender,
     isSettingsSender,
-    isSettingsReader: sender => isMainWindowSender(sender) || isSettingsSender(sender) || isYtmViewSender(sender) || addonManager.ownsWebContents(sender),
+    isSettingsReader: event =>
+      isMainWindowSender(event.sender) ||
+      isSettingsSender(event.sender) ||
+      isYtmViewPage(event, ytmViewLoadedOrigins) ||
+      addonManager.ownsWebContents(event.sender),
     decryptString: value => safeStorage.decryptString(Buffer.from(value, "hex")),
     encryptString: value => safeStorage.encryptString(value).toString("hex")
   });
@@ -1717,6 +1717,12 @@ app.on("ready", async () => {
 
     return callback(false);
   });
+
+  const appWindowPermissionDeps = { isSettingsSender, ownsAddonContents: (sender: Electron.WebContents) => addonManager.ownsWebContents(sender) };
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => appWindowPermissionAllowed(appWindowPermissionDeps, webContents, permission));
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) =>
+    callback(appWindowPermissionAllowed(appWindowPermissionDeps, webContents, permission))
+  );
 
   session.fromPartition(app.isPackaged ? "persist:ytmview" : "persist:ytmview-dev").protocol.handle(MEDIA_SCHEME, serveMediaScheme);
   blockWatchHistoryWrites(session.fromPartition(app.isPackaged ? "persist:ytmview" : "persist:ytmview-dev"));
@@ -1872,14 +1878,16 @@ app.on("ready", async () => {
     return window;
   });
 
-  await addonManager.boot();
-  log.info("Addons booted");
+  const addonsBooted = addonManager.boot().then(
+    () => log.info("Addons booted"),
+    error => log.error("Addons failed to boot", error)
+  );
 
   // Edit-and-see loop for addon authors: YTMD_ADDON_DEV=1 reloads an external
   // addon after its files change. Development builds only; the user-facing
   // enable and disable model stays restart-scoped.
   if (process.env.YTMD_ADDON_DEV === "1" && !app.isPackaged) {
-    watchExternalAddonsForDev(externalAddonScans, id => addonManager.reloadExternal(id), log);
+    watchExternalAddonsForDev(externalAddonScans, id => addonsBooted.then(() => addonManager.reloadExternal(id)), log);
     log.info("Addon dev reload is watching the addons directory");
   }
 

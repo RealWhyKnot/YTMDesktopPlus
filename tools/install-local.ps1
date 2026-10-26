@@ -32,11 +32,15 @@ if ($running) {
 
 if (-not $ThemesOnly) {
   Push-Location $repo
+  $env:YTMD_LOCAL_BUILD = "1"
   try {
     npx --no-install electron-forge package
     if ($LASTEXITCODE -ne 0) { throw "electron-forge package failed" }
   }
-  finally { Pop-Location }
+  finally {
+    Remove-Item Env:\YTMD_LOCAL_BUILD -ErrorAction SilentlyContinue
+    Pop-Location
+  }
   $out = Join-Path $repo "out\YTMDesktopPlus-win32-x64"
   if (-not (Test-Path (Join-Path $out "resources\app.asar"))) { throw "packaged app.asar not found under $out" }
   robocopy $out $best.FullName /E /NFL /NDL /NJH /NJS | Out-Null

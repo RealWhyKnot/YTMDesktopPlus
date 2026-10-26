@@ -51,6 +51,7 @@ export function createAppStore(): CachedConf<StoreSchema> {
         companionServerEnabled: false,
         companionServerAuthTokens: null,
         companionServerCORSWildcardEnabled: false,
+        companionServerLANEnabled: false,
         discordPresenceEnabled: false,
         discordPresenceHideOnPause: true,
         lastFMEnabled: false,
@@ -146,6 +147,9 @@ export function createAppStore(): CachedConf<StoreSchema> {
   }
   if (store.get("integrations").discordPresenceHideOnPause === undefined) {
     store.set("integrations.discordPresenceHideOnPause", true);
+  }
+  if (store.get("integrations").companionServerLANEnabled === undefined) {
+    store.set("integrations.companionServerLANEnabled", store.get("integrations").companionServerEnabled === true);
   }
   if (store.get("addons") === undefined) {
     store.set("addons", { states: {}, settings: {} });

@@ -5,15 +5,14 @@ import { contextBridge, ipcRenderer } from "electron";
 import { createThemeBridge } from "../theme-bridge";
 import { WindowsEventArguments } from "~shared/types";
 
-const requestId = process.argv[process.argv.length - 3];
-const appName = process.argv[process.argv.length - 2];
-const code = process.argv[process.argv.length - 1];
+const requestId = process.argv[process.argv.length - 1];
+const getDetails = (): Promise<{ appName: string; code: string } | null> => ipcRenderer.invoke(`companionAuthorization:details:${requestId}`);
 
 contextBridge.exposeInMainWorld("ytmd", {
   theme: createThemeBridge(),
   sendResult: (result: boolean) => ipcRenderer.send(`companionAuthorization:result:${requestId}`, result),
-  getAppName: async () => appName,
-  getCode: async () => code,
+  getAppName: async () => (await getDetails())?.appName ?? "",
+  getCode: async () => (await getDetails())?.code ?? "",
   minimizeWindow: () => ipcRenderer.send(`companionWindow:minimize:${requestId}`),
   maximizeWindow: () => ipcRenderer.send(`companionWindow:maximize:${requestId}`),
   restoreWindow: () => ipcRenderer.send(`companionWindow:restore:${requestId}`),

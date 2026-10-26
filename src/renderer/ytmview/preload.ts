@@ -25,6 +25,8 @@ import {
 import { mergeScript, type ScriptTable } from "./script-table";
 import { installAdPrune } from "./ad-prune";
 import { installExperimentFlagPins } from "./experiment-flags";
+import { installIntentionalPause } from "./intentional-pause";
+import { steppedVolume, VOLUME_STEP } from "./volume-step";
 import { installQueueProjection } from "~shared/queue-projection";
 
 import playerBarControlsScript from "./scripts/playerbarcontrols.script?raw";
@@ -263,6 +265,7 @@ const adBlockEnabled: boolean = ipcRenderer.sendSync("ytmView:adBlockEnabled") =
 contextBridge.executeInMainWorld({ func: installAdPrune, args: [adBlockEnabled, AD_PRUNE_CONTRACT] });
 contextBridge.executeInMainWorld({ func: installQueueProjection });
 contextBridge.executeInMainWorld({ func: installExperimentFlagPins, args: [PINNED_EXPERIMENT_FLAGS] });
+contextBridge.executeInMainWorld({ func: installIntentionalPause });
 
 // This hooks YTM's internal store. YouTube Music defines
 // PolymerFakeBaseClassWithoutHtml itself, so whichever side defines the
@@ -528,9 +531,7 @@ const startHooking = async () => {
             (function() {
               const playerBar = document.querySelector("${PLAYER_BAR_SELECTOR}");
               if (playerBar.playing) {
-                // NonStop holds YTM's inactivity pause back; this is not one of those.
-                window.__ytmdNonStopAllowPause = true;
-                playerBar.playerApi.pauseVideo();
+                window.__ytmdPause(playerBar.playerApi);
               } else {
                 playerBar.playerApi.playVideo();
               }
@@ -555,9 +556,7 @@ const startHooking = async () => {
         (
           await webFrame.executeJavaScript(`
             (function() {
-              // NonStop holds YTM's inactivity pause back; this is not one of those.
-              window.__ytmdNonStopAllowPause = true;
-              document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi.pauseVideo();
+              window.__ytmdPause(document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi);
             })
           `)
         )();
@@ -612,10 +611,8 @@ const startHooking = async () => {
           `)
         )();
 
-        let newVolumeUp = currentVolumeUp + 10;
-        if (currentVolumeUp > 100) {
-          newVolumeUp = 100;
-        }
+        const newVolumeUp = steppedVolume(currentVolumeUp, VOLUME_STEP);
+        if (newVolumeUp === null) break;
         (
           await webFrame.executeJavaScript(`
             (function(newVolumeUp) {
@@ -636,10 +633,8 @@ const startHooking = async () => {
           `)
         )();
 
-        let newVolumeDown = currentVolumeDown - 10;
-        if (currentVolumeDown < 0) {
-          newVolumeDown = 0;
-        }
+        const newVolumeDown = steppedVolume(currentVolumeDown, -VOLUME_STEP);
+        if (newVolumeDown === null) break;
         (
           await webFrame.executeJavaScript(`
             (function(newVolumeDown) {

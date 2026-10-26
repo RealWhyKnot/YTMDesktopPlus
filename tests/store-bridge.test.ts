@@ -97,3 +97,35 @@ describe("memoryStore:subscribe", () => {
     expect(subscriber(false).sender.send).not.toHaveBeenCalled();
   });
 });
+
+describe("settings:get", () => {
+  function reader(allowed: (event: unknown) => boolean) {
+    const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
+    const ipc: IpcRegistrar = {
+      on: () => {},
+      handle: (channel, listener) => {
+        handlers.set(channel, listener);
+      }
+    };
+    const isSettingsReader = vi.fn(allowed);
+    registerStoreBridgeIpc(ipc, {
+      store: { get: (key: string) => `value of ${key}` },
+      isSettingsReader
+    } as unknown as StoreBridgeIpcDeps);
+    return { get: (event: unknown) => handlers.get("settings:get")(event, "lastfm"), isSettingsReader };
+  }
+
+  it("checks the whole event so the frame can be judged, not just the sender", () => {
+    const { get, isSettingsReader } = reader(() => true);
+    const event = { sender: {}, senderFrame: { url: "https://music.youtube.com/", parent: null as unknown } };
+
+    expect(get(event)).toBe("value of lastfm");
+    expect(isSettingsReader).toHaveBeenCalledWith(event);
+  });
+
+  it("returns nothing to a frame the reader check refuses", () => {
+    const { get } = reader(event => (event as { senderFrame: { parent: unknown } }).senderFrame.parent === null);
+
+    expect(get({ sender: {}, senderFrame: { url: "https://evil.example/", parent: {} } })).toBeUndefined();
+  });
+});

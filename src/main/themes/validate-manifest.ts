@@ -1,5 +1,5 @@
 import { THEME_API_VERSION, THEME_ID_PATTERN, type ThemeManifest } from "~shared/themes/sdk";
-import { versionAtLeast } from "../addons/validate-manifest";
+import { manifestTextTooLong, versionAtLeast } from "../addons/validate-manifest";
 
 const SEMVER_SHAPE = /^\d+\.\d+\.\d+(-.+)?$/;
 const HEX_COLOR = /^#[0-9a-fA-F]{3,8}$/;
@@ -23,6 +23,8 @@ export function validateThemeManifest(manifest: unknown): string | null {
   }
   if (m.minAppVersion !== undefined && typeof m.minAppVersion !== "string") return "minAppVersion must be a string";
   if (m.homepage !== undefined && typeof m.homepage !== "string") return "homepage must be a string";
+  const tooLong = manifestTextTooLong(m);
+  if (tooLong) return tooLong;
   if (m.apiVersion !== undefined && (typeof m.apiVersion !== "number" || !Number.isInteger(m.apiVersion) || m.apiVersion < 1)) {
     return "apiVersion must be a positive integer";
   }

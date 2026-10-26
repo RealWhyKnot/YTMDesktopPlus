@@ -76,9 +76,10 @@ flatpak install --user ./YTMDesktopPlus-x86_64.flatpak
 
 Flatpak needs the Flathub remote, which SteamOS includes.
 
-The `.AppImage` runs without installing on x86_64 and aarch64. Make it executable before running it. On Ubuntu 24.04 and Debian 13 you'll also need the [AppArmor profile](packaging/apparmor/ytmdesktop-plus):
+The `.AppImage` runs on x86_64 and aarch64. Make it executable before running it. On Ubuntu 24.04 and Debian 13 it also needs the [AppArmor profile](packaging/apparmor/ytmdesktop-plus), which only covers an AppImage in `/opt/YTMDesktopPlus`, so put it there first:
 
 ```bash
+sudo install -D -m 755 YTMDesktopPlus-<version>-<arch>.AppImage /opt/YTMDesktopPlus/YTMDesktopPlus.AppImage
 sudo cp packaging/apparmor/ytmdesktop-plus /etc/apparmor.d/ytmdesktop-plus
 sudo apparmor_parser -r /etc/apparmor.d/ytmdesktop-plus
 ```

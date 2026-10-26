@@ -42,6 +42,7 @@ export type StoreSchema = {
     companionServerEnabled: boolean;
     companionServerAuthTokens: string | null; // array[object] | Encrypted for security
     companionServerCORSWildcardEnabled: boolean;
+    companionServerLANEnabled: boolean;
     discordPresenceEnabled: boolean;
     discordPresenceHideOnPause: boolean; // clear the activity while paused instead of showing the paused badge
     lastFMEnabled: boolean;
@@ -83,7 +84,7 @@ export type StoreSchema = {
     firstRunPromptShown: boolean;
   };
   addons: {
-    states: Record<string, { enabled: boolean; riskAcknowledged?: boolean }>;
+    states: Record<string, { enabled: boolean; riskAcknowledged?: boolean; fingerprint?: string }>;
     settings: Record<string, Record<string, unknown>>;
   };
   themes: {

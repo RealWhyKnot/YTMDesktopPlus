@@ -4,6 +4,7 @@ export type AuthToken = {
   appName: string;
   id: string;
   token: string;
+  lastUsed?: number;
   metadata: {
     version: number;
   };

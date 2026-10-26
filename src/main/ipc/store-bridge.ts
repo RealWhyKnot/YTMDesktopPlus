@@ -3,6 +3,7 @@ import type { WebContents } from "electron";
 import type MemoryStore from "../memory-store";
 import type { MemoryStoreSchema, StoreSchema } from "../../shared/store/schema";
 import type { IpcRegistrar } from "./registrar";
+import type { SenderEvent } from "./sender-guards";
 
 export interface StoreBridgeIpcDeps {
   store: Conf<StoreSchema>;
@@ -10,7 +11,7 @@ export interface StoreBridgeIpcDeps {
   isMemoryStoreSender(sender: WebContents): boolean;
   isSettingsSender(sender: WebContents): boolean;
   // Widest read set: main window, settings window, ytm view, addon windows.
-  isSettingsReader(sender: WebContents): boolean;
+  isSettingsReader(event: SenderEvent): boolean;
   decryptString(hexValue: string): string;
   encryptString(value: string): string;
 }
@@ -51,7 +52,7 @@ export function registerStoreBridgeIpc(ipc: IpcRegistrar, deps: StoreBridgeIpcDe
   });
 
   ipc.handle("settings:get", (event, key: string) => {
-    if (!deps.isSettingsReader(event.sender)) return;
+    if (!deps.isSettingsReader(event)) return;
 
     return deps.store.get(key);
   });

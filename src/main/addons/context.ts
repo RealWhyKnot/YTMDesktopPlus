@@ -22,6 +22,7 @@ import type {
 } from "~shared/addons/sdk";
 import type { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
 import { AddonCssHandle, cssHandleFromFile } from "./css";
+import { clampBadge, clampNumberSetting, correctNumberSetting, numberFieldBounds, type NumberBounds } from "./settings-values";
 
 export type { AddonContext, AddonInstance, AddonWindowHandle, AddonWindowOptions, Unsubscribe } from "~shared/addons/sdk";
 
@@ -151,6 +152,32 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
     };
   };
 
+  const needsView = (what: string) =>
+    services.getYtmView() === null ? Promise.reject(new Error(`${what} can't run until the YouTube Music page loads; call it from ytmview.onLoaded`)) : null;
+
+  const defaults: Record<string, unknown> = {};
+  let numberBounds = new Map<string, NumberBounds>();
+  let numberGuardInstalled = false;
+
+  const correctNumber = (key: string, value: unknown, previous: unknown) => {
+    const bounds = numberBounds.get(key);
+    return bounds ? correctNumberSetting(value, bounds, [previous, defaults[key]]) : { changed: false, value };
+  };
+
+  const correctStoredNumbers = (previous?: Record<string, unknown>) => {
+    const addonsSection = services.store.get("addons");
+    const target = addonsSection.settings[id];
+    if (!target) return;
+    let changed = false;
+    for (const key of numberBounds.keys()) {
+      const correction = correctNumber(key, target[key], previous?.[key]);
+      if (!correction.changed) continue;
+      target[key] = correction.value;
+      changed = true;
+    }
+    if (changed) services.store.set("addons", addonsSection);
+  };
+
   return {
     manifest,
     log: scopedLog,
@@ -158,11 +185,12 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
     app: { version: services.appVersion },
 
     settings: {
-      registerDefaults(defaults) {
+      registerDefaults(newDefaults) {
         const addonsSection = services.store.get("addons");
         const target = addonsSection.settings[id] ?? {};
         let changed = false;
-        for (const [key, value] of Object.entries(defaults)) {
+        for (const [key, value] of Object.entries(newDefaults)) {
+          defaults[key] = value;
           if (target[key] === undefined) {
             target[key] = value;
             changed = true;
@@ -177,6 +205,11 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
         return settingsOf(services.store.store)[key] as T;
       },
       set(key, value) {
+        const bounds = numberBounds.get(key);
+        if (bounds && typeof value === "number") {
+          if (!Number.isFinite(value)) throw new TypeError(`${key} must be a finite number`);
+          value = clampNumberSetting(value, bounds);
+        }
         const addonsSection = services.store.get("addons");
         const target = addonsSection.settings[id] ?? {};
         target[key] = value;
@@ -185,19 +218,28 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       },
       onDidChange(key, callback) {
         const guarded = guard(`settings.onDidChange(${key})`, callback);
-        const unsubscribe = services.store.onDidChange("addons", (newValue, oldValue) => {
+        let delivered = settingsOf(services.store.store)[key];
+        const unsubscribe = services.store.onDidChange("addons", newValue => {
           const next = newValue?.settings[id]?.[key];
-          const prev = oldValue?.settings[id]?.[key];
-          if (!Object.is(next, prev)) guarded(next, prev);
+          if (Object.is(next, delivered) || correctNumber(key, next, delivered).changed) return;
+          const prev = delivered;
+          delivered = next;
+          guarded(next, prev);
         });
         bridge.addCleanup(unsubscribe);
         return unsubscribe;
       },
       registerSettingsUI(sections) {
+        numberBounds = numberFieldBounds(sections);
         bridge.setSettingsSections(sections);
+        if (!numberGuardInstalled) {
+          numberGuardInstalled = true;
+          bridge.addCleanup(services.store.onDidChange("addons", (_newValue, oldValue) => correctStoredNumbers(oldValue?.settings[id])));
+        }
+        correctStoredNumbers();
       },
       onAction(key, callback) {
-        return bridge.addActionCallback(key, callback);
+        return bridge.addActionCallback(key, guard(`settings.onAction(${key})`, callback));
       }
     },
 
@@ -221,13 +263,13 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
         services.getYtmView()?.webContents.send("ytmView:executeScript", scriptNamespace, name);
       },
       invokeScript(name, arg) {
-        return services.invokeYtmScript(scriptNamespace, name, arg);
+        return needsView("ytmview.invokeScript") ?? services.invokeYtmScript(scriptNamespace, name, arg);
       },
       onLoaded(callback) {
-        return bridge.addLoadedCallback(callback);
+        return bridge.addLoadedCallback(guard("ytmview.onLoaded", callback));
       },
       onMessage(name, callback) {
-        return bridge.addMessageCallback(name, callback);
+        return bridge.addMessageCallback(name, guard(`ytmview.onMessage(${name})`, callback));
       },
       insertCSS(css) {
         const handle = new AddonCssHandle(services.getYtmView, scopedLog, css);
@@ -332,7 +374,7 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
 
     innertube: {
       request<T>(endpoint: string, body?: Record<string, unknown>) {
-        return services.invokeYtmScript(HOST_SCRIPT_NAMESPACE, "innertubeRequest", { endpoint, body }) as Promise<T>;
+        return (needsView("innertube.request") ?? services.invokeYtmScript(HOST_SCRIPT_NAMESPACE, "innertubeRequest", { endpoint, body })) as Promise<T>;
       }
     },
 
@@ -347,6 +389,7 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
         if ((options.entry ? 1 : 0) + (options.file ? 1 : 0) !== 1) {
           throw new Error("windows.create needs exactly one of entry or file");
         }
+        if (options.entry && addonDir) throw new Error("only bundled addons can open entry windows; use file instead");
         let filePath: string | undefined;
         if (options.file) {
           if (!addonDir) throw new Error("file windows need an addon folder; bundled addons use entry");
@@ -454,16 +497,16 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
 
     titlebar: {
       setBadge(badge) {
-        bridge.setTitlebarBadge(badge);
+        bridge.setTitlebarBadge(clampBadge(badge));
       },
       onBadgeClick(callback) {
-        return bridge.addBadgeClickCallback(callback);
+        return bridge.addBadgeClickCallback(guard("titlebar.onBadgeClick", callback));
       }
     },
 
     tray: {
       setMenuItems(items) {
-        bridge.setTrayMenuItems(items);
+        bridge.setTrayMenuItems(items.map(item => ({ ...item, click: guard("tray.item", () => item.click()) })));
       }
     }
   };

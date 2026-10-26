@@ -228,6 +228,7 @@ describe("AddonContext", () => {
 
     expect(fixture.registeredScripts["addon-host"]["innertubeRequest"]).toContain("/youtubei/v1/");
 
+    fixture.services.getYtmView = () => ({ webContents: {} as Electron.WebContents });
     await ctx.innertube.request("browse", { browseId: "FEmusic_history" });
     expect(fixture.services.invokeYtmScript).toHaveBeenCalledWith("addon-host", "innertubeRequest", {
       endpoint: "browse",

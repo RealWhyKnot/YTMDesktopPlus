@@ -13,20 +13,33 @@ import MemoryStore from "../../memory-store";
 import log from "electron-log";
 import { isDefinedAPIError } from "./api-shared/errors";
 import { getAuthTokens } from "./api-shared/auth";
+import { isAllowedHost, isAllowedOrigin } from "./host-check";
 
 export default class CompanionServer implements IIntegration {
-  private listenIp = "0.0.0.0";
-  private listenPort = 9863;
   private fastifyServer: FastifyInstance;
   private store: Conf<StoreSchema>;
   private memoryStore: MemoryStore<MemoryStoreSchema>;
   private ytmView: BrowserView;
   private storeListener: () => void | null = null;
 
-  private createServer() {
+  constructor(private listenPort = 9863) {}
+
+  private lanEnabled() {
+    return this.store.get("integrations.companionServerLANEnabled", false) === true;
+  }
+
+  private createServer(allowLan: boolean) {
+    const corsWildcard = this.store.get("integrations.companionServerCORSWildcardEnabled", false);
     this.fastifyServer = Fastify().withTypeProvider<TypeBoxTypeProvider>();
+    this.fastifyServer.addHook("onRequest", async (request, reply) => {
+      if (!isAllowedHost(request.headers.host, allowLan)) {
+        return reply.code(403).send({
+          error: "INVALID_HOST"
+        });
+      }
+    });
     this.fastifyServer.register(cors, {
-      origin: this.store.get("integrations.companionServerCORSWildcardEnabled", false) ? "*" : false
+      origin: corsWildcard ? "*" : false
     });
     this.fastifyServer.register(FastifyIO, {
       transports: ["websocket"],
@@ -36,9 +49,12 @@ export default class CompanionServer implements IIntegration {
       // where the same class is exported as WebSocketServer and `Server` comes
       // out undefined.
       wsEngine: WebSocketServer,
+      allowRequest: (request, callback) => {
+        callback(null, isAllowedHost(request.headers.host, allowLan) && isAllowedOrigin(request.headers.origin, request.headers.host, corsWildcard));
+      },
       // While this is websocket only we still apply cors just in case
       cors: {
-        origin: this.store.get("integrations.companionServerCORSWildcardEnabled", false) ? "*" : false
+        origin: corsWildcard ? "*" : false
       }
     });
     this.fastifyServer.register(CompanionServerAPIv1, {
@@ -90,9 +106,10 @@ export default class CompanionServer implements IIntegration {
     }
 
     if (!this.fastifyServer || (this.fastifyServer && !this.fastifyServer.server.listening)) {
-      this.createServer();
+      const allowLan = this.lanEnabled();
+      this.createServer(allowLan);
       await this.fastifyServer.listen({
-        host: this.listenIp,
+        host: allowLan ? "0.0.0.0" : "127.0.0.1",
         port: this.listenPort
       });
       this.storeListener = this.store.onDidChange("integrations.companionServerAuthTokens", async () => {

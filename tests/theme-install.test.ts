@@ -44,6 +44,23 @@ describe("readThemeArchive", () => {
     expect("reason" in archive && archive.reason).toContain("no theme.json");
   });
 
+  it("refuses an entry whose declared size is too large before inflating it", () => {
+    const zip = zipSync({ "theme.json": bytes(manifest()), "app.css": bytes("a{}") });
+    const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+    for (let offset = 0; offset + 46 <= zip.byteLength; offset++) {
+      if (view.getUint32(offset, true) === 0x02014b50) view.setUint32(offset + 24, 64 * 1024 * 1024, true);
+    }
+    const archive = readThemeArchive(zip);
+    expect("reason" in archive && archive.reason).toContain("more than 32MB");
+  });
+
+  it("refuses an archive padded with folder entries", () => {
+    const files: Record<string, Uint8Array> = { "theme.json": bytes(manifest()) };
+    for (let i = 0; i < MAX_THEME_ENTRIES * 2 + 1; i++) files[`d${i}/`] = new Uint8Array(0);
+    const archive = readThemeArchive(zipSync(files));
+    expect("reason" in archive && archive.reason).toContain("more than");
+  });
+
   it("flattens a single wrapping folder", () => {
     const archive = readThemeArchive(zipSync({ "sample/theme.json": bytes(manifest()), "sample/app.css": bytes("a{}") }));
     expect("files" in archive && [...archive.files.keys()].sort()).toEqual(["app.css", "theme.json"]);

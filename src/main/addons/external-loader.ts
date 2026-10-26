@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
 import { createRequire } from "node:module";
@@ -13,14 +14,34 @@ export type ExternalAddonScan = {
   error?: string;
   /** Non-fatal manifest problems, logged at registration */
   warnings?: string[];
+  fingerprint?: string;
 };
+
+function fingerprintAddon(dir: string, manifestBytes: Buffer, manifest: AddonManifest): string {
+  const hash = createHash("sha256");
+  hash.update(`manifest.json\0${manifestBytes.length}\0`).update(manifestBytes);
+  for (const relative of [manifest.main, ...(manifest.ytmScripts ?? [])]) {
+    if (!relative) continue;
+    let bytes: Buffer;
+    try {
+      bytes = fs.readFileSync(path.join(dir, relative));
+    } catch {
+      hash.update(`${relative}\0missing\0`);
+      continue;
+    }
+    hash.update(`${relative}\0${bytes.length}\0`).update(bytes);
+  }
+  return hash.digest("hex");
+}
 
 /** Reads and validates one addon folder. Never throws. */
 export function scanAddonFolder(dir: string): ExternalAddonScan {
   const folderName = path.basename(dir);
   let parsed: unknown;
+  let manifestBytes: Buffer;
   try {
-    parsed = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8"));
+    manifestBytes = fs.readFileSync(path.join(dir, "manifest.json"));
+    parsed = JSON.parse(manifestBytes.toString("utf8"));
   } catch (error) {
     return { dir, folderName, error: `manifest.json could not be read: ${error}` };
   }
@@ -33,7 +54,7 @@ export function scanAddonFolder(dir: string): ExternalAddonScan {
     return { dir, folderName, manifest, error: "folder name must match the addon id" };
   }
   const warnings = manifestWarnings(manifest);
-  return { dir, folderName, manifest, warnings: warnings.length > 0 ? warnings : undefined };
+  return { dir, folderName, manifest, warnings: warnings.length > 0 ? warnings : undefined, fingerprint: fingerprintAddon(dir, manifestBytes, manifest) };
 }
 
 /** Reads every folder in the addons directory and validates its manifest.

@@ -28,6 +28,16 @@ for (let i = 0; i < process.argv.length; i++) {
 // stops the app from starting rather than merely disabling ad blocking.
 const ADBLOCKER_PRELOAD_PACKAGE = path.join("node_modules", "@ghostery", "adblocker-electron-preload");
 
+const windowsSign =
+  process.env.WINDOWS_CERTIFICATE_FILE || process.env.WINDOWS_SIGN_WITH_PARAMS
+    ? {
+        certificateFile: process.env.WINDOWS_CERTIFICATE_FILE || undefined,
+        certificatePassword: process.env.WINDOWS_CERTIFICATE_PASSWORD || undefined,
+        signWithParams: process.env.WINDOWS_SIGN_WITH_PARAMS || undefined,
+        signToolPath: process.env.WINDOWS_SIGNTOOL_PATH || undefined
+      }
+    : undefined;
+
 const config: ForgeConfig = {
   hooks: {
     // After the prune step, which walks the copied node_modules and would take
@@ -85,12 +95,14 @@ const config: ForgeConfig = {
       }
     ],
     appCategoryType: "public.app-category.music",
-    asar: true
+    asar: true,
+    ...(windowsSign ? { windowsSign } : {})
   },
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({
-      iconUrl: "https://raw.githubusercontent.com/RealWhyKnot/YTMDesktopPlus/main/src/assets/icons/ytmd.ico"
+      iconUrl: "https://raw.githubusercontent.com/RealWhyKnot/YTMDesktopPlus/main/src/assets/icons/ytmd.ico",
+      ...(windowsSign ? { windowsSign } : {})
     }),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({

@@ -1,5 +1,7 @@
-# Weekly dependency updates, grouped to keep the PR count sane. Patch-level
-# updates are auto-merged by dependabot-automerge.yml once CI passes.
+# Weekly dependency updates, grouped to keep the PR count sane. Versions are
+# offered once they are three days old, matching npmMinimalAgeGate in
+# .yarnrc.yml. Patch-level updates to npm dev dependencies are auto-merged by
+# dependabot-automerge.yml once CI passes.
 version: 2
 updates:
   - package-ecosystem: "npm"
@@ -8,6 +10,8 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     target-branch: "main"
+    cooldown:
+      default-days: 3
     labels:
       - "dependencies"
     commit-message:
@@ -32,6 +36,8 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 3
     target-branch: "main"
+    cooldown:
+      default-days: 3
     labels:
       - "dependencies"
     commit-message:

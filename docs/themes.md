@@ -87,6 +87,10 @@ other files are there for when you want to go further.
 
 All paths are relative and must stay inside the theme folder.
 
+Text fields have length limits: 64 characters for `name` and `author`, 32 for
+`version` and `minAppVersion`, 300 for `description` and 2048 for `homepage`.
+A longer value makes the manifest invalid.
+
 ## Tokens
 
 Set tokens, not selectors. The app has a base layer that maps both its own
@@ -244,9 +248,13 @@ font has its `OFL.txt` beside it.
 
 ## Network and file limits
 
-A theme doesn't make network requests. `@import` is stripped, and so is any
-`url()` pointing at `http`, `https` or `//`. Only relative paths inside your own
-folder are kept, and those are embedded instead of fetched. Anything removed
+A theme doesn't make network requests. `@import` is stripped in any spelling,
+and so is any `url()`, `src()`, `image-set()` or `image()` reference that
+starts with a scheme other than `data:` (`https:`, `file:` and the rest) or
+with `//`. A reference built from `var()`, `env()` or `attr()` inside one of
+those is removed as well, since the app can't tell where it points. Only
+relative paths inside your own folder are kept, and those are embedded instead
+of fetched. Anything removed
 this way shows up as a note on the theme's card. If your webfont did nothing,
 check there first.
 
@@ -254,8 +262,9 @@ I did that on purpose. A stylesheet that can fetch can report what you're
 listening to, and a theme shouldn't be able to.
 
 Installing from a zip is checked too. Entries that try to escape the folder are
-refused, only the file types above are extracted, and there are limits on the
-number of files and their total size once extracted.
+refused, only the file types above are extracted, and a theme zip can hold at
+most 200 files and 32 MB once extracted. The app checks the sizes the zip
+declares before it unpacks anything, then checks the real sizes again.
 
 ## Themes and addons together
 
