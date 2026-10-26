@@ -1,4 +1,4 @@
-import { app, ipcMain, type Session, type WebContents } from "electron";
+import { app, ipcMain, screen, type BrowserWindow, type Session, type WebContents } from "electron";
 import log from "electron-log";
 import path from "path";
 
@@ -44,6 +44,13 @@ export function initializeTestSeams() {
       }
     }
 
+    if (process.env.YTMD_TEST && !process.env.YTMD_TEST_VISIBLE) {
+      app.on("browser-window-created", (_event, window) => keepOffscreen(window));
+      app.on("web-contents-created", (_event, contents) => {
+        contents.openDevTools = () => undefined;
+      });
+    }
+
     if (process.env.YTMD_TEST) {
       // The YTM view preload asks for its broken stage synchronously at
       // startup. This must be per-request rather than an additionalArguments
@@ -69,6 +76,47 @@ export function initializeTestSeams() {
       }
     }, 5000);
   }
+}
+
+type DisplayBounds = { x: number; y: number; width: number; height: number };
+
+export function offscreenOrigin(displays: DisplayBounds[], windowWidth: number): { x: number; y: number } {
+  const left = Math.min(0, ...displays.map(bounds => bounds.x));
+  const top = Math.min(0, ...displays.map(bounds => bounds.y));
+  return { x: left - windowWidth - 400, y: top };
+}
+
+export function keepOffscreen(window: BrowserWindow, displays: () => DisplayBounds[] = () => screen.getAllDisplays().map(display => display.bounds)) {
+  const park = () => {
+    const [width, height] = window.getSize();
+    nativeSetBounds({ ...offscreenOrigin(displays(), width), width, height });
+  };
+  const nativeSetBounds = window.setBounds.bind(window);
+  const nativeShowInactive = window.showInactive.bind(window);
+
+  window.setSkipTaskbar(true);
+  window.setBounds = bounds => {
+    nativeSetBounds({ ...window.getBounds(), ...bounds });
+    park();
+  };
+  window.setPosition = () => park();
+  window.center = () => park();
+  window.maximize = () => undefined;
+  window.setFullScreen = () => undefined;
+  window.focus = () => undefined;
+  window.moveTop = () => undefined;
+  window.setAlwaysOnTop = () => undefined;
+  window.show = () => {
+    park();
+    nativeShowInactive();
+  };
+  window.showInactive = window.show;
+  window.on("move", () => {
+    const bounds = window.getBounds();
+    const onScreen = displays().some(display => bounds.x + bounds.width > display.x && bounds.x < display.x + display.width);
+    if (onScreen) park();
+  });
+  park();
 }
 
 export function isTestRun(): boolean {
