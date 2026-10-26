@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- ci: find the macOS app without parsing ls
 - ci: move checks onto the shared workflows
 - fix(last-fm): scrobble on time actually played
 - fix(rooms): harden listen along and the room window
