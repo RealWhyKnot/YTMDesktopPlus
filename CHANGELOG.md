@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- fix(last-fm): scrobble on time actually played
+- fix(rooms): harden listen along and the room window
+- fix(addons): time out slow addons and harden theme CSS
 - docs: add a downloads badge to the README
 - docs: add a README banner, badges, issue templates, SECURITY.md and CONTRIBUTING.md
 
