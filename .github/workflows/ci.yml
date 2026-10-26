@@ -31,6 +31,11 @@ permissions:
   contents: read
 
 jobs:
+  repo-checks:
+    permissions:
+      contents: read
+    uses: RealWhyKnot/workflows/.github/workflows/repo-checks.yml@v1
+
   checks:
     name: lint + typecheck + tests
     runs-on: ubuntu-latest

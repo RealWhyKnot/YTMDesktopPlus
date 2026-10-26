@@ -29,6 +29,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Find the newest commit ci passed on
         id: candidate
         shell: pwsh
@@ -68,6 +69,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           $head = git rev-parse HEAD
           $tagged = @(git tag --points-at $head --list 'v20*')
@@ -100,7 +102,9 @@ jobs:
           $n = if ($null -eq $existing) { 0 } else { $existing + 1 }
           $tag = "$prefix$n-beta"
           git tag $tag $head
-          git push origin $tag
+          if ($LASTEXITCODE -ne 0) { Write-Output "::error::git tag $tag failed"; exit 1 }
+          git push "https://x-access-token:$($env:GH_TOKEN)@github.com/$($env:REPO).git" $tag
+          if ($LASTEXITCODE -ne 0) { Write-Output "::error::git push $tag failed"; exit 1 }
           Write-Output "Tagged $tag"
           Write-Output "skip=false" >> $env:GITHUB_OUTPUT
           Write-Output "tag=$tag" >> $env:GITHUB_OUTPUT
