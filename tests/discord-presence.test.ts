@@ -3,8 +3,14 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import DiscordPresence, { type PresenceButtonsProvider, type RemoteTrackActivity } from "../src/main/integrations/discord-presence";
+import DiscordPresence, {
+  connectionRetryDelay,
+  getHighestResThumbnail,
+  type PresenceButtonsProvider,
+  type RemoteTrackActivity
+} from "../src/main/integrations/discord-presence";
 import { getIPCPaths } from "../src/main/integrations/discord-presence/minimal-discord-client";
+import IPCClient, { OPCode } from "../src/main/integrations/discord-presence/minimal-discord-client/ipc";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
 import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
 
@@ -302,6 +308,174 @@ describe("remote activity provider", () => {
     presence.refreshActivity();
     vi.advanceTimersByTime(1000);
     expect(calls).toEqual({ set: 0, clear: 2 });
+  });
+});
+
+describe("tracks without artwork", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("picks no thumbnail from an empty or missing list", () => {
+    expect(getHighestResThumbnail([])).toBeUndefined();
+    expect(getHighestResThumbnail(undefined)).toBeUndefined();
+    expect(getHighestResThumbnail(null)).toBeUndefined();
+  });
+
+  it("picks the largest thumbnail", () => {
+    expect(
+      getHighestResThumbnail([
+        { url: "https://example.invalid/small.jpg", width: 60, height: 60 },
+        { url: "https://example.invalid/big.jpg", width: 544, height: 544 },
+        { url: "https://example.invalid/mid.jpg", width: 120, height: 120 }
+      ])
+    ).toBe("https://example.invalid/big.jpg");
+  });
+
+  it("shows the app icon instead of throwing from the debounce timer", () => {
+    vi.useFakeTimers();
+    const { calls, activities, stateChanged } = makePresence();
+    const state = playingState();
+    stateChanged({ ...state, videoDetails: { ...state.videoDetails, thumbnails: [] } });
+
+    expect(() => vi.advanceTimersByTime(1000)).not.toThrow();
+    expect(calls.set).toBe(1);
+    expect(activities[0].assets?.large_image).toBe("icon");
+  });
+
+  it("keeps the debounce timer from throwing when the client does", () => {
+    vi.useFakeTimers();
+    const { presence, stateChanged } = makePresence();
+    Object.assign(presence, {
+      discordClient: {
+        setActivity: () => {
+          throw new Error("socket gone");
+        },
+        clearActivity: () => {}
+      }
+    });
+    stateChanged(playingState());
+
+    expect(() => vi.advanceTimersByTime(1000)).not.toThrow();
+  });
+});
+
+describe("connection retries", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function retryingPresence() {
+    const memory: Record<string, unknown> = {};
+    const connect = vi.fn(() => Promise.reject(new Error("no discord")));
+    const presence = new DiscordPresence();
+    presence.provide({ get: () => ({}) } as never, { set: (key: string, value: unknown) => (memory[key] = value) } as never);
+    Object.assign(presence, { enabled: true, discordClient: { connect } });
+    const retry = () => (presence as unknown as { retryDiscordConnection(): void }).retryDiscordConnection();
+    return { presence, connect, memory, retry };
+  }
+
+  it("backs off exponentially up to a minute", () => {
+    expect([1, 2, 3, 4, 5, 6, 50].map(connectionRetryDelay)).toEqual([5000, 10000, 20000, 40000, 60000, 60000, 60000]);
+  });
+
+  it("keeps trying past thirty attempts while enabled", async () => {
+    vi.useFakeTimers();
+    const { connect, memory, retry } = retryingPresence();
+
+    retry();
+    await vi.advanceTimersByTimeAsync(5000 + 10000 + 20000 + 40000);
+    expect(connect).toHaveBeenCalledTimes(4);
+
+    await vi.advanceTimersByTimeAsync(40 * 60 * 1000);
+    expect(connect.mock.calls.length).toBeGreaterThan(30);
+    expect(memory.discordPresenceConnectionFailed).toBe(true);
+
+    const before = connect.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(connect.mock.calls.length).toBe(before + 1);
+  });
+
+  it("stops retrying once disabled", async () => {
+    vi.useFakeTimers();
+    const { presence, connect, retry } = retryingPresence();
+    Object.assign(presence, { discordClient: { connect, destroy: () => {} } });
+
+    retry();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(connect).toHaveBeenCalledTimes(1);
+
+    presence.disable();
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+    expect(connect).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ipc frames", () => {
+  function frame(op: number, payload: unknown): Buffer {
+    const json = Buffer.from(JSON.stringify(payload), "utf-8");
+    const header = Buffer.alloc(8);
+    header.writeInt32LE(op, 0);
+    header.writeInt32LE(json.length, 4);
+    return Buffer.concat([header, json]);
+  }
+
+  function client() {
+    const ipc = new IPCClient();
+    const received: [number, unknown][] = [];
+    ipc.on("data", (op: number, json: unknown) => received.push([op, json]));
+    const socket = (ipc as unknown as { socket: Socket }).socket;
+    return { ipc, received, feed: (chunk: Buffer) => socket.emit("data", chunk), socket };
+  }
+
+  it("reassembles a frame split across reads, including inside the header and a multi-byte character", () => {
+    const { ipc, received, feed } = client();
+    const whole = frame(OPCode.FRAME, { evt: "READY", data: { user: "Zoë" } });
+
+    feed(whole.subarray(0, 3));
+    feed(whole.subarray(3, 11));
+    expect(received).toEqual([]);
+    for (let index = 11; index < whole.length; index++) feed(whole.subarray(index, index + 1));
+
+    expect(received).toEqual([[OPCode.FRAME, { evt: "READY", data: { user: "Zoë" } }]]);
+    ipc.destroy();
+  });
+
+  it("splits frames that arrive joined in one read", () => {
+    const { ipc, received, feed } = client();
+    const first = frame(OPCode.FRAME, { evt: "READY" });
+    const second = frame(OPCode.PING, { n: 1 });
+    const third = frame(OPCode.FRAME, { evt: "ERROR" });
+
+    feed(Buffer.concat([first, second, third.subarray(0, 5)]));
+    expect(received).toEqual([
+      [OPCode.FRAME, { evt: "READY" }],
+      [OPCode.PING, { n: 1 }]
+    ]);
+
+    feed(third.subarray(5));
+    expect(received.at(-1)).toEqual([OPCode.FRAME, { evt: "ERROR" }]);
+    ipc.destroy();
+  });
+
+  it("skips a frame with a bad body and keeps reading the next one", () => {
+    const { ipc, received, feed } = client();
+    const header = Buffer.alloc(8);
+    header.writeInt32LE(OPCode.FRAME, 0);
+    header.writeInt32LE(3, 4);
+
+    feed(Buffer.concat([header, Buffer.from("{{{"), frame(OPCode.FRAME, { ok: true })]));
+
+    expect(received).toEqual([[OPCode.FRAME, { ok: true }]]);
+    ipc.destroy();
+  });
+
+  it("does not throw a socket error nobody listens for", () => {
+    const { ipc, socket } = client();
+    ipc.removeAllListeners();
+
+    expect(() => socket.emit("error", new Error("EPIPE"))).not.toThrow();
+    ipc.destroy();
   });
 });
 

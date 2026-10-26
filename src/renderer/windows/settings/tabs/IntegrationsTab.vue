@@ -11,20 +11,28 @@ const {
   safeStorageAvailable,
   discordPresenceConnectionFailed,
   companionServerAuthWindowEnabled,
+  companionServerSavedEnabled,
   companionServerAuthTokens,
   lastFMSessionKey,
   memorySettingsChanged,
   restartDiscordPresence,
   deleteCompanionAuthToken,
-  logoutLastFM
+  logoutLastFM,
+  connectLastFM
 } = shell;
 
 const companionServerEnabled = staged.refs["integrations.companionServerEnabled"];
 const companionServerCORSWildcardEnabled = staged.refs["integrations.companionServerCORSWildcardEnabled"];
+const companionServerLANEnabled = staged.refs["integrations.companionServerLANEnabled"];
 const discordPresenceEnabled = staged.refs["integrations.discordPresenceEnabled"];
 const discordPresenceHideOnPause = staged.refs["integrations.discordPresenceHideOnPause"];
 const lastFMEnabled = staged.refs["integrations.lastFMEnabled"];
 const scrobblePercent = staged.refs["lastfm.scrobblePercent"];
+
+function formatLastUsed(lastUsed?: number) {
+  if (typeof lastUsed !== "number") return "Unknown";
+  return new Date(lastUsed).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
 </script>
 
 <template>
@@ -48,11 +56,22 @@ const scrobblePercent = staged.refs["lastfm.scrobblePercent"];
     />
     <YTMDSetting
       v-if="companionServerEnabled && safeStorageAvailable"
+      v-model="companionServerLANEnabled"
+      type="checkbox"
+      indented
+      name="Allow other devices on your network"
+      description="Lets phones and other devices on your network connect over plain HTTP, which is not encrypted"
+      @change="stageChanged"
+    />
+    <YTMDSetting
+      v-if="companionServerEnabled && safeStorageAvailable"
       v-model="companionServerAuthWindowEnabled"
       type="checkbox"
       indented
       name="Enable companion authorization"
-      description="Automatically disables after the first successful authorization or 5 minutes has passed"
+      description="Takes effect without saving and turns off after 5 minutes or once an app is approved"
+      :disabled="!companionServerSavedEnabled"
+      disabled-message="Save your changes to start the companion server first"
       @change="memorySettingsChanged"
     />
     <YTMDSetting
@@ -69,6 +88,7 @@ const scrobblePercent = staged.refs["lastfm.scrobblePercent"];
           <tr>
             <th class="companion">Companion</th>
             <th class="version">Version</th>
+            <th class="last-used">Last used</th>
             <th class="controls"></th>
           </tr>
         </thead>
@@ -80,6 +100,7 @@ const scrobblePercent = staged.refs["lastfm.scrobblePercent"];
               <span class="id">{{ authToken.appId }}</span>
             </td>
             <td class="version">{{ authToken.appVersion }}</td>
+            <td class="last-used">{{ formatLastUsed(authToken.lastUsed) }}</td>
             <td class="controls">
               <button @click="deleteCompanionAuthToken(authToken.appId)"><span class="material-symbols-outlined">delete</span></button>
             </td>
@@ -101,7 +122,7 @@ const scrobblePercent = staged.refs["lastfm.scrobblePercent"];
       @change="stageChanged"
     />
     <div v-if="discordPresenceEnabled && discordPresenceConnectionFailed" class="setting indented">
-      <p class="discord-failure">Discord connection could not be established after 30 attempts</p>
+      <p class="discord-failure">Can't connect to Discord. Still trying.</p>
       <button @click="restartDiscordPresence">Retry</button>
     </div>
     <YTMDSetting
@@ -115,12 +136,13 @@ const scrobblePercent = staged.refs["lastfm.scrobblePercent"];
     <div v-if="lastFMEnabled" class="setting indented">
       <div class="name-with-description">
         <p class="description">
-          User is Authenticated:
+          Signed in to Last.fm:
           <span v-if="lastFMSessionKey" style="color: var(--success)">Yes</span>
           <span v-else style="color: var(--danger)">No</span>
         </p>
       </div>
-      <button v-if="lastFMSessionKey" @click="logoutLastFM">Logout</button>
+      <button v-if="lastFMSessionKey" @click="logoutLastFM">Log out</button>
+      <button v-else @click="connectLastFM">Connect</button>
     </div>
     <YTMDSetting
       v-if="lastFMEnabled"
@@ -144,7 +166,7 @@ const scrobblePercent = staged.refs["lastfm.scrobblePercent"];
 }
 
 .authorized-companions-table tr .companion {
-  width: 70%;
+  width: 50%;
   word-wrap: break-word;
 }
 
@@ -153,7 +175,8 @@ const scrobblePercent = staged.refs["lastfm.scrobblePercent"];
   font-size: 14px;
 }
 
-.authorized-companions-table tbody tr .version {
+.authorized-companions-table tr .version,
+.authorized-companions-table tr .last-used {
   word-wrap: break-word;
 }
 

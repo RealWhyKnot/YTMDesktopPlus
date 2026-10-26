@@ -1,11 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ElectronBlocker, Request } from "@ghostery/adblocker-electron";
 import type { RequestType } from "@ghostery/adblocker-electron";
 import { CACHE_MAX_AGE_MS, ENGINE_CONFIG, isCacheStale, LEGACY_CACHE_FILES } from "../src/main/integrations/ad-blocker/cache";
 import { installAdPrune } from "../src/renderer/ytmview/ad-prune";
 import { AD_PRUNE_CONTRACT } from "../src/shared/ad-contract";
-import AdBlocker from "../src/main/integrations/ad-blocker";
-import type { BrowserView } from "electron";
+import AdBlocker, { ENGINE_RETRY_MS } from "../src/main/integrations/ad-blocker";
+import type { BrowserView, Session } from "electron";
+import { makeTempDir } from "./helpers/temp-dir";
 
 const NOW = 1_770_000_000_000;
 
@@ -425,5 +428,122 @@ describe("ad skip injection", () => {
 
   it("serves both scripts to the page", () => {
     expect(new AdBlocker().getYTMScripts().map(entry => entry.name)).toEqual(["enable", "disable"]);
+  });
+});
+
+describe("filter engine without a network", () => {
+  const STALE_FILTER = "||stale-ads.example^";
+  const FRESH_FILTER = "||fresh-ads.example^";
+  let enabledIn: Map<ElectronBlocker, Set<unknown>>;
+  let made: AdBlocker[];
+
+  const blocks = (engine: ElectronBlocker | null, host: string): boolean =>
+    engine !== null && engine.match(Request.fromRawDetails({ url: `https://${host}/ad.js`, type: "script", sourceUrl: "https://music.youtube.com/" })).match;
+
+  const activeEngine = (): ElectronBlocker | null => {
+    for (const [engine, sessions] of enabledIn) if (sessions.size > 0) return engine;
+    return null;
+  };
+
+  const sessionsOf = (engine: ElectronBlocker) => {
+    if (!enabledIn.has(engine)) enabledIn.set(engine, new Set());
+    return enabledIn.get(engine);
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    enabledIn = new Map();
+    made = [];
+    vi.spyOn(ElectronBlocker.prototype, "enableBlockingInSession").mockImplementation(function (this: ElectronBlocker, session: Session) {
+      sessionsOf(this).add(session);
+      return undefined as never;
+    });
+    vi.spyOn(ElectronBlocker.prototype, "disableBlockingInSession").mockImplementation(function (this: ElectronBlocker, session: Session) {
+      sessionsOf(this).delete(session);
+    });
+    vi.spyOn(ElectronBlocker.prototype, "isBlockingEnabled").mockImplementation(function (this: ElectronBlocker, session: Session) {
+      return sessionsOf(this).has(session);
+    });
+  });
+
+  afterEach(() => {
+    for (const blocker of made) blocker.disable();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  const writeCache = (filter: string, ageMs: number) => {
+    const dir = makeTempDir("ytmd-adblock-");
+    const cachePath = path.join(dir, "adblocker-engine-network.bin");
+    fs.writeFileSync(cachePath, ElectronBlocker.parse(filter, ENGINE_CONFIG).serialize());
+    const when = new Date(Date.now() - ageMs);
+    fs.utimesSync(cachePath, when, when);
+    return cachePath;
+  };
+
+  const until = async (check: () => boolean) => {
+    for (let i = 0; i < 5000 && !check(); i++) await new Promise(resolve => setImmediate(resolve));
+    expect(check()).toBe(true);
+  };
+
+  const settle = async () => {
+    for (let i = 0; i < 50; i++) await new Promise(resolve => setImmediate(resolve));
+  };
+
+  const start = (cachePath: string) => {
+    const blocker = new AdBlocker();
+    made.push(blocker);
+    blocker.provide({} as Session, cachePath);
+    blocker.enable();
+    return blocker;
+  };
+
+  it("keeps using a stale cache when the download fails, then swaps in fresh lists", async () => {
+    const cachePath = writeCache(STALE_FILTER, CACHE_MAX_AGE_MS + 60_000);
+    const fromLists = vi.spyOn(ElectronBlocker, "fromLists").mockRejectedValue(new TypeError("fetch failed"));
+    start(cachePath);
+    await until(() => activeEngine() !== null);
+
+    expect(fs.existsSync(cachePath)).toBe(true);
+    expect(blocks(activeEngine(), "stale-ads.example")).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(ENGINE_RETRY_MS);
+    await until(() => fromLists.mock.calls.length === 2);
+    await settle();
+    expect(blocks(activeEngine(), "stale-ads.example")).toBe(true);
+
+    fromLists.mockResolvedValue(ElectronBlocker.parse(FRESH_FILTER, ENGINE_CONFIG));
+    await vi.advanceTimersByTimeAsync(ENGINE_RETRY_MS);
+    await until(() => blocks(activeEngine(), "fresh-ads.example"));
+
+    expect([...enabledIn.values()].filter(sessions => sessions.size > 0)).toHaveLength(1);
+    expect(blocks(ElectronBlocker.deserialize(fs.readFileSync(cachePath)), "fresh-ads.example")).toBe(true);
+  });
+
+  it("starts blocking once a later retry succeeds when there was no cache", async () => {
+    const cachePath = path.join(makeTempDir("ytmd-adblock-"), "adblocker-engine-network.bin");
+    const fromLists = vi.spyOn(ElectronBlocker, "fromLists").mockRejectedValue(new TypeError("fetch failed"));
+    start(cachePath);
+    await until(() => fromLists.mock.calls.length === 1);
+    await settle();
+    expect(activeEngine() === null).toBe(true);
+
+    fromLists.mockResolvedValue(ElectronBlocker.parse(FRESH_FILTER, ENGINE_CONFIG));
+    await vi.advanceTimersByTimeAsync(ENGINE_RETRY_MS);
+    await until(() => blocks(activeEngine(), "fresh-ads.example"));
+  });
+
+  it("stops retrying once turned off", async () => {
+    const cachePath = path.join(makeTempDir("ytmd-adblock-"), "adblocker-engine-network.bin");
+    const fromLists = vi.spyOn(ElectronBlocker, "fromLists").mockRejectedValue(new TypeError("fetch failed"));
+    const blocker = start(cachePath);
+    await until(() => fromLists.mock.calls.length === 1);
+    await settle();
+    blocker.disable();
+    const attempts = fromLists.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(ENGINE_RETRY_MS * 3);
+    await settle();
+
+    expect(fromLists.mock.calls.length).toBe(attempts);
   });
 });

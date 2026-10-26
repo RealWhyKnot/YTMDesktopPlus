@@ -108,7 +108,7 @@ if (props.isMainWindow) {
           class="app-button badge-button"
           :class="{ active: badge.active }"
           tabindex="1"
-          :title="badge.tooltip"
+          :title="badge.tooltip || badge.text"
           @click="badgeClicked(badge.addonId)"
         >
           <span class="material-symbols-outlined">{{ badge.icon }}</span>
@@ -162,11 +162,17 @@ if (props.isMainWindow) {
 
 .titlebar .left {
   margin-left: 4px;
+  min-width: 0;
+}
+
+.titlebar .right {
+  min-width: 0;
 }
 
 .titlebar .right .app-buttons {
   display: flex;
   flex-direction: row;
+  min-width: 0;
   margin-right: 16px;
 }
 
@@ -174,6 +180,7 @@ if (props.isMainWindow) {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 0;
 }
 
 .title .icon {
@@ -201,10 +208,12 @@ if (props.isMainWindow) {
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 14px;
 }
 
 .app-button {
+  flex-shrink: 0;
   margin-right: 4px;
   height: 28px;
   width: 28px;
@@ -295,13 +304,23 @@ if (props.isMainWindow) {
 }
 
 .badge-button {
+  flex-shrink: 1;
   width: auto;
   min-width: 28px;
+  max-width: 160px;
   padding: 0 6px;
   gap: 3px;
 }
 
+.badge-button > .material-symbols-outlined {
+  flex-shrink: 0;
+}
+
 .badge-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-title);
   font-size: 12px;
   line-height: 1;

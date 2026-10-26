@@ -1,4 +1,4 @@
-import { computed, ref, type ComputedRef, type InjectionKey, type Ref } from "vue";
+import { computed, ref, shallowReactive, shallowRef, type ComputedRef, type InjectionKey, type Ref } from "vue";
 import {
   RESTART_REQUIRED_KEYS,
   STAGED_SETTING_KEYS,
@@ -14,7 +14,7 @@ import {
 export interface StagedSettings {
   /** Static app keys plus any dynamic addon keys ("addons.settings.<id>.<key>") */
   refs: Record<string, Ref<unknown>>;
-  dirtyKeys: Ref<string[]>;
+  dirtyKeys: ComputedRef<string[]>;
   hasUnsavedChanges: ComputedRef<boolean>;
   restartNeeded: Ref<boolean>;
   stageChanged(): void;
@@ -24,6 +24,7 @@ export interface StagedSettings {
   /** For flows that write the store directly (like a Last.fm logout): moves the
    *  saved baseline and the draft together so the key does not read as dirty. */
   markSavedValue(key: string, value: unknown): void;
+  savedValue(key: string): unknown;
   /** Staged keys discovered after this window opened (an addon registering its
    *  settings UI late). New keys snapshot their value from the given state and
    *  start clean; keys already present are untouched. */
@@ -39,21 +40,21 @@ export function createStagedSettings(
 ): StagedSettings {
   const dynamicKeys: string[] = [...extraKeys];
   const allKeys: string[] = [...STAGED_SETTING_KEYS, ...dynamicKeys];
-  let pristine: SettingsSnapshot = snapshotFromState(initialState, dynamicKeys);
+  const pristineRef = shallowRef<SettingsSnapshot>(snapshotFromState(initialState, dynamicKeys));
 
-  const refs = {} as Record<string, Ref<unknown>>;
+  const refs = shallowReactive({} as Record<string, Ref<unknown>>);
   for (const key of allKeys) {
-    refs[key] = ref<unknown>(pristine[key]);
+    refs[key] = ref<unknown>(pristineRef.value[key]);
   }
 
   // Restart is needed when a restart-required key's saved value differs from
   // the value this window opened with.
   const launchRestartValues: Partial<SettingsSnapshot> = {};
   for (const key of RESTART_REQUIRED_KEYS) {
-    launchRestartValues[key] = pristine[key];
+    launchRestartValues[key] = pristineRef.value[key];
   }
 
-  const dirtyKeys = ref<string[]>([]);
+  const dirtyKeys = computed(() => diffSnapshots(pristineRef.value, draftSnapshot(), dynamicKeys));
   const hasUnsavedChanges = computed(() => dirtyKeys.value.length > 0);
   const restartNeeded = ref(false);
 
@@ -65,59 +66,71 @@ export function createStagedSettings(
     return draft;
   }
 
-  function stageChanged() {
-    dirtyKeys.value = diffSnapshots(pristine, draftSnapshot(), dynamicKeys);
-  }
+  function stageChanged() {}
 
   function updateRestartNeeded() {
-    restartNeeded.value = [...RESTART_REQUIRED_KEYS].some(key => !Object.is(pristine[key], launchRestartValues[key]));
+    restartNeeded.value = [...RESTART_REQUIRED_KEYS].some(key => !Object.is(pristineRef.value[key], launchRestartValues[key]));
   }
 
   function saveChanges() {
     const draft = draftSnapshot();
-    const changed = diffSnapshots(pristine, draft, dynamicKeys);
+    const changed = diffSnapshots(pristineRef.value, draft, dynamicKeys);
     if (changed.length > 0) {
       setMany(changed.map(key => [key, draft[key]] as [string, unknown]));
     }
-    pristine = { ...draft };
-    dirtyKeys.value = [];
+    pristineRef.value = { ...draft };
     updateRestartNeeded();
   }
 
   function resetChanges() {
     for (const key of allKeys) {
-      refs[key].value = pristine[key];
+      refs[key].value = pristineRef.value[key];
     }
-    dirtyKeys.value = [];
   }
 
   function applyExternalState(newState: unknown) {
-    const merged = mergeExternalState(pristine, draftSnapshot(), newState, dynamicKeys);
-    pristine = merged.pristine;
+    const merged = mergeExternalState(pristineRef.value, draftSnapshot(), newState, dynamicKeys);
+    pristineRef.value = merged.pristine;
     for (const key of merged.followedKeys) {
-      refs[key].value = pristine[key];
+      refs[key].value = merged.pristine[key];
     }
-    dirtyKeys.value = diffSnapshots(pristine, draftSnapshot(), dynamicKeys);
     updateRestartNeeded();
   }
 
   function markSavedValue(key: string, value: unknown) {
-    pristine = { ...pristine, [key]: value };
+    pristineRef.value = { ...pristineRef.value, [key]: value };
     refs[key].value = value;
-    dirtyKeys.value = diffSnapshots(pristine, draftSnapshot(), dynamicKeys);
+  }
+
+  function savedValue(key: string): unknown {
+    return pristineRef.value[key];
   }
 
   function addKeys(keys: readonly string[], state: unknown) {
     const fresh = keys.filter(key => !(key in refs));
     if (fresh.length === 0) return;
     const snapshot = snapshotFromState(state, fresh);
+    const next = { ...pristineRef.value };
     for (const key of fresh) {
       dynamicKeys.push(key);
       allKeys.push(key);
-      pristine = { ...pristine, [key]: snapshot[key] };
+      next[key] = snapshot[key];
       refs[key] = ref<unknown>(snapshot[key]);
     }
+    pristineRef.value = next;
   }
 
-  return { refs, dirtyKeys, hasUnsavedChanges, restartNeeded, stageChanged, saveChanges, resetChanges, applyExternalState, markSavedValue, addKeys };
+  return {
+    refs,
+    dirtyKeys,
+    hasUnsavedChanges,
+    restartNeeded,
+    stageChanged,
+    saveChanges,
+    resetChanges,
+    applyExternalState,
+    markSavedValue,
+    savedValue,
+    addKeys
+  };
 }

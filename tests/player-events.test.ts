@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createPlayerEventDeriver, SEEK_JUMP_SECONDS } from "../src/main/player-state-store/derived-events";
 import { LikeStatus, RepeatMode, VideoState, type PlayerQueue, type PlayerQueueItem } from "../src/shared/addons/sdk";
 import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
+import playerStateStore, { playerEvents } from "../src/main/player-state-store";
 
 function harness() {
   const events: { event: string; payload: unknown }[] = [];
@@ -131,5 +132,40 @@ describe("createPlayerEventDeriver", () => {
 
     deriver.next(makePlayerState({ queue: makeQueue(["a"], RepeatMode.All) }));
     expect(names()).toEqual(["queueChanged", "queueChanged", "repeatModeChanged"]);
+  });
+});
+
+describe("derived events from the real player state store", () => {
+  it("emits likeChanged when the like status changes on the playing track", () => {
+    const likes: unknown[] = [];
+    const listener = (payload: unknown) => likes.push(payload);
+    playerEvents.on("likeChanged", listener);
+    try {
+      const details = {
+        album: "",
+        author: "Artist",
+        channelId: "chan",
+        lengthSeconds: "180",
+        thumbnail: { thumbnails: [] as { url: string; width: number; height: number }[] },
+        title: "Track",
+        videoId: "liked1",
+        isLive: false,
+        musicVideoType: "MUSIC_VIDEO_TYPE_ATV"
+      };
+      playerStateStore.updateVideoDetails(details, "PL1", null, "INDIFFERENT", true);
+      const before = playerStateStore.getState();
+
+      playerStateStore.updateFromStore("LIKE", 50, false, false);
+      playerStateStore.updateFromStore("LIKE", 50, false, false);
+      playerStateStore.updateFromStore("DISLIKE", 50, false, false);
+
+      expect(likes).toEqual([
+        { likeStatus: LikeStatus.Like, videoId: "liked1" },
+        { likeStatus: LikeStatus.Dislike, videoId: "liked1" }
+      ]);
+      expect(before.videoDetails.likeStatus).toBe(LikeStatus.Indifferent);
+    } finally {
+      playerEvents.off("likeChanged", listener);
+    }
   });
 });

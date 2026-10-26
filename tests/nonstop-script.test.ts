@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installIntentionalPause } from "../src/renderer/ytmview/intentional-pause";
 
 // The enable script runs in YTM's main world against real DOM, so it is
 // exercised here against the smallest stand-in that still exposes the parts it
@@ -9,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const enableSource = readFileSync("src/main/integrations/nonstop/script/enable.script.js", "utf8").trim();
 const disableSource = readFileSync("src/main/integrations/nonstop/script/disable.script.js", "utf8").trim();
+const playerBarControlsSource = readFileSync("src/renderer/ytmview/scripts/playerbarcontrols.script.js", "utf8").trim();
 
 const IDLE_MS = 5000;
 
@@ -212,6 +214,70 @@ describe("nonstop enable script", () => {
     run(enableSource);
 
     expect(video.pause).toBe(patched);
+  });
+});
+
+describe("pauses the page issues on its own", () => {
+  function pageElement(): Record<string, unknown> {
+    return {
+      classList: { add: () => {}, remove: () => {}, contains: () => false },
+      setters: { data: () => {}, iconName: () => {} },
+      insertAdjacentElement: () => {},
+      querySelector: () => pageElement(),
+      appendChild: () => {},
+      setAttribute: () => {},
+      dispatchEvent: () => {},
+      set: () => {}
+    };
+  }
+
+  function installPage() {
+    const pageListeners = new Map<string, Listener>();
+    const playerBar = {
+      ...pageElement(),
+      playing: true,
+      getMenuRenderer: (): null => null,
+      playerApi: { addEventListener: () => {}, getPlayerResponse: (): null => null, pauseVideo: () => video.pause() }
+    };
+    const win = pageWindow();
+    Object.assign(win, {
+      __YTMD_HOOK__: { ytmStore: { getState: () => ({}), subscribe: () => {}, dispatch: () => {} } },
+      addEventListener: (type: string, listener: Listener) => pageListeners.set(type, listener),
+      ytmd: { reportContractMiss: () => {} }
+    });
+    const doc = (globalThis as unknown as { document: Record<string, unknown> }).document;
+    const baseQuery = doc.querySelector as (selector: string) => unknown;
+    Object.assign(doc, {
+      body: pageElement(),
+      createElement: () => pageElement(),
+      querySelector: (selector: string) => (selector === "ytmusic-app-layout>ytmusic-player-bar" ? playerBar : baseQuery(selector))
+    });
+    installIntentionalPause();
+    run(playerBarControlsSource);
+    return { pageListeners, playerBar };
+  }
+
+  it("lets the sleep timer pause through after the user has long been idle", () => {
+    run(enableSource);
+    const { pageListeners } = installPage();
+
+    pageListeners.get("yt-action")({ detail: { actionName: "yt-service-request", args: [null, { ytmdSleepTimerServiceEndpoint: { time: 5 } }] } });
+    vi.advanceTimersByTime(5 * 60 * 1000);
+
+    expect(nativePause).toHaveBeenCalledTimes(1);
+    expect(pageWindow()["__ytmdNonStopAllowPause"]).toBe(false);
+  });
+
+  it("still holds back the inactivity pause after the sleep timer fired", () => {
+    run(enableSource);
+    const { pageListeners } = installPage();
+    pageListeners.get("yt-action")({ detail: { actionName: "yt-service-request", args: [null, { ytmdSleepTimerServiceEndpoint: { time: 5 } }] } });
+    vi.advanceTimersByTime(5 * 60 * 1000);
+    nativePause.mockClear();
+
+    video.pause();
+
+    expect(nativePause).not.toHaveBeenCalled();
   });
 });
 

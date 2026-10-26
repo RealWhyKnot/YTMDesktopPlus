@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { computed } from "vue";
 import { createStagedSettings } from "../src/renderer/windows/settings/useStagedSettings";
 
 function stateFixture(overrides: Record<string, unknown> = {}) {
@@ -24,6 +25,7 @@ function stateFixture(overrides: Record<string, unknown> = {}) {
     integrations: {
       companionServerEnabled: false,
       companionServerCORSWildcardEnabled: false,
+      companionServerLANEnabled: false,
       discordPresenceEnabled: true,
       discordPresenceHideOnPause: false,
       lastFMEnabled: true
@@ -131,10 +133,43 @@ describe("createStagedSettings", () => {
     expect(staged.dirtyKeys.value).toEqual(["general.startOnBoot"]);
   });
 
+  it("follows the draft without waiting for a change event", () => {
+    const staged = createStagedSettings(stateFixture(), () => {});
+    staged.refs["shortcuts.next"].value = "CmdOrCtrl+N";
+    expect(staged.dirtyKeys.value).toEqual(["shortcuts.next"]);
+    expect(staged.hasUnsavedChanges.value).toBe(true);
+
+    staged.refs["shortcuts.next"].value = "";
+    expect(staged.hasUnsavedChanges.value).toBe(false);
+  });
+
+  it("exposes the saved value of a key separately from its draft", () => {
+    const staged = createStagedSettings(stateFixture(), () => {});
+    staged.refs["appearance.zoom"].value = 150;
+    expect(staged.savedValue("appearance.zoom")).toBe(100);
+    staged.saveChanges();
+    expect(staged.savedValue("appearance.zoom")).toBe(150);
+  });
+
+  it("makes late keys visible to reactive readers", () => {
+    const staged = createStagedSettings(stateFixture(), () => {});
+    const present = computed(() => "addons.settings.late.mode" in staged.refs);
+    expect(present.value).toBe(false);
+    staged.addKeys(["addons.settings.late.mode"], { addons: { settings: { late: { mode: 1 } } } });
+    expect(present.value).toBe(true);
+  });
+
   it("markSavedValue moves the baseline without leaving the key dirty", () => {
     const staged = createStagedSettings(stateFixture(), () => {});
     staged.markSavedValue("integrations.lastFMEnabled", false);
     expect(staged.refs["integrations.lastFMEnabled"].value).toBe(false);
     expect(staged.hasUnsavedChanges.value).toBe(false);
+  });
+
+  it("stages the companion LAN toggle like the other companion settings", () => {
+    const staged = createStagedSettings(stateFixture(), () => {});
+    expect(staged.refs["integrations.companionServerLANEnabled"].value).toBe(false);
+    staged.refs["integrations.companionServerLANEnabled"].value = true;
+    expect(staged.dirtyKeys.value).toEqual(["integrations.companionServerLANEnabled"]);
   });
 });

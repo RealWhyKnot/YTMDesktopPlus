@@ -242,7 +242,8 @@ class PlayerStateStore {
 
   public updateFromStore(likeStatus: YTMLikeStatus | null, volume: number | null, muted: boolean | null, adPlaying: boolean | null) {
     if (this.videoDetails) {
-      this.videoDetails.likeStatus = transformLikeStatus(likeStatus);
+      const nextLikeStatus = transformLikeStatus(likeStatus);
+      if (nextLikeStatus !== this.videoDetails.likeStatus) this.videoDetails = { ...this.videoDetails, likeStatus: nextLikeStatus };
     }
     this.adPlaying = adPlaying === true;
     this.muted = muted === true;

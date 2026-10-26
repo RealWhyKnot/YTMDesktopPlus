@@ -26,6 +26,7 @@ export type SettingsShell = {
   discordPresenceConnectionFailed: Ref<boolean>;
   shortcutRegisterFailed: Record<string, Ref<boolean>>;
   companionServerAuthWindowEnabled: Ref<boolean>;
+  companionServerSavedEnabled: Ref<boolean>;
 
   companionServerAuthTokens: Ref<AuthToken[]>;
   lastFMSessionKey: Ref<string>;
@@ -48,6 +49,7 @@ export type SettingsShell = {
   restartDiscordPresence(): void;
   deleteCompanionAuthToken(appId: string): Promise<void>;
   logoutLastFM(): void;
+  connectLastFM(): void;
 };
 
 export const settingsShellKey: InjectionKey<SettingsShell> = Symbol("settings-shell");

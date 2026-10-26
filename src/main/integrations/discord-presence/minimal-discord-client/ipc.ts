@@ -1,5 +1,6 @@
 import EventEmitter from "events";
 import { Socket } from "net";
+import log from "electron-log";
 
 export enum OPCode {
   HANDSHAKE = 0,
@@ -9,8 +10,12 @@ export enum OPCode {
   PONG = 4
 }
 
+export const FRAME_HEADER_BYTES = 8;
+export const MAX_FRAME_BYTES = 1024 * 1024;
+
 export default class IPCClient extends EventEmitter {
   private socket: Socket;
+  private pending: Buffer = Buffer.alloc(0);
 
   constructor() {
     super();
@@ -18,7 +23,40 @@ export default class IPCClient extends EventEmitter {
     this.createSocket();
   }
 
+  private receive(chunk: Buffer) {
+    this.pending = this.pending.length === 0 ? chunk : Buffer.concat([this.pending, chunk]);
+
+    while (this.pending.length >= FRAME_HEADER_BYTES) {
+      const op = this.pending.readInt32LE(0);
+      const length = this.pending.readInt32LE(4);
+      if (length < 0 || length > MAX_FRAME_BYTES) {
+        log.warn(`dipc: dropping connection after a frame header claiming ${length} bytes`);
+        this.pending = Buffer.alloc(0);
+        this.socket.destroy();
+        return;
+      }
+      if (this.pending.length < FRAME_HEADER_BYTES + length) return;
+
+      const body = this.pending.toString("utf-8", FRAME_HEADER_BYTES, FRAME_HEADER_BYTES + length);
+      this.pending = this.pending.subarray(FRAME_HEADER_BYTES + length);
+
+      let json: unknown;
+      try {
+        json = JSON.parse(body);
+      } catch {
+        continue;
+      }
+
+      try {
+        this.emit("data", op, json);
+      } catch (error) {
+        log.error("dipc: frame handler failed", error);
+      }
+    }
+  }
+
   private createSocket() {
+    this.pending = Buffer.alloc(0);
     this.socket = new Socket();
     this.socket.on("connect", () => {
       this.emit("connect");
@@ -27,19 +65,10 @@ export default class IPCClient extends EventEmitter {
       this.emit("close", hadError);
     });
     this.socket.on("error", error => {
-      this.emit("error", error);
+      if (this.listenerCount("error") > 0) this.emit("error", error);
+      else log.warn("dipc: socket error", error);
     });
-    this.socket.on("data", (buffer: Buffer) => {
-      try {
-        const op = buffer.readInt32LE(0);
-        const length = buffer.readInt32LE(4);
-        const json = JSON.parse(buffer.toString("utf-8", 8, 8 + length));
-
-        this.emit("data", op, json);
-      } catch {
-        /* invalid json provided, ignore */
-      }
-    });
+    this.socket.on("data", (chunk: Buffer) => this.receive(chunk));
   }
 
   public connect(ipcPath: string) {

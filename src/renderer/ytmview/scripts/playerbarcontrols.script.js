@@ -1,8 +1,8 @@
 (function () {
   const ytmStore = window.__YTMD_HOOK__.ytmStore;
 
-  function miss(what) {
-    window.ytmd?.reportContractMiss?.(what);
+  function miss(what, detail) {
+    window.ytmd?.reportContractMiss?.(what, detail);
   }
 
   const playerBar = document.querySelector("ytmusic-app-layout>ytmusic-player-bar");
@@ -407,8 +407,9 @@
               sleepTimerButton.classList.remove("active");
               sleepTimerButton.setAttribute("title", "Sleep timer off");
 
-              if (document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playing) {
-                document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.pauseVideo();
+              const sleepPlayerBar = document.querySelector("ytmusic-app-layout>ytmusic-player-bar");
+              if (sleepPlayerBar?.playing) {
+                window.__ytmdPause(sleepPlayerBar.playerApi);
 
                 document.body.dispatchEvent(
                   new CustomEvent("yt-action", {
@@ -497,78 +498,80 @@
   let seenToggleStates;
 
   ytmStore.subscribe(() => {
-    let state = ytmStore.getState();
-    if (state.queue === seenQueue && state.toggleStates === seenToggleStates) return;
-    seenQueue = state.queue;
-    seenToggleStates = state.toggleStates;
+    try {
+      let state = ytmStore.getState();
+      if (state?.queue === seenQueue && state?.toggleStates === seenToggleStates) return;
+      seenQueue = state?.queue;
+      seenToggleStates = state?.toggleStates;
 
-    // Update library button for current data
-    const currentMenu = playerBar.getMenuRenderer();
-    if (currentMenu) {
-      if (playlistButton.classList.contains("hidden")) {
-        playlistButton.classList.remove("hidden");
-      }
+      // Update library button for current data
+      const currentMenu = playerBar.getMenuRenderer?.();
+      if (currentMenu) {
+        if (playlistButton.classList.contains("hidden")) {
+          playlistButton.classList.remove("hidden");
+        }
 
-      let foundLibraryButton = false;
-      for (let i = 0; i < currentMenu.items.length; i++) {
-        const item = currentMenu.items[i];
-        if (item.toggleMenuServiceItemRenderer) {
-          if (
-            item.toggleMenuServiceItemRenderer.defaultIcon.iconType === "BOOKMARK_BORDER" ||
-            item.toggleMenuServiceItemRenderer.defaultIcon.iconType === "BOOKMARK"
-          ) {
-            foundLibraryButton = true;
-            libraryFeedbackDefaultToken = item.toggleMenuServiceItemRenderer.defaultServiceEndpoint.feedbackEndpoint.feedbackToken;
-            libraryFeedbackToggledToken = item.toggleMenuServiceItemRenderer.toggledServiceEndpoint.feedbackEndpoint.feedbackToken;
+        let foundLibraryButton = false;
+        const menuItems = Array.isArray(currentMenu.items) ? currentMenu.items : [];
+        for (let i = 0; i < menuItems.length; i++) {
+          const item = menuItems[i];
+          const toggleRenderer = item?.toggleMenuServiceItemRenderer;
+          if (toggleRenderer) {
+            const iconType = toggleRenderer.defaultIcon?.iconType;
+            if (iconType === "BOOKMARK_BORDER" || iconType === "BOOKMARK") {
+              foundLibraryButton = true;
+              libraryFeedbackDefaultToken = toggleRenderer.defaultServiceEndpoint?.feedbackEndpoint?.feedbackToken ?? "";
+              libraryFeedbackToggledToken = toggleRenderer.toggledServiceEndpoint?.feedbackEndpoint?.feedbackToken ?? "";
 
-            if (
-              state.toggleStates.feedbackToggleStates[libraryFeedbackDefaultToken] !== undefined &&
-              state.toggleStates.feedbackToggleStates[libraryFeedbackDefaultToken] !== null
-            ) {
-              libraryButtonData.toggled = state.toggleStates.feedbackToggleStates[libraryFeedbackDefaultToken];
-              libraryButton.setters.data(libraryButtonData); 
-            } else {
-              libraryButtonData.toggled = false;
-              libraryButton.setters.data(libraryButtonData); 
-            }
-
-            // Dev note 2/12/26: I think this if check got reversed the comments are probably outdated. Didn't bother investigating further to update comments
-            if (item.toggleMenuServiceItemRenderer.defaultIcon.iconType === "BOOKMARK_BORDER") {
-              // Default value is saved to library (false == remove from library, true == add to library)
-              if (libraryButtonData.toggled) {
-                libraryButton.setters.iconName("yt-sys-icons:library_saved");
+              const toggled = state?.toggleStates?.feedbackToggleStates?.[libraryFeedbackDefaultToken];
+              if (toggled !== undefined && toggled !== null) {
+                libraryButtonData.toggled = toggled;
+                libraryButton.setters.data(libraryButtonData);
               } else {
-                libraryButton.setters.iconName("yt-sys-icons:library_add");
+                libraryButtonData.toggled = false;
+                libraryButton.setters.data(libraryButtonData);
               }
-            } else if (item.toggleMenuServiceItemRenderer.defaultIcon.iconType === "BOOKMARK") {
-              // Default value is add to library (false == add to library, true == remove from library)
-              if (libraryButtonData.toggled) {
-                libraryButton.setters.iconName("yt-sys-icons:library_add");
-              } else {
-                libraryButton.setters.iconName("yt-sys-icons:library_saved");
+
+              // Dev note 2/12/26: I think this if check got reversed the comments are probably outdated. Didn't bother investigating further to update comments
+              if (iconType === "BOOKMARK_BORDER") {
+                // Default value is saved to library (false == remove from library, true == add to library)
+                if (libraryButtonData.toggled) {
+                  libraryButton.setters.iconName("yt-sys-icons:library_saved");
+                } else {
+                  libraryButton.setters.iconName("yt-sys-icons:library_add");
+                }
+              } else if (iconType === "BOOKMARK") {
+                // Default value is add to library (false == add to library, true == remove from library)
+                if (libraryButtonData.toggled) {
+                  libraryButton.setters.iconName("yt-sys-icons:library_add");
+                } else {
+                  libraryButton.setters.iconName("yt-sys-icons:library_saved");
+                }
               }
+              break;
             }
-            break;
           }
         }
-      }
 
-      if (!foundLibraryButton) {
+        if (!foundLibraryButton) {
+          if (!libraryButton.classList.contains("hidden")) {
+            libraryButton.classList.add("hidden");
+          }
+        } else {
+          if (libraryButton.classList.contains("hidden")) {
+            libraryButton.classList.remove("hidden");
+          }
+        }
+      } else {
         if (!libraryButton.classList.contains("hidden")) {
           libraryButton.classList.add("hidden");
         }
-      } else {
-        if (libraryButton.classList.contains("hidden")) {
-          libraryButton.classList.remove("hidden");
+        if (!playlistButton.classList.contains("hidden")) {
+          playlistButton.classList.add("hidden");
         }
       }
-    } else {
-      if (!libraryButton.classList.contains("hidden")) {
-        libraryButton.classList.add("hidden");
-      }
-      if (!playlistButton.classList.contains("hidden")) {
-        playlistButton.classList.add("hidden");
-      }
+    } catch (error) {
+      miss("playerBarControls: store subscriber", String(error));
     }
   });
 });

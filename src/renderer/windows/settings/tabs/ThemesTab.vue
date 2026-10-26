@@ -8,6 +8,13 @@ const themes = shell.themes;
 const active = computed(() => themes.value.find(theme => theme.active) ?? null);
 const usable = computed(() => themes.value.filter(theme => theme.state === "ok"));
 const broken = computed(() => themes.value.filter(theme => theme.state !== "ok"));
+
+function asSentence(text: string | null | undefined): string {
+  const trimmed = (text ?? "").trim();
+  if (trimmed === "") return "";
+  const sentence = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
+}
 </script>
 
 <template>
@@ -22,9 +29,9 @@ const broken = computed(() => themes.value.filter(theme => theme.state !== "ok")
       </div>
     </div>
 
-    <p v-if="shell.themeError.value" class="theme-error">
-      <span class="material-symbols-outlined">error</span>
-      {{ shell.themeError.value }}
+    <p v-if="shell.themeError.value" class="theme-error" role="alert">
+      <span class="material-symbols-outlined" aria-hidden="true">error</span>
+      <span class="theme-error-text">{{ asSentence(shell.themeError.value) }}</span>
     </p>
 
     <div class="grid">
@@ -69,8 +76,9 @@ const broken = computed(() => themes.value.filter(theme => theme.state !== "ok")
       <p class="broken-title">Not loaded</p>
       <p v-for="theme in broken" :key="theme.manifest.id" class="broken-row">
         <span class="material-symbols-outlined">block</span>
-        <strong>{{ theme.manifest.name }}</strong>
-        {{ theme.error }}
+        <span class="broken-text"
+          ><strong>{{ theme.manifest.name }}</strong> {{ asSentence(theme.error) }}</span
+        >
       </p>
     </div>
   </div>
@@ -93,6 +101,7 @@ const broken = computed(() => themes.value.filter(theme => theme.state !== "ok")
 
 .header-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-sm);
 }
 
@@ -116,16 +125,25 @@ const broken = computed(() => themes.value.filter(theme => theme.state !== "ok")
 
 .theme-error .material-symbols-outlined {
   color: var(--danger);
+  flex-shrink: 0;
+}
+
+.theme-error-text,
+.broken-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr));
   gap: var(--space-md);
 }
 
 .theme-card {
   display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
   text-align: left;
   background-color: var(--bg-raised);
   border: 2px solid var(--border);
@@ -210,6 +228,8 @@ const broken = computed(() => themes.value.filter(theme => theme.state !== "ok")
 
 .active-actions .active-name {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--text-muted);
 }
 
@@ -232,6 +252,7 @@ const broken = computed(() => themes.value.filter(theme => theme.state !== "ok")
 }
 
 .broken-row .material-symbols-outlined {
+  flex-shrink: 0;
   font-size: 18px;
   color: var(--danger);
 }

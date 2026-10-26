@@ -1,6 +1,8 @@
 import { Notification, NotificationConstructorOptions, nativeImage } from "electron";
 import playerStateStore, { playerEvents, Thumbnail, VideoDetails, VideoState } from "../../player-state-store";
 import IIntegration from "../integration";
+import { launchPauseArmedFor } from "../../playback/launch-pause";
+import log from "electron-log";
 import https from "https";
 
 // Visualiser - https://apps.microsoft.com/store/detail/notifications-visualizer/9NBLGGH5XSL1?hl=en-gb&gl=gb&rtc=1
@@ -76,6 +78,14 @@ export default class NowPlayingNotifications implements IIntegration {
   // Derived events fire only on track or play-state transitions, so this runs
   // a handful of times per song instead of on every progress tick.
   private evaluate = (): void => {
+    try {
+      this.showIfNewTrack();
+    } catch (error) {
+      log.error("Now playing notification failed", error);
+    }
+  };
+
+  private showIfNewTrack(): void {
     if (!this.isEnabled) {
       return;
     }
@@ -83,6 +93,9 @@ export default class NowPlayingNotifications implements IIntegration {
     const state = playerStateStore.getState();
     if (state.videoDetails && state.trackState === VideoState.Playing) {
       if (this.lastDetails && this.lastDetails.id === state.videoDetails.id) {
+        return;
+      }
+      if (launchPauseArmedFor() === state.videoDetails.id) {
         return;
       }
 
@@ -95,12 +108,13 @@ export default class NowPlayingNotifications implements IIntegration {
           })
           .catch(function () {
             displayNotification(state.videoDetails, null);
-          });
+          })
+          .catch(error => log.error("Now playing notification failed", error));
       } else {
         displayNotification(state.videoDetails, null);
       }
     }
-  };
+  }
 
   public provide(): void {
     throw new Error("Method not implemented.");

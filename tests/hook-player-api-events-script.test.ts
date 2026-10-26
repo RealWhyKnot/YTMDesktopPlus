@@ -176,6 +176,27 @@ describe("hookplayerapievents", () => {
     expect(hasFullMetadata).toBe(true);
   });
 
+  it("keeps the player response thumbnails when the current item has none", () => {
+    const rawThumbnail = { thumbnails: [{ url: "https://example.invalid/raw.jpg", width: 120, height: 90 }] };
+    playerResponse = { videoDetails: { videoId: "abc", title: "Raw", thumbnail: rawThumbnail } };
+
+    for (const thumbnail of [undefined, null, { thumbnails: [] }, {}]) {
+      currentItem = { title: { runs: [{ text: "Song" }] }, thumbnail, longBylineText: { runs: [ALBUM_RUN] } };
+      run();
+      videoDataEvent();
+      expect((videoData.at(-1)[0] as { thumbnail: unknown }).thumbnail).toEqual(rawThumbnail);
+    }
+  });
+
+  it("takes the current item thumbnails when it has some", () => {
+    const itemThumbnail = { thumbnails: [{ url: "https://example.invalid/big.jpg", width: 544, height: 544 }] };
+    playerResponse = { videoDetails: { videoId: "abc", title: "Raw", thumbnail: { thumbnails: [] } } };
+    currentItem = { title: { runs: [{ text: "Song" }] }, thumbnail: itemThumbnail, longBylineText: { runs: [ALBUM_RUN] } };
+    run();
+    videoDataEvent();
+    expect((videoData[0][0] as { thumbnail: unknown }).thumbnail).toEqual(itemThumbnail);
+  });
+
   it("ignores byline runs that are not album links", () => {
     currentItem = {
       title: { runs: [{ text: "Song" }] },

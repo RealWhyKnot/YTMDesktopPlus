@@ -56,6 +56,11 @@ const value = computed({
   transition: all ease 0.3s;
 }
 
+.toggle-switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .toggle-switch:checked {
   background-color: var(--accent);
 }

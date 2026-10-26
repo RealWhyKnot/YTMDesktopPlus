@@ -31,3 +31,11 @@ export type LastfmTokenResponse = {
   error: number;
   token: string;
 };
+
+export type LastfmApiResult = {
+  ok: boolean;
+  json?: Record<string, unknown>;
+  kind?: "auth" | "temporary" | "fatal";
+  code?: number | null;
+  message?: string;
+};

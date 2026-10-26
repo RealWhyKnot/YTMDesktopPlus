@@ -21,6 +21,12 @@ export interface LaunchPauseDeps {
 
 export type LaunchPauseResult = "paused" | "timeout" | "superseded";
 
+let armedVideoId: string | null = null;
+
+export function launchPauseArmedFor(): string | null {
+  return armedVideoId;
+}
+
 export function createLaunchPause(deps: LaunchPauseDeps) {
   let current: { settle: (result: LaunchPauseResult) => void } | null = null;
 
@@ -45,13 +51,17 @@ export function createLaunchPause(deps: LaunchPauseDeps) {
           settled = true;
           clearTimeout(timeout);
           deps.removeEventListener(listener);
-          if (current === entry) current = null;
+          if (current === entry) {
+            current = null;
+            armedVideoId = null;
+          }
           if (result !== "superseded" && !wasMuted) deps.send("unmute");
           resolve(result);
         }
       };
 
       current = entry;
+      armedVideoId = videoId;
       deps.addEventListener(listener);
     });
   }

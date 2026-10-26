@@ -37,6 +37,7 @@ let state: Record<string, unknown>;
 let created: ReturnType<typeof element>[];
 let getMenuRenderer: Mock;
 let documentQueries: number;
+let misses: unknown[][];
 
 const dispatch = () => subscribers.forEach(subscriber => subscriber());
 
@@ -44,6 +45,7 @@ beforeEach(() => {
   subscribers = [];
   created = [];
   documentQueries = 0;
+  misses = [];
   getMenuRenderer = vi.fn(() => libraryMenu);
   state = { queue: { items: [] }, toggleStates: { feedbackToggleStates: {} }, player: { volume: 50 } };
   const playerBar = { ...element(), getMenuRenderer, playerApi: { addEventListener: () => {}, getPlayerResponse: (): unknown => null } };
@@ -62,7 +64,7 @@ beforeEach(() => {
   vi.stubGlobal("window", {
     __YTMD_HOOK__: { ytmStore: { getState: () => state, subscribe: (subscriber: () => void) => subscribers.push(subscriber), dispatch: () => {} } },
     addEventListener: () => {},
-    ytmd: { reportContractMiss: () => {} }
+    ytmd: { reportContractMiss: (...args: unknown[]) => misses.push(args) }
   });
 
   new Function(`return (${source.replace(/;$/, "")})`)()();
@@ -98,5 +100,24 @@ describe("playerbarcontrols script", () => {
     state = { ...state, toggleStates: { feedbackToggleStates: { save: true } } };
     dispatch();
     expect(libraryButton.setters.iconName).toHaveBeenLastCalledWith("yt-sys-icons:library_saved");
+  });
+
+  it("survives menu and store shapes it does not recognise without throwing into YTM's dispatch", () => {
+    getMenuRenderer.mockReturnValue({
+      items: [null, { toggleMenuServiceItemRenderer: {} }, { toggleMenuServiceItemRenderer: { defaultIcon: { iconType: "BOOKMARK" } } }]
+    });
+    state = { queue: { items: [{}] } };
+    expect(() => dispatch()).not.toThrow();
+
+    getMenuRenderer.mockReturnValue({ items: "not a list" });
+    state = { queue: { items: [{}, {}] }, toggleStates: null };
+    expect(() => dispatch()).not.toThrow();
+
+    getMenuRenderer.mockImplementation(() => {
+      throw new Error("menu renderer moved");
+    });
+    state = { ...state, queue: { items: [] } };
+    expect(() => dispatch()).not.toThrow();
+    expect(misses).toContainEqual(["playerBarControls: store subscriber", "Error: menu renderer moved"]);
   });
 });

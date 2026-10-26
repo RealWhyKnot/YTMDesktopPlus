@@ -34,10 +34,19 @@ function fieldPath(key: string) {
   return `addons.settings.${props.addon.manifest.id}.${key}`;
 }
 
-function numberChanged(key: string) {
-  const fieldRef = staged.refs[fieldPath(key)];
-  fieldRef.value = Number(fieldRef.value);
-  staged.stageChanged();
+function numberChanged(field: AddonSettingsField & { type: "number" }) {
+  const path = fieldPath(field.key);
+  const fieldRef = staged.refs[path];
+  const raw = fieldRef.value;
+  const parsed = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : Number.NaN;
+  if (!Number.isFinite(parsed)) {
+    fieldRef.value = staged.savedValue(path);
+    return;
+  }
+  let clamped = parsed;
+  if (typeof field.min === "number") clamped = Math.max(field.min, clamped);
+  if (typeof field.max === "number") clamped = Math.min(field.max, clamped);
+  fieldRef.value = clamped;
 }
 
 function optionsMapOf(field: AddonSettingsField & { type: "select" }) {
@@ -75,22 +84,26 @@ async function copyRecentLog() {
   <div class="addon-card">
     <div class="header">
       <span class="name">{{ addon.manifest.name }}</span>
-      <span class="pill version">v{{ addon.manifest.version }}</span>
+      <span class="pill version" :title="`v${addon.manifest.version}`">v{{ addon.manifest.version }}</span>
       <span v-if="addon.origin === 'bundled'" class="pill origin">bundled</span>
       <span v-else class="pill origin external">external</span>
       <span v-if="addon.restartRequired" class="pill restart"><span class="material-symbols-outlined">autorenew</span>Restart required</span>
-      <ToggleSwitch class="toggle" :model-value="addon.enabled" @update:model-value="emit('toggle', $event as boolean)" />
+      <ToggleSwitch class="toggle" :model-value="addon.enabled" :aria-label="addon.manifest.name" @update:model-value="emit('toggle', $event as boolean)" />
     </div>
     <p class="author">
       by {{ addon.manifest.author }}
       <button v-if="hasHomepage" class="homepage" @click="openHomepage"><span class="material-symbols-outlined">open_in_new</span>Homepage</button>
     </p>
     <p class="description">{{ addon.manifest.description }}</p>
-    <p v-if="statusText" class="status"><span class="material-symbols-outlined">error</span>{{ statusText }}</p>
-    <p v-if="addon.state === 'active' && addon.lastError" class="status runtime">
-      <span class="material-symbols-outlined">warning</span>Recent error: {{ addon.lastError }}
+    <p v-if="statusText" class="status">
+      <span class="material-symbols-outlined">error</span><span class="status-text">{{ statusText }}</span>
     </p>
-    <p v-for="warning in addon.warnings ?? []" :key="warning" class="status runtime"><span class="material-symbols-outlined">warning</span>{{ warning }}</p>
+    <p v-if="addon.state === 'active' && addon.lastError" class="status runtime">
+      <span class="material-symbols-outlined">warning</span><span class="status-text">Recent error: {{ addon.lastError }}</span>
+    </p>
+    <p v-for="warning in addon.warnings ?? []" :key="warning" class="status runtime">
+      <span class="material-symbols-outlined">warning</span><span class="status-text">{{ warning }}</span>
+    </p>
     <div class="card-actions">
       <button v-if="hasSettings" class="expander" @click="expanded = !expanded">
         <span class="material-symbols-outlined">{{ expanded ? "expand_less" : "expand_more" }}</span
@@ -136,7 +149,7 @@ async function copyRecentLog() {
               :min="field.min"
               :max="field.max"
               :step="field.step"
-              @change="numberChanged(field.key)"
+              @change="numberChanged(field)"
             />
             <YTMDSetting
               v-else-if="field.type === 'select'"
@@ -174,6 +187,8 @@ async function copyRecentLog() {
 
 .header .name {
   font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .pill {
@@ -185,6 +200,10 @@ async function copyRecentLog() {
 .pill.version {
   background-color: var(--bg-control);
   color: var(--text-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pill.origin {
@@ -216,6 +235,7 @@ async function copyRecentLog() {
   margin: 4px 0 0 0;
   color: var(--text-faint);
   font-size: 14px;
+  overflow-wrap: anywhere;
 }
 
 .author .homepage {
@@ -238,6 +258,7 @@ async function copyRecentLog() {
 .description {
   margin: 8px 0 0 0;
   color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 
 .status {
@@ -250,6 +271,12 @@ async function copyRecentLog() {
 
 .status .material-symbols-outlined {
   font-size: 18px;
+  flex-shrink: 0;
+}
+
+.status-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .status.runtime {
@@ -271,7 +298,8 @@ async function copyRecentLog() {
 
 .card-actions {
   display: flex;
-  gap: var(--space-md);
+  flex-wrap: wrap;
+  gap: 0 var(--space-md);
 }
 
 .expander {
@@ -298,6 +326,7 @@ async function copyRecentLog() {
 
 .section-title {
   margin: var(--space-sm) 0 0 0;
+  overflow-wrap: anywhere;
   color: var(--text-faint);
   font-size: 13px;
   text-transform: uppercase;

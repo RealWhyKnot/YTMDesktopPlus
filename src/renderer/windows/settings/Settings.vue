@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, provide, ref, type Component } from "vue";
+import { computed, nextTick, provide, ref, type Component } from "vue";
 import { StoreSchema } from "~shared/store/schema";
 import { AuthToken } from "~shared/integrations/companion-server/types";
 import { AddonDescriptor } from "~shared/addons/types";
@@ -66,17 +66,25 @@ const staged = createStagedSettings(
 provide(stagedSettingsKey, staged);
 const { hasUnsavedChanges, restartNeeded, saveChanges, resetChanges } = staged;
 
-const companionServerAuthTokens = ref<AuthToken[]>(
-  safeStorageAvailable.value ? (JSON.parse(await safeStorage.decryptString(integrations.companionServerAuthTokens)) ?? []) : []
-);
+async function decryptAuthTokens(encrypted: string): Promise<AuthToken[]> {
+  if (!safeStorageAvailable.value) return [];
+  try {
+    const tokens = JSON.parse(await safeStorage.decryptString(encrypted));
+    return Array.isArray(tokens) ? tokens : [];
+  } catch {
+    return [];
+  }
+}
+
+const companionServerAuthTokens = ref<AuthToken[]>(await decryptAuthTokens(integrations.companionServerAuthTokens));
+const companionServerSavedEnabled = ref<boolean>(integrations.companionServerEnabled === true);
 const lastFMSessionKey = ref<string>(lastFM.sessionKey);
 
 store.onDidAnyChange(async newState => {
   staged.applyExternalState(newState);
+  companionServerSavedEnabled.value = newState.integrations.companionServerEnabled === true;
 
-  companionServerAuthTokens.value = safeStorageAvailable.value
-    ? (JSON.parse(await safeStorage.decryptString(newState.integrations.companionServerAuthTokens)) ?? [])
-    : [];
+  companionServerAuthTokens.value = await decryptAuthTokens(newState.integrations.companionServerAuthTokens);
   lastFMSessionKey.value = newState.lastfm.sessionKey;
 });
 
@@ -209,6 +217,12 @@ async function deleteCompanionAuthToken(appId: string) {
     store.set("integrations.companionServerAuthTokens", await safeStorage.encryptString(JSON.stringify(companionServerAuthTokens.value)));
 }
 
+function connectLastFM() {
+  store.set("integrations.lastFMEnabled", false);
+  store.set("integrations.lastFMEnabled", true);
+  staged.markSavedValue("integrations.lastFMEnabled", true);
+}
+
 function logoutLastFM() {
   store.set("lastfm.sessionKey", null);
   store.set("integrations.lastFMEnabled", false);
@@ -221,6 +235,10 @@ function restartApplication() {
 }
 
 function restartApplicationForUpdate() {
+  if (hasUnsavedChanges.value) {
+    openCloseConfirm("update");
+    return;
+  }
   window.ytmd.restartApplicationForUpdate();
 }
 
@@ -270,6 +288,7 @@ provide(settingsShellKey, {
   discordPresenceConnectionFailed,
   shortcutRegisterFailed,
   companionServerAuthWindowEnabled,
+  companionServerSavedEnabled,
   companionServerAuthTokens,
   lastFMSessionKey,
   addons,
@@ -287,7 +306,8 @@ provide(settingsShellKey, {
   memorySettingsChanged,
   restartDiscordPresence,
   deleteCompanionAuthToken,
-  logoutLastFM
+  logoutLastFM,
+  connectLastFM
 });
 
 type TabDefinition = { id: string; icon: string; label: string; component: Component; bottom?: boolean };
@@ -303,28 +323,105 @@ const tabs: TabDefinition[] = [
 ];
 const currentTab = ref("general");
 const activeTab = computed(() => tabs.find(tab => tab.id === currentTab.value));
+function selectTab(index: number) {
+  const tab = tabs[(index + tabs.length) % tabs.length];
+  currentTab.value = tab.id;
+  document.getElementById(`settings-tab-${tab.id}`)?.focus();
+}
+
+function tabKeyDown(event: KeyboardEvent, index: number) {
+  switch (event.key) {
+    case "ArrowDown":
+    case "ArrowRight":
+      selectTab(index + 1);
+      break;
+    case "ArrowUp":
+    case "ArrowLeft":
+      selectTab(index - 1);
+      break;
+    case "Home":
+      selectTab(0);
+      break;
+    case "End":
+      selectTab(tabs.length - 1);
+      break;
+    default:
+      return;
+  }
+  event.preventDefault();
+}
 
 const showCloseConfirm = ref(false);
+const closeIntent = ref<"close" | "update">("close");
+const closeConfirmDialog = ref<HTMLElement | null>(null);
 let allowClose = false;
+let focusBeforeConfirm: HTMLElement | null = null;
+
+function openCloseConfirm(intent: "close" | "update") {
+  closeIntent.value = intent;
+  if (!showCloseConfirm.value) {
+    focusBeforeConfirm = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    focusBeforeConfirm?.blur();
+  }
+  showCloseConfirm.value = true;
+  nextTick(() => closeConfirmDialog.value?.querySelector<HTMLElement>(".save-button")?.focus());
+}
+
+function closeConfirmKeyDown(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    keepEditing();
+    return;
+  }
+  if (event.key !== "Tab" || !closeConfirmDialog.value) return;
+  const buttons = [...closeConfirmDialog.value.querySelectorAll<HTMLElement>("button")];
+  if (buttons.length === 0) return;
+  const first = buttons[0];
+  const last = buttons[buttons.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  } else if (!buttons.includes(document.activeElement as HTMLElement)) {
+    event.preventDefault();
+    first.focus();
+  }
+}
 
 window.onbeforeunload = (event: BeforeUnloadEvent) => {
   if (hasUnsavedChanges.value && !allowClose) {
     event.returnValue = false;
-    showCloseConfirm.value = true;
+    openCloseConfirm("close");
   }
 };
 
 function keepEditing() {
   showCloseConfirm.value = false;
+  const target = focusBeforeConfirm;
+  focusBeforeConfirm = null;
+  if (target?.isConnected) target.focus();
 }
 
 function discardAndClose() {
+  if (closeIntent.value === "update") {
+    resetChanges();
+    showCloseConfirm.value = false;
+    window.ytmd.restartApplicationForUpdate();
+    return;
+  }
   allowClose = true;
   window.ytmd.closeWindow();
 }
 
 function saveAndClose() {
   saveChanges();
+  if (closeIntent.value === "update") {
+    showCloseConfirm.value = false;
+    window.ytmd.restartApplicationForUpdate();
+    return;
+  }
   allowClose = true;
   window.ytmd.closeWindow();
 }
@@ -333,17 +430,29 @@ function saveAndClose() {
 <template>
   <div class="settings-container">
     <div class="content-container">
-      <ul class="sidebar">
-        <template v-for="tab in tabs" :key="tab.id">
-          <span v-if="tab.bottom" class="push"></span>
-          <li :class="{ active: currentTab === tab.id }" :title="tab.label" @click="currentTab = tab.id">
-            <span class="material-symbols-outlined">{{ tab.icon }}</span
+      <div class="sidebar" role="tablist" aria-orientation="vertical" aria-label="Settings sections">
+        <template v-for="(tab, index) in tabs" :key="tab.id">
+          <span v-if="tab.bottom" class="push" aria-hidden="true"></span>
+          <button
+            :id="`settings-tab-${tab.id}`"
+            type="button"
+            role="tab"
+            class="tab"
+            :class="{ active: currentTab === tab.id }"
+            :title="tab.label"
+            :aria-selected="currentTab === tab.id"
+            :aria-controls="`settings-panel-${tab.id}`"
+            :tabindex="currentTab === tab.id ? 0 : -1"
+            @click="currentTab = tab.id"
+            @keydown="tabKeyDown($event, index)"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">{{ tab.icon }}</span
             ><span class="label">{{ tab.label }}</span>
-          </li>
+          </button>
         </template>
-      </ul>
+      </div>
       <div class="content">
-        <div class="tab-panels">
+        <div :id="`settings-panel-${currentTab}`" class="tab-panels" role="tabpanel" :aria-labelledby="`settings-tab-${currentTab}`">
           <KeepAlive>
             <component :is="activeTab.component" />
           </KeepAlive>
@@ -352,7 +461,7 @@ function saveAndClose() {
           <p class="message"><span class="material-symbols-outlined">edit</span> You have unsaved changes</p>
           <div class="actions">
             <button class="reset-button" @click="resetChanges">Reset</button>
-            <button class="save-button" @click="saveChanges">Save Changes</button>
+            <button class="save-button" @click="saveChanges">Save changes</button>
           </div>
         </div>
         <div v-else-if="restartNeeded || addonRestartPending" class="restart-banner">
@@ -361,14 +470,23 @@ function saveAndClose() {
         </div>
       </div>
     </div>
-    <div v-if="showCloseConfirm" class="close-confirm-overlay">
-      <div class="close-confirm">
-        <p class="title">Unsaved changes</p>
-        <p class="body">Your changes have not been saved yet.</p>
+    <div v-if="showCloseConfirm" class="close-confirm-overlay" @keydown="closeConfirmKeyDown">
+      <div
+        ref="closeConfirmDialog"
+        class="close-confirm"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="close-confirm-title"
+        aria-describedby="close-confirm-body"
+      >
+        <p id="close-confirm-title" class="title">Unsaved changes</p>
+        <p id="close-confirm-body" class="body">
+          {{ closeIntent === "update" ? "Save or discard your changes before the app restarts to update." : "Your changes have not been saved yet." }}
+        </p>
         <div class="actions">
           <button class="keep-button" @click="keepEditing">Keep editing</button>
-          <button class="discard-button" @click="discardAndClose">Discard and close</button>
-          <button class="save-button" @click="saveAndClose">Save and close</button>
+          <button class="discard-button" @click="discardAndClose">{{ closeIntent === "update" ? "Discard and restart" : "Discard and close" }}</button>
+          <button class="save-button" @click="saveAndClose">{{ closeIntent === "update" ? "Save and restart" : "Save and close" }}</button>
         </div>
       </div>
     </div>
@@ -387,6 +505,11 @@ function saveAndClose() {
   background-color: var(--bg-control);
   cursor: pointer;
   border: none;
+}
+
+.settings-container button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .settings-container .setting {
@@ -464,15 +587,26 @@ function saveAndClose() {
   flex-direction: column;
 }
 
-.sidebar li {
+.sidebar .tab {
   display: flex;
   align-items: center;
+  width: 100%;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background-color: transparent;
   padding: 16px;
   cursor: pointer;
   color: var(--text-muted);
+  font: inherit;
+  text-align: left;
 }
 
-.sidebar li .label {
+.sidebar .tab:focus-visible {
+  outline-offset: -2px;
+}
+
+.sidebar .tab .label {
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -484,21 +618,21 @@ function saveAndClose() {
     flex-basis: 56px;
   }
 
-  .sidebar li {
+  .sidebar .tab {
     justify-content: center;
     padding: 16px 0;
   }
 
-  .sidebar li .label {
+  .sidebar .tab .label {
     display: none;
   }
 
-  .sidebar li .material-symbols-outlined {
+  .sidebar .tab .material-symbols-outlined {
     margin-right: 0;
   }
 }
 
-.sidebar li .material-symbols-outlined {
+.sidebar .tab .material-symbols-outlined {
   font-size: 28px;
   font-variation-settings:
     "FILL" 0,
@@ -507,16 +641,16 @@ function saveAndClose() {
     "opsz" 28;
 }
 
-.sidebar li:hover {
+.sidebar .tab:hover {
   background-color: var(--bg-raised);
 }
 
-.sidebar li.active {
+.sidebar .tab.active {
   background-color: var(--bg-control);
   color: var(--text);
 }
 
-.sidebar li .material-symbols-outlined {
+.sidebar .tab .material-symbols-outlined {
   margin-right: 8px;
 }
 

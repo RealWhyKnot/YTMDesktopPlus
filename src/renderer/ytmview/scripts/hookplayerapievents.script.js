@@ -74,7 +74,7 @@
         const titleRuns = currentItem.title?.runs;
         if (titleRuns) videoDetails.title = titleRuns.map(v => v.text).join(""); // Can contain featuring text which isn't in player response
         else miss("currentItem.title.runs");
-        videoDetails.thumbnail = currentItem.thumbnail; // Can contain more thumbnails than player response
+        if (Array.isArray(currentItem.thumbnail?.thumbnails) && currentItem.thumbnail.thumbnails.length > 0) videoDetails.thumbnail = currentItem.thumbnail; // Can contain more thumbnails than player response
 
         const bylineRuns = currentItem.longBylineText?.runs;
         if (!bylineRuns) miss("currentItem.longBylineText.runs");

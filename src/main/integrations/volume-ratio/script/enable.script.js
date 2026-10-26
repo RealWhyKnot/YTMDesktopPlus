@@ -13,7 +13,7 @@
   const EXPONENT = 3;
 
   const storedOriginalVolumes = new WeakMap();
-  const HTMLMediaElement_volume = {get, set} = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'volume');
+  const HTMLMediaElement_volume = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'volume');
   Object.defineProperty(HTMLMediaElement.prototype, 'volume', {
       get () {
           const lowVolume = HTMLMediaElement_volume.get.call(this);
@@ -26,14 +26,11 @@
           const storedOriginalVolume = storedOriginalVolumes.get(this);
           const storedDeviation = Math.abs(storedOriginalVolume - calculatedOriginalVolume);
 
-          const originalVolume = storedDeviation < 0.01 ? storedOriginalVolume : calculatedOriginalVolume;
-          console.log('manipulated volume from', lowVolume.toFixed(2), 'to  ', originalVolume.toFixed(2), storedDeviation);
-          return originalVolume;
+          return storedDeviation < 0.01 ? storedOriginalVolume : calculatedOriginalVolume;
       },
       set (originalVolume) {
           const lowVolume = originalVolume ** EXPONENT;
           storedOriginalVolumes.set(this, originalVolume);
-          // console.log('manipulated volume to  ', lowVolume.toFixed(2), 'from', originalVolume.toFixed(2));
           HTMLMediaElement_volume.set.call(this, lowVolume);
       }
   });

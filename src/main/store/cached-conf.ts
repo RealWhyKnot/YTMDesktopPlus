@@ -1,3 +1,4 @@
+import { setMaxListeners } from "node:events";
 import fs from "node:fs";
 import Conf, { type Options } from "conf";
 import { writeFile } from "atomically";
@@ -30,6 +31,7 @@ export class CachedConf<T extends Record<string, unknown>> extends Conf<T> {
 
   constructor(options: Readonly<Partial<Options<T>>>) {
     super(options);
+    setMaxListeners(64, this.events);
     this.events.addEventListener("change", () => {
       if (this.pending !== undefined) return;
       const file = this.written && fs.statSync(this.path, { throwIfNoEntry: false });

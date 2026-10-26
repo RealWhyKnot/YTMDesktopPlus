@@ -3,12 +3,47 @@ import Conf from "conf";
 import cypto from "crypto";
 
 import playerStateStore, { PlayerState, VideoDetails, VideoState } from "../../player-state-store";
+import { SEEK_JUMP_SECONDS } from "../../player-state-store/derived-events";
+import { launchPauseArmedFor } from "../../playback/launch-pause";
 import MemoryStore from "../../memory-store";
 
 import IIntegration from "../integration";
 import { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
-import { LastfmErrorResponse, LastfmRequestBody, LastfmSessionResponse, LastfmTokenResponse } from "./schemas";
+import { LastfmApiResult, LastfmRequestBody, LastfmSessionResponse, LastfmTokenResponse } from "./schemas";
 import log from "electron-log";
+
+const API_URL = "https://ws.audioscrobbler.com/2.0/";
+
+export const MIN_SCROBBLE_DURATION_SECONDS = 30;
+export const MAX_SCROBBLE_PLAY_SECONDS = 240;
+export const REPLAY_START_SECONDS = 3;
+export const AUTH_POLL_INITIAL_MS = 3 * 1000;
+export const AUTH_POLL_MAX_MS = 30 * 1000;
+export const AUTH_TOKEN_LIFETIME_MS = 60 * 60 * 1000;
+export const BACKOFF_INITIAL_MS = 30 * 1000;
+export const BACKOFF_MAX_MS = 30 * 60 * 1000;
+export const MAX_PENDING_SCROBBLES = 50;
+
+const AUTH_ERROR_CODES = new Set([4, 9, 14, 15]);
+const TEMPORARY_ERROR_CODES = new Set([8, 11, 16, 29]);
+const TOKEN_PENDING_CODE = 14;
+
+type Play = {
+  videoDetails: VideoDetails;
+  playedSeconds: number;
+  startedAt: number | null;
+  lastProgress: number | null;
+  lastTickAt: number | null;
+  nowPlayingSent: boolean;
+  scrobbled: boolean;
+  heldForLaunch: boolean;
+};
+
+type PendingScrobble = { videoDetails: VideoDetails; timestamp: number };
+
+type AuthFlow = { cancelled: boolean; timer: NodeJS.Timeout | null; wake: (() => void) | null };
+
+type SessionResult = "connected" | "pending" | "expired";
 
 export default class LastFM implements IIntegration {
   private store: Conf<StoreSchema>;
@@ -16,160 +51,390 @@ export default class LastFM implements IIntegration {
 
   private isEnabled = false;
 
-  private possibleVideoIds: string[] | null;
+  private possibleVideoIds: string[] | null = null;
   private lastfmDetails: StoreSchema["lastfm"] = null;
-  private scrobbleTimer: NodeJS.Timeout | null = null;
+  private play: Play | null = null;
   private playerStateFunction: (state: PlayerState) => void;
 
-  private async createToken(): Promise<string> {
-    const data: LastfmRequestBody = {
-      method: "auth.gettoken",
-      format: "json",
+  private authFlow: AuthFlow | null = null;
+  private backoffMs = 0;
+  private backoffUntil = 0;
+  private retryTimer: NodeJS.Timeout | null = null;
+  private pendingScrobbles: PendingScrobble[] = [];
+  private flushing = false;
 
-      api_key: this.lastfmDetails.api_key
-    };
-    const api_sig = this.createApiSig(data, this.lastfmDetails.secret);
+  private async callApi(params: Partial<LastfmRequestBody>, httpMethod: "GET" | "POST"): Promise<LastfmApiResult> {
+    let response: Response;
+    try {
+      if (httpMethod === "GET") {
+        const api_sig = this.createApiSig(params, this.lastfmDetails.secret);
+        response = await fetch(`${API_URL}?${this.createQueryString(params as LastfmRequestBody, api_sig)}`);
+      } else {
+        const data = { ...params, api_sig: this.createApiSig(params, this.lastfmDetails.secret) };
+        response = await fetch(API_URL, { method: "POST", body: this.createBody(data) });
+      }
+    } catch (error) {
+      return { ok: false, kind: "temporary", code: null, message: String(error) };
+    }
 
-    const response = await fetch(`https://ws.audioscrobbler.com/2.0/` + `?${this.createQueryString(data, api_sig)}`);
+    let json: Record<string, unknown> | null = null;
+    try {
+      const parsed: unknown = await response.json();
+      if (parsed && typeof parsed === "object") json = parsed as Record<string, unknown>;
+    } catch {
+      json = null;
+    }
 
-    const json = (await response.json()) as LastfmTokenResponse;
-    return json?.token;
+    if (json && typeof json.error === "number") {
+      const code = json.error;
+      const message = typeof json.message === "string" ? json.message : "";
+      if (AUTH_ERROR_CODES.has(code)) return { ok: false, kind: "auth", code, message };
+      if (TEMPORARY_ERROR_CODES.has(code)) return { ok: false, kind: "temporary", code, message };
+      return { ok: false, kind: "fatal", code, message };
+    }
+
+    if (!response.ok || !json) {
+      const temporary = !json || response.status >= 500 || response.status === 429;
+      return { ok: false, kind: temporary ? "temporary" : "fatal", code: null, message: `HTTP ${response.status}` };
+    }
+
+    return { ok: true, json };
   }
 
-  private async authenticateUser() {
-    this.lastfmDetails.token = await this.createToken();
+  private async createToken(): Promise<string | null> {
+    const result = await this.callApi({ method: "auth.gettoken", format: "json", api_key: this.lastfmDetails.api_key }, "GET");
+    if (!result.ok) {
+      log.warn(`Last.fm token request failed: ${result.code ?? ""} ${result.message}`);
+      return null;
+    }
+    const token = (result.json as LastfmTokenResponse).token;
+    return typeof token === "string" && token.length > 0 ? token : null;
+  }
+
+  private async requestSession(token: string): Promise<SessionResult> {
+    const result = await this.callApi({ method: "auth.getSession", format: "json", api_key: this.lastfmDetails.api_key, token }, "GET");
+    if (result.ok) {
+      const key = (result.json as LastfmSessionResponse).session?.key;
+      if (typeof key !== "string" || key.length === 0) return "pending";
+      this.lastfmDetails.sessionKey = key;
+      this.saveSettings();
+      log.info("Last.fm connected");
+      this.flushPending();
+      return "connected";
+    }
+    if (result.kind === "temporary" || result.code === TOKEN_PENDING_CODE) return "pending";
+    log.info(`Last.fm token is no longer usable: ${result.code ?? ""} ${result.message}`);
+    return "expired";
+  }
+
+  private waitFor(flow: AuthFlow, ms: number): Promise<void> {
+    return new Promise(resolve => {
+      flow.wake = resolve;
+      flow.timer = setTimeout(() => {
+        flow.timer = null;
+        flow.wake = null;
+        resolve();
+      }, ms);
+    });
+  }
+
+  private async pollSession(flow: AuthFlow, token: string, deadline: number): Promise<SessionResult> {
+    let delay = AUTH_POLL_INITIAL_MS;
+    while (!flow.cancelled && Date.now() < deadline) {
+      await this.waitFor(flow, delay);
+      if (flow.cancelled) return "expired";
+      const result = await this.requestSession(token);
+      if (result !== "pending") return result;
+      delay = Math.min(delay * 2, AUTH_POLL_MAX_MS);
+    }
+    return "expired";
+  }
+
+  private async runAuthFlow(flow: AuthFlow): Promise<void> {
+    const storedToken = this.lastfmDetails.token;
+    if (storedToken) {
+      const result = await this.requestSession(storedToken);
+      if (flow.cancelled || result === "connected") return;
+      if (result === "pending") {
+        const polled = await this.pollSession(flow, storedToken, Date.now() + AUTH_TOKEN_LIFETIME_MS);
+        if (flow.cancelled || polled === "connected") return;
+      }
+    }
+
+    const token = await this.createToken();
+    if (flow.cancelled || !token) return;
+    this.lastfmDetails.token = token;
     this.saveSettings();
 
-    shell.openExternal(
-      `https://www.last.fm/api/auth/` + `?api_key=${encodeURIComponent(this.lastfmDetails.api_key)}` + `&token=${encodeURIComponent(this.lastfmDetails.token)}`
-    );
+    shell
+      .openExternal(`https://www.last.fm/api/auth/` + `?api_key=${encodeURIComponent(this.lastfmDetails.api_key)}` + `&token=${encodeURIComponent(token)}`)
+      .catch(error => log.error("Could not open the Last.fm sign in page", error));
+
+    await this.pollSession(flow, token, Date.now() + AUTH_TOKEN_LIFETIME_MS);
   }
 
-  private async getSession() {
-    const params: LastfmRequestBody = {
-      method: "auth.getSession",
-      format: "json",
-      api_key: this.lastfmDetails.api_key,
-      token: this.lastfmDetails.token
-    };
+  public connect(): void {
+    if (!this.isEnabled || this.authFlow || !this.lastfmDetails || this.lastfmDetails.sessionKey) return;
+    const flow: AuthFlow = { cancelled: false, timer: null, wake: null };
+    this.authFlow = flow;
+    this.runAuthFlow(flow)
+      .catch(error => log.error("Last.fm sign in failed", error))
+      .finally(() => {
+        if (this.authFlow === flow) this.authFlow = null;
+      });
+  }
 
-    const api_sig = this.createApiSig(params, this.lastfmDetails.secret);
-
-    const response = await fetch(`https://ws.audioscrobbler.com/2.0/` + `?${this.createQueryString(params, api_sig)}`);
-
-    const json = (await response.json()) as LastfmSessionResponse;
-
-    if (json.error) {
-      await this.authenticateUser();
-    } else if (json.session) {
-      this.lastfmDetails.sessionKey = json.session.key;
-      this.saveSettings();
-    }
+  private cancelAuthFlow() {
+    const flow = this.authFlow;
+    if (!flow) return;
+    this.authFlow = null;
+    flow.cancelled = true;
+    if (flow.timer) clearTimeout(flow.timer);
+    flow.timer = null;
+    flow.wake?.();
+    flow.wake = null;
   }
 
   // ----------------------------------------------------------
+
+  private trackIdsFor(state: PlayerState): string[] {
+    const selectedItem = state.queue?.items?.[state.queue.selectedItemIndex];
+    return [...(selectedItem?.counterparts?.map(item => item.videoId) ?? []), ...(selectedItem?.videoId ? [selectedItem.videoId] : [])];
+  }
+
+  private startPlay(state: PlayerState) {
+    const ids = this.trackIdsFor(state);
+    this.possibleVideoIds = ids.includes(state.videoDetails.id) ? ids : [...ids, state.videoDetails.id];
+    this.play = {
+      videoDetails: state.videoDetails,
+      playedSeconds: 0,
+      startedAt: null,
+      lastProgress: null,
+      lastTickAt: null,
+      nowPlayingSent: false,
+      scrobbled: false,
+      heldForLaunch: false
+    };
+  }
+
+  private scrobblePercent(): number {
+    const stored = Number(this.store?.get("lastfm.scrobblePercent"));
+    if (!Number.isFinite(stored)) return 50;
+    return Math.min(Math.max(stored, 50), 100);
+  }
+
+  private hasKnownDuration(videoDetails: VideoDetails) {
+    return Number.isFinite(videoDetails.durationSeconds) && videoDetails.durationSeconds > 0;
+  }
+
+  private isScrobbleable(videoDetails: VideoDetails) {
+    return !this.hasKnownDuration(videoDetails) || videoDetails.durationSeconds > MIN_SCROBBLE_DURATION_SECONDS;
+  }
+
+  private scrobbleThreshold(videoDetails: VideoDetails) {
+    if (!this.hasKnownDuration(videoDetails)) return MAX_SCROBBLE_PLAY_SECONDS;
+    return Math.min(Math.round((videoDetails.durationSeconds * this.scrobblePercent()) / 100), MAX_SCROBBLE_PLAY_SECONDS);
+  }
+
+  private addPlayed(play: Play, seconds: number, now: number) {
+    play.playedSeconds += seconds;
+    if (play.startedAt === null) play.startedAt = now - seconds * 1000;
+
+    const videoDetails = play.videoDetails;
+    if (!this.isScrobbleable(videoDetails)) return;
+
+    if (!play.nowPlayingSent) {
+      play.nowPlayingSent = true;
+      this.updateNowPlaying(videoDetails).catch(error => log.error("Last.fm now playing failed", error));
+    }
+
+    if (!play.scrobbled && play.playedSeconds >= this.scrobbleThreshold(videoDetails)) {
+      play.scrobbled = true;
+      this.scrobbleSong(videoDetails, play.startedAt).catch(error => log.error("Last.fm scrobble failed", error));
+    }
+  }
 
   private async updatePlayerState(state: PlayerState): Promise<void> {
     if (!this.isEnabled) {
       return;
     }
 
-    if (state.videoDetails && state.trackState === VideoState.Playing) {
-      // Check if the video has changed (TO DO: Fix song on repeat not scrobbling)
-
-      const videoIsPrepped = this.possibleVideoIds && this.possibleVideoIds.indexOf(state.videoDetails.id) !== -1;
-      const queueExists = state.queue && state.queue.items && state.queue.items.length > 0;
-
-      if (videoIsPrepped && queueExists) {
-        return;
+    const videoDetails = state.videoDetails;
+    if (!videoDetails) {
+      if (this.play) {
+        this.play.lastProgress = null;
+        this.play.lastTickAt = null;
       }
-
-      // Store all the IDs of videos for this song.
-      const selectedItem = state.queue?.items[state.queue.selectedItemIndex];
-      this.possibleVideoIds = selectedItem?.counterparts?.map(item => item.videoId) || [];
-      this.possibleVideoIds.push(selectedItem?.videoId ?? state.videoDetails.id);
-
-      if (!this.lastfmDetails || !this.lastfmDetails.sessionKey) {
-        this.getSession();
-        return;
-      }
-
-      clearTimeout(this.scrobbleTimer);
-
-      // Track must be longer than 30 seconds
-      // https://www.last.fm/api/scrobbling "When is a scrobble a scrobble?"
-      if (state.videoDetails.durationSeconds < 30) {
-        return;
-      }
-
-      this.updateNowPlaying(state.videoDetails);
-
-      this.lastfmDetails.scrobblePercent = this.store.get("lastfm.scrobblePercent");
-      const scrobblePercentDecimal = this.lastfmDetails.scrobblePercent / 100;
-      const scrobbleTimeRequired = Math.min(
-        // Scrobble the track if it has been played to the percent picked by the user
-        Math.round(state.videoDetails.durationSeconds * scrobblePercentDecimal),
-        // OR if it has been played for more than 4 minutes, scrobble maximum time: https://www.last.fm/api/scrobbling
-        240
-      );
-      const scrobbleTime = new Date().getTime();
-      this.scrobbleTimer = setTimeout(() => {
-        this.scrobbleSong(state.videoDetails, scrobbleTime);
-      }, scrobbleTimeRequired * 1000);
+      return;
     }
+
+    if (!this.play || !this.possibleVideoIds?.includes(videoDetails.id)) {
+      this.startPlay(state);
+    } else {
+      this.play.videoDetails = videoDetails;
+      const ids = this.trackIdsFor(state);
+      if (ids.includes(videoDetails.id)) this.possibleVideoIds = ids;
+    }
+
+    const play = this.play;
+    const isPlaying = state.trackState === VideoState.Playing;
+    if (!isPlaying) play.heldForLaunch = false;
+    else if (launchPauseArmedFor() === videoDetails.id) play.heldForLaunch = true;
+
+    const progress = state.videoProgress;
+    if (!isPlaying || state.adPlaying || play.heldForLaunch || !Number.isFinite(progress)) {
+      play.lastProgress = null;
+      play.lastTickAt = null;
+      return;
+    }
+
+    if (play.lastProgress === progress) return;
+
+    const now = Date.now();
+    if (play.lastProgress !== null && play.scrobbled && progress <= REPLAY_START_SECONDS && play.lastProgress - progress > SEEK_JUMP_SECONDS) {
+      this.startPlay(state);
+      this.play.lastProgress = progress;
+      this.play.lastTickAt = now;
+      return;
+    }
+
+    if (play.lastProgress !== null && play.lastTickAt !== null) {
+      const delta = progress - play.lastProgress;
+      const elapsed = (now - play.lastTickAt) / 1000;
+      if (delta > 0 && delta <= elapsed + SEEK_JUMP_SECONDS) this.addPlayed(play, delta, now);
+    }
+    play.lastProgress = progress;
+    play.lastTickAt = now;
   }
 
   private async updateNowPlaying(videoDetails: VideoDetails): Promise<void> {
-    const data = {
-      method: "track.updateNowPlaying"
-    };
+    if (!this.lastfmDetails?.sessionKey || Date.now() < this.backoffUntil) return;
 
-    this.sendToLastFM(videoDetails, data);
+    const result = await this.sendToLastFM(videoDetails, { method: "track.updateNowPlaying" });
+    this.handleTrackResult(result, null);
   }
 
   private async scrobbleSong(videoDetails: VideoDetails, scrobbleTime: number): Promise<void> {
-    const data: Partial<LastfmRequestBody> = {
-      method: "track.scrobble",
-      timestamp: Math.floor(scrobbleTime / 1000)
-    };
+    const pending: PendingScrobble = { videoDetails, timestamp: Math.floor(scrobbleTime / 1000) };
+    if (!this.lastfmDetails?.sessionKey || Date.now() < this.backoffUntil || this.flushing) {
+      this.queueScrobble(pending);
+      return;
+    }
 
-    this.sendToLastFM(videoDetails, data);
+    const result = await this.sendScrobble(pending);
+    this.handleTrackResult(result, pending);
   }
 
-  private async sendToLastFM(videoDetails: VideoDetails, params: Partial<LastfmRequestBody>): Promise<void> {
+  private sendScrobble(pending: PendingScrobble) {
+    return this.sendToLastFM(pending.videoDetails, { method: "track.scrobble", timestamp: pending.timestamp });
+  }
+
+  private handleTrackResult(result: LastfmApiResult, pending: PendingScrobble | null) {
+    if (result.ok) {
+      this.backoffMs = 0;
+      this.backoffUntil = 0;
+      this.flushPending();
+      return;
+    }
+
+    switch (result.kind) {
+      case "auth": {
+        if (pending) this.queueScrobble(pending);
+        this.dropSession(result);
+        break;
+      }
+
+      case "temporary": {
+        if (pending) this.queueScrobble(pending);
+        this.backOff(result);
+        break;
+      }
+
+      default: {
+        log.warn(`Last.fm rejected ${pending ? "a scrobble" : "now playing"}: ${result.code ?? ""} ${result.message}`);
+      }
+    }
+  }
+
+  private queueScrobble(pending: PendingScrobble) {
+    if (this.pendingScrobbles.includes(pending)) return;
+    this.pendingScrobbles.push(pending);
+    if (this.pendingScrobbles.length > MAX_PENDING_SCROBBLES) this.pendingScrobbles.shift();
+  }
+
+  private dropSession(result: LastfmApiResult) {
+    if (!this.lastfmDetails?.sessionKey) return;
+    log.warn(`Last.fm session expired (error ${!result.ok ? result.code : ""}). Turn Last.fm off and on again to reconnect.`);
+    this.lastfmDetails.sessionKey = null;
+    try {
+      this.store.set("lastfm.sessionKey", null);
+    } catch (error) {
+      log.error(error);
+    }
+  }
+
+  private backOff(result: LastfmApiResult) {
+    this.backoffMs = this.backoffMs ? Math.min(this.backoffMs * 2, BACKOFF_MAX_MS) : BACKOFF_INITIAL_MS;
+    this.backoffUntil = Date.now() + this.backoffMs;
+    log.warn(`Last.fm is unavailable, retrying in ${this.backoffMs / 1000}s: ${!result.ok ? `${result.code ?? ""} ${result.message}` : ""}`);
+    this.scheduleRetry(this.backoffMs);
+  }
+
+  private scheduleRetry(ms: number) {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      this.flushPending();
+    }, ms);
+  }
+
+  private flushPending() {
+    if (this.flushing || this.pendingScrobbles.length === 0 || !this.isEnabled) return;
+    if (!this.lastfmDetails?.sessionKey || Date.now() < this.backoffUntil) return;
+    this.flushing = true;
+    this.flushQueue()
+      .catch(error => log.error("Last.fm retry failed", error))
+      .finally(() => {
+        this.flushing = false;
+      });
+  }
+
+  private async flushQueue() {
+    while (this.isEnabled && this.pendingScrobbles.length > 0 && this.lastfmDetails?.sessionKey && Date.now() >= this.backoffUntil) {
+      const pending = this.pendingScrobbles.shift();
+      const result = await this.sendScrobble(pending);
+      if (!result.ok) {
+        if (result.kind === "fatal") {
+          log.warn(`Last.fm rejected a scrobble: ${result.code ?? ""} ${result.message}`);
+          continue;
+        }
+        this.pendingScrobbles.unshift(pending);
+        if (result.kind === "auth") this.dropSession(result);
+        else this.backOff(result);
+        return;
+      }
+      this.backoffMs = 0;
+      this.backoffUntil = 0;
+    }
+  }
+
+  private sendToLastFM(videoDetails: VideoDetails, params: Partial<LastfmRequestBody>): Promise<LastfmApiResult> {
     const data: Partial<LastfmRequestBody> = {
       // Add specific data to the request
       ...params,
 
       artist: videoDetails.author,
       track: videoDetails.title,
-      album: videoDetails.album,
-      duration: videoDetails.durationSeconds,
+      album: videoDetails.album ?? undefined,
+      duration: this.hasKnownDuration(videoDetails) ? videoDetails.durationSeconds : undefined,
       // albumArtist, trackNumber, chosenByUser
 
       format: "json",
       api_key: this.lastfmDetails.api_key,
       sk: this.lastfmDetails.sessionKey
     };
-    data.api_sig = this.createApiSig(data, this.lastfmDetails.secret);
 
-    const response = fetch(`https://ws.audioscrobbler.com/2.0/`, {
-      method: "POST",
-      body: this.createBody(data)
-    });
-
-    response.catch((error: LastfmErrorResponse) => {
-      // Check Errors against https://www.last.fm/api/show/track.scrobble#errors
-      switch (error.code) {
-        case 9: // Invalid session key
-          this.lastfmDetails.sessionKey = null;
-          this.authenticateUser();
-          break;
-
-        default:
-          log.error(error);
-      }
-    });
+    return this.callApi(data, "POST");
   }
 
   // ----------------------------------------------------------
@@ -192,11 +457,13 @@ export default class LastFM implements IIntegration {
 
     this.lastfmDetails = this.getSettings();
 
-    if (!this.lastfmDetails || !this.lastfmDetails.sessionKey) {
-      this.getSession();
+    if (this.lastfmDetails && !this.lastfmDetails.sessionKey) {
+      this.connect();
     }
 
-    this.playerStateFunction = (state: PlayerState) => this.updatePlayerState(state);
+    this.playerStateFunction = (state: PlayerState) => {
+      this.updatePlayerState(state).catch(error => log.error("Last.fm failed to follow playback", error));
+    };
     playerStateStore.addEventListener(this.playerStateFunction);
   }
 
@@ -207,6 +474,15 @@ export default class LastFM implements IIntegration {
 
     playerStateStore.removeEventListener(this.playerStateFunction);
     this.isEnabled = false;
+
+    this.cancelAuthFlow();
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    this.pendingScrobbles = [];
+    this.backoffMs = 0;
+    this.backoffUntil = 0;
+    this.play = null;
+    this.possibleVideoIds = null;
   }
 
   /**

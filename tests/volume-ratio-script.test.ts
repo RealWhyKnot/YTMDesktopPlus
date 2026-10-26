@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The enable script rewrites HTMLMediaElement.prototype.volume in terms of the
 // descriptor it finds there. Running it a second time in one document would
@@ -59,6 +59,24 @@ describe("volume ratio enable script", () => {
     media.volume = 0.5;
 
     expect(nativeVolume).toBeCloseTo(0.5 ** EXPONENT, 10);
+  });
+
+  it("leaks no globals onto the page and stays quiet on every read", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      run(enableSource);
+      media.volume = 0.5;
+      void media.volume;
+      void media.volume;
+
+      expect(Object.prototype.hasOwnProperty.call(globalThis, "get")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(globalThis, "set")).toBe(false);
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+      delete (globalThis as Record<string, unknown>).get;
+      delete (globalThis as Record<string, unknown>).set;
+    }
   });
 
   it("scales again after a disable, which the guard must not block", () => {

@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T extends 'checkbox' | 'text' | 'file' | 'range' | 'number' | 'select' | 'custom'">
-import { computed, ref } from "vue";
+import { computed, ref, useId } from "vue";
 import ToggleSwitch from "./ToggleSwitch.vue";
 
 type ModelValue = {
@@ -49,6 +49,10 @@ const hasDescription = computed(() => {
 
 const fileInput = ref(null);
 
+const labelId = useId();
+const descriptionId = useId();
+const describedBy = computed(() => (props.disabled ? (props.disabledMessage ? descriptionId : undefined) : hasDescription.value ? descriptionId : undefined));
+
 const checkboxValue = computed({
   get() {
     return props.modelValue as boolean;
@@ -67,30 +71,48 @@ function selectChanged(event: Event) {
 
 <template>
   <div :class="{ 'ytmd-setting': true, 'indented': props.indented, 'flex-column': props.flexColumn }">
-    <p v-if="!disabled && !hasDescription">
-      {{ name }} <span v-if="restartRequired" class="reload-required material-symbols-outlined">autorenew</span>
+    <p v-if="!disabled && !hasDescription" :id="labelId">
+      {{ name }}
+      <span v-if="restartRequired" class="reload-required material-symbols-outlined" role="img" aria-label="Needs a restart" title="Needs a restart"
+        >autorenew</span
+      >
       <span v-if="beta" class="beta-tag" title="This is a beta feature and may not work correctly yet.">BETA</span>
     </p>
     <div v-else-if="!disabled && hasDescription" class="name-description">
-      <p class="name">
-        {{ name }} <span v-if="restartRequired" class="reload-required material-symbols-outlined">autorenew</span>
+      <p :id="labelId" class="name">
+        {{ name }}
+        <span v-if="restartRequired" class="reload-required material-symbols-outlined" role="img" aria-label="Needs a restart" title="Needs a restart"
+          >autorenew</span
+        >
         <span v-if="beta" class="beta-tag" title="This is a beta feature and may not work correctly yet.">BETA</span>
       </p>
-      <p class="description">{{ description }}</p>
+      <p :id="descriptionId" class="description">{{ description }}</p>
     </div>
     <div v-if="disabled" class="disabled-name-message">
-      <p class="name">
-        <span class="disabled-tag">DISABLED</span> {{ name }} <span v-if="restartRequired" class="reload-required material-symbols-outlined">autorenew</span>
+      <p :id="labelId" class="name">
+        <span class="disabled-tag">DISABLED</span> {{ name }}
+        <span v-if="restartRequired" class="reload-required material-symbols-outlined" role="img" aria-label="Needs a restart" title="Needs a restart"
+          >autorenew</span
+        >
         <span v-if="beta" class="beta-tag" title="This is a beta feature and may not work correctly yet.">BETA</span>
       </p>
-      <p class="message">{{ disabledMessage }}</p>
+      <p :id="descriptionId" class="message">{{ disabledMessage }}</p>
     </div>
 
-    <ToggleSwitch v-if="type == 'checkbox'" v-model="checkboxValue" :disabled="disabled" @change="$emit('change', $event)" />
+    <ToggleSwitch
+      v-if="type == 'checkbox'"
+      v-model="checkboxValue"
+      :disabled="disabled"
+      :aria-labelledby="labelId"
+      :aria-describedby="describedBy"
+      @change="$emit('change', $event)"
+    />
     <input
       v-if="type == 'text'"
       v-model="value"
       :disabled="disabled"
+      :aria-labelledby="labelId"
+      :aria-describedby="describedBy"
       type="text"
       :maxlength="props.maxlength"
       :placeholder="props.placeholder"
@@ -98,12 +120,24 @@ function selectChanged(event: Event) {
     />
     <div v-if="type == 'range'" class="range-selector">
       <span class="range-value">{{ value }}</span>
-      <input v-model="value" :disabled="disabled" :type="props.type" :max="props.max" :min="props.min" :step="props.step" @change="$emit('change', $event)" />
+      <input
+        v-model="value"
+        :disabled="disabled"
+        :aria-labelledby="labelId"
+        :aria-describedby="describedBy"
+        :type="props.type"
+        :max="props.max"
+        :min="props.min"
+        :step="props.step"
+        @change="$emit('change', $event)"
+      />
     </div>
     <input
       v-if="type == 'number'"
       v-model.number="value"
       :disabled="disabled"
+      :aria-labelledby="labelId"
+      :aria-describedby="describedBy"
       type="number"
       :max="props.max"
       :min="props.min"
@@ -118,7 +152,15 @@ function selectChanged(event: Event) {
         <button v-if="value" class="remove" @click="$emit('clear')"><span class="material-symbols-outlined">delete</span></button>
       </div>
     </div>
-    <select v-if="type == 'select'" class="select" :disabled="disabled" :value="String(modelValue)" @change="selectChanged">
+    <select
+      v-if="type == 'select'"
+      class="select"
+      :disabled="disabled"
+      :aria-labelledby="labelId"
+      :aria-describedby="describedBy"
+      :value="String(modelValue)"
+      @change="selectChanged"
+    >
       <option v-for="(optionValue, optionKey) of props.optionsMap" :key="optionKey" :value="String(optionKey)">{{ optionValue }}</option>
     </select>
 
@@ -141,6 +183,7 @@ function selectChanged(event: Event) {
 .disabled-name-message {
   min-width: 0;
   flex: 1 1 240px;
+  overflow-wrap: anywhere;
 }
 
 .ytmd-setting.indented {
@@ -195,6 +238,15 @@ input[type="text"] {
 
 input[type="text"]:focus {
   border-color: var(--border-strong);
+}
+
+input[type="text"]:focus-visible,
+input[type="number"]:focus-visible,
+input[type="range"]:focus-visible,
+.select:focus-visible,
+.file-input-button button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 input[type="number"] {
@@ -274,6 +326,10 @@ input[type="file"] {
 }
 
 .range-value {
+  display: inline-block;
+  min-width: 3ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
   vertical-align: top;
   margin-right: 8px;
 }

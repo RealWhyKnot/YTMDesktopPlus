@@ -10,6 +10,14 @@ import { DiscordActivityType } from "./minimal-discord-client/types";
 
 const DISCORD_CLIENT_ID = "1533867163079671849";
 
+export const CONNECTION_RETRY_BASE_MS = 5 * 1000;
+export const CONNECTION_RETRY_MAX_MS = 60 * 1000;
+export const CONNECTION_FAILED_AFTER_ATTEMPTS = 6;
+
+export function connectionRetryDelay(attempt: number): number {
+  return Math.min(CONNECTION_RETRY_BASE_MS * 2 ** Math.max(0, attempt - 1), CONNECTION_RETRY_MAX_MS);
+}
+
 export type PresenceButton = { label: string; url: string };
 export type PresenceButtonsProvider = () => PresenceButton[] | undefined;
 
@@ -21,11 +29,11 @@ import type { RemoteTrackActivity } from "~shared/addons/sdk";
 export type { RemoteTrackActivity } from "~shared/addons/sdk";
 export type RemoteActivityProvider = () => RemoteTrackActivity | undefined;
 
-function getHighestResThumbnail(thumbnails: Thumbnail[]): string {
-  return thumbnails.reduce(
-    (accumulator, current) => (current.height * current.width <= accumulator.height * accumulator.width ? accumulator : current),
-    thumbnails[0]
-  ).url;
+export function getHighestResThumbnail(thumbnails: Thumbnail[] | null | undefined): string | undefined {
+  const usable = Array.isArray(thumbnails) ? thumbnails.filter(thumbnail => typeof thumbnail?.url === "string" && thumbnail.url.length > 0) : [];
+  if (usable.length === 0) return undefined;
+  const area = (thumbnail: Thumbnail) => (Number(thumbnail.width) || 0) * (Number(thumbnail.height) || 0);
+  return usable.reduce((accumulator, current) => (area(current) <= area(accumulator) ? accumulator : current)).url;
 }
 
 function getSmallImageKey(state: VideoState) {
@@ -128,43 +136,51 @@ export default class DiscordPresence implements IIntegration {
       // Released before any early return: the handle is the debounce gate, so
       // leaving it set would silence every later update for the session.
       this.activityDebounceTimeout = null;
-      if (!this.videoDetails) {
-        this.clearOrRemote();
-        return;
+      try {
+        this.applyActivity();
+      } catch (error) {
+        log.error("Discord presence update failed", error);
       }
-      const { title, author, album, id, thumbnails, durationSeconds, channelId, albumId } = this.videoDetails;
-      const thumbnail = getHighestResThumbnail(thumbnails);
-      const playing = this.videoState === VideoState.Playing;
-      if (!playing && this.store?.get("integrations").discordPresenceHideOnPause) {
-        this.clearOrRemote();
-        return;
-      }
-      const nowMs = Date.now();
-      const startEpochMs = nowMs - this.progress * 1000;
-      const buttons = this.buildButtons();
-      this.discordClient.setActivity({
-        type: DiscordActivityType.Listening,
-        status_display_type: 1,
-        details: stringLimit(title, 128, 2),
-        details_url: `https://music.youtube.com/watch?v=${id}`,
-        state: stringLimit(author, 128, 2),
-        state_url: `https://music.youtube.com/channel/${channelId}`,
-        timestamps: {
-          start: playing ? startEpochMs : undefined,
-          end: playing ? nowMs + (durationSeconds - this.progress) * 1000 : undefined
-        },
-        assets: {
-          large_image: (thumbnail?.length ?? 0) <= 256 ? thumbnail : "icon",
-          large_text: album ? stringLimit(album, 128, 2) : undefined,
-          large_url: albumId ? `https://music.youtube.com/browse/${albumId}` : undefined,
-          small_image: getSmallImageKey(this.videoState),
-          small_text: getSmallImageText(this.videoState)
-        },
-        instance: false,
-        buttons
-      });
-      log.debug(`dpresence: activity set for ${id}, ${playing ? "playing" : "paused"}, ${buttons?.length ?? 0} buttons`);
     }, 1000);
+  }
+
+  private applyActivity() {
+    if (!this.videoDetails) {
+      this.clearOrRemote();
+      return;
+    }
+    const { title, author, album, id, thumbnails, durationSeconds, channelId, albumId } = this.videoDetails;
+    const thumbnail = getHighestResThumbnail(thumbnails);
+    const playing = this.videoState === VideoState.Playing;
+    if (!playing && this.store?.get("integrations").discordPresenceHideOnPause) {
+      this.clearOrRemote();
+      return;
+    }
+    const nowMs = Date.now();
+    const startEpochMs = nowMs - this.progress * 1000;
+    const buttons = this.buildButtons();
+    this.discordClient.setActivity({
+      type: DiscordActivityType.Listening,
+      status_display_type: 1,
+      details: stringLimit(title, 128, 2),
+      details_url: `https://music.youtube.com/watch?v=${id}`,
+      state: stringLimit(author, 128, 2),
+      state_url: `https://music.youtube.com/channel/${channelId}`,
+      timestamps: {
+        start: playing ? startEpochMs : undefined,
+        end: playing ? nowMs + (durationSeconds - this.progress) * 1000 : undefined
+      },
+      assets: {
+        large_image: thumbnail && thumbnail.length <= 256 ? thumbnail : "icon",
+        large_text: album ? stringLimit(album, 128, 2) : undefined,
+        large_url: albumId ? `https://music.youtube.com/browse/${albumId}` : undefined,
+        small_image: getSmallImageKey(this.videoState),
+        small_text: getSmallImageText(this.videoState)
+      },
+      instance: false,
+      buttons
+    });
+    log.debug(`dpresence: activity set for ${id}, ${playing ? "playing" : "paused"}, ${buttons?.length ?? 0} buttons`);
   }
 
   private playerStateChanged(state: PlayerState) {
@@ -196,9 +212,13 @@ export default class DiscordPresence implements IIntegration {
     this.pauseTimeout = null;
     if (state.trackState == VideoState.Playing) return;
     this.pauseTimeout = setTimeout(() => {
-      if (!this.discordClient && !this.ready) return;
-      this.clearOrRemote();
       this.pauseTimeout = null;
+      if (!this.discordClient || !this.ready) return;
+      try {
+        this.clearOrRemote();
+      } catch (error) {
+        log.error("Discord presence clear failed", error);
+      }
     }, 30 * 1000);
   }
 
@@ -249,19 +269,28 @@ export default class DiscordPresence implements IIntegration {
 
   private retryDiscordConnection() {
     if (!this.enabled) return;
-    if (this.connectionRetries >= 30) {
-      this.memoryStore.set("discordPresenceConnectionFailed", true);
-      return;
-    }
 
     this.connectionRetries++;
-    log.info(`Connecting to Discord attempt ${this.connectionRetries}/30`);
+    if (this.connectionRetries === CONNECTION_FAILED_AFTER_ATTEMPTS) {
+      this.memoryStore.set("discordPresenceConnectionFailed", true);
+    }
+
+    const delay = connectionRetryDelay(this.connectionRetries);
+    if (this.connectionRetries <= 3 || this.connectionRetries % 30 === 0) {
+      log.info(`Connecting to Discord attempt ${this.connectionRetries} in ${delay / 1000}s`);
+    }
 
     clearTimeout(this.connectionRetryTimeout);
     this.connectionRetryTimeout = setTimeout(() => {
-      if (!this.discordClient) return;
-      this.discordClient.connect().catch(() => this.retryDiscordConnection());
-    }, 5 * 1000);
+      this.connectionRetryTimeout = null;
+      if (!this.enabled || !this.discordClient) return;
+      try {
+        this.discordClient.connect().catch(() => this.retryDiscordConnection());
+      } catch (error) {
+        log.error("Discord connection attempt failed", error);
+        this.retryDiscordConnection();
+      }
+    }, delay);
   }
 
   public enable(): void {
@@ -281,7 +310,11 @@ export default class DiscordPresence implements IIntegration {
     });
     this.discordClient.connect().catch(() => this.retryDiscordConnection());
     this.stateCallback = event => {
-      this.playerStateChanged(event);
+      try {
+        this.playerStateChanged(event);
+      } catch (error) {
+        log.error("Discord presence state update failed", error);
+      }
     };
 
     playerStateStore.addEventListener(this.stateCallback);

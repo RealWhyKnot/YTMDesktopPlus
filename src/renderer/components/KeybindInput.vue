@@ -5,6 +5,10 @@ const props = defineProps({
   modelValue: {
     type: String,
     default: ""
+  },
+  label: {
+    type: String,
+    default: ""
   }
 });
 const emit = defineEmits(["update:modelValue", "change"]);
@@ -92,7 +96,6 @@ function keybindInputKeyDown(event: KeyboardEvent) {
   let newKeybind = "";
 
   if (event.key === "Escape") {
-    currentKeybind.value = "";
     keybindInput.value.blur();
     event.preventDefault();
     return;
@@ -115,9 +118,21 @@ function keybindInputKeyDown(event: KeyboardEvent) {
 <template>
   <div :class="{ 'keybind': true, 'is-editing': isEditing }">
     <p v-if="!currentKeybind" class="keybind-text" @click="startEditing">None</p>
-    <p v-else class="keybind-text" @click="startEditing">{{ currentKeybind }}</p>
-    <input ref="keybindInput" class="keybind-input" type="text" @focus="keybindInputFocused" @blur="keybindInputBlurred" @keydown="keybindInputKeyDown" />
-    <button class="remove" :disabled="!currentKeybind" @click="currentKeybind = ''"><span class="material-symbols-outlined">delete</span></button>
+    <p v-else class="keybind-text" :title="currentKeybind" @click="startEditing">{{ currentKeybind }}</p>
+    <input
+      ref="keybindInput"
+      class="keybind-input"
+      type="text"
+      :aria-label="label || undefined"
+      :value="currentKeybind || 'None'"
+      readonly
+      @focus="keybindInputFocused"
+      @blur="keybindInputBlurred"
+      @keydown="keybindInputKeyDown"
+    />
+    <button class="remove" :disabled="!currentKeybind" :aria-label="label ? `Clear ${label} shortcut` : 'Clear shortcut'" @click="currentKeybind = ''">
+      <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+    </button>
   </div>
 </template>
 
@@ -138,9 +153,14 @@ function keybindInputKeyDown(event: KeyboardEvent) {
   border: none;
   padding: 8px;
   border-radius: var(--radius);
-  width: 216px;
+  min-width: 216px;
+  max-width: 320px;
+  box-sizing: content-box;
   height: 20px;
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .keybind-input {
