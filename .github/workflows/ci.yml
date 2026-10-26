@@ -240,7 +240,7 @@ jobs:
         if: matrix.os == 'macos'
         run: |
           ditto -x -k ./dist/zip/darwin/${{ matrix.arch }}/*.zip extracted
-          app=$(ls -d extracted/*.app | head -1)
+          app=$(find extracted -maxdepth 1 -name '*.app' -print -quit)
           "$app/Contents/MacOS/ytmdesktop-plus" &
           app_pid=$!
           sleep 30
