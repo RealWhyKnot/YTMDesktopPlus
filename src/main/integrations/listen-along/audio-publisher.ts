@@ -2,17 +2,20 @@ import WebSocket from "ws";
 
 import { VideoState, type PlayerState, type Thumbnail, type VideoDetails } from "~shared/addons/sdk";
 import {
+  AUDIO_PROTOCOL_VERSION,
   FATAL_AUDIO_ERRORS,
   audioUrlForRoom,
   encodeBatch,
+  isCoverUrl,
   parseAudioServerFrame,
+  sanitizeMetaText,
   type AudioClientFrame,
   type AudioServerFrame,
   type AudioStatus,
   type BatchPacket
 } from "~shared/audio-protocol";
-import { anchorFrameFrom, isMeaningfulChange, type RoomStateFrame } from "~shared/room-protocol";
-import { describeClose } from "./relay-client";
+import { ClockOffsetEstimator, anchorFrameFrom, isMeaningfulChange, type RoomStateFrame } from "~shared/room-protocol";
+import { LIVENESS_TIMEOUT_MS, describeClose, openSocket, watchLiveness, type LiveSocket, type SocketFactory } from "./relay-client";
 
 // Publishes the host's captured audio to the relay's /audio channel while a
 // room is being hosted. Track metadata and anchors ride the same socket so a
@@ -24,9 +27,15 @@ const MAX_CONNECTION_ATTEMPTS = 30;
 // Batches stop after a pause outlives a scrub; silence is not worth upload.
 const PAUSE_GATE_MS = 5000;
 // A socket this far behind drops batches rather than queueing them forever.
-const MAX_BUFFERED_BYTES = 262_144;
+export const MAX_BUFFERED_BYTES = 32_768;
+export const HEALTHY_CONNECTION_MS = 30_000;
+export const TEXT_FRAMES_PER_SECOND = 10;
+export const TEXT_FRAME_BURST = 20;
+export const TEXT_BYTES_PER_SECOND = 8192;
 
 export type AudioCredentials = { roomId: string; hostKey: string };
+
+export type AudioFault = "capture" | "relay" | "refused" | "outdated";
 
 export type UplinkState = Pick<PlayerState, "trackState" | "videoProgress" | "adPlaying" | "hasFullMetadata"> & {
   videoDetails: Pick<VideoDetails, "id" | "title" | "author" | "album" | "thumbnails" | "durationSeconds"> | null;
@@ -54,11 +63,13 @@ export interface AudioTransport {
 }
 
 export class AudioRelayClient implements AudioTransport {
-  private socket: WebSocket | null = null;
+  private socket: LiveSocket | null = null;
+  private stopWatch: (() => void) | null = null;
 
   constructor(
     private readonly url: string,
-    private readonly handlers: AudioTransportHandlers
+    private readonly handlers: AudioTransportHandlers,
+    private readonly createSocket: SocketFactory = openSocket
   ) {}
 
   get isOpen(): boolean {
@@ -71,7 +82,7 @@ export class AudioRelayClient implements AudioTransport {
 
   connect() {
     this.close();
-    const socket = new WebSocket(this.url);
+    const socket = this.createSocket(this.url);
     this.socket = socket;
 
     socket.on("open", () => this.handlers.onOpen());
@@ -88,6 +99,10 @@ export class AudioRelayClient implements AudioTransport {
     socket.on("error", error => {
       failure = error.message;
     });
+    this.stopWatch = watchLiveness(socket, () => {
+      failure = `no traffic for ${LIVENESS_TIMEOUT_MS / 1000}s`;
+      socket.terminate();
+    });
   }
 
   sendText(frame: AudioClientFrame) {
@@ -99,6 +114,8 @@ export class AudioRelayClient implements AudioTransport {
   }
 
   close() {
+    this.stopWatch?.();
+    this.stopWatch = null;
     const socket = this.socket;
     if (!socket) return;
     this.socket = null;
@@ -113,6 +130,7 @@ export type AudioPublisherDeps = {
   startCapture(): void;
   stopCapture(): void;
   onUpdate(update: { streaming: boolean; webListeners: number }): void;
+  onFault?(fault: AudioFault): void;
   now(): number;
   log(message: string, ...args: unknown[]): void;
 };
@@ -120,9 +138,10 @@ export type AudioPublisherDeps = {
 function highestResThumbnail(thumbnails: Thumbnail[] | undefined): string | undefined {
   let best: Thumbnail | null = null;
   for (const thumbnail of thumbnails ?? []) {
+    if (!isCoverUrl(thumbnail.url)) continue;
     if (!best || thumbnail.width * thumbnail.height > best.width * best.height) best = thumbnail;
   }
-  return best && best.url.startsWith("https://") ? best.url : undefined;
+  return best?.url;
 }
 
 export class AudioPublisher {
@@ -145,6 +164,17 @@ export class AudioPublisher {
   private lastSentAnchor: RoomStateFrame | null = null;
   private webListeners = 0;
   private streaming = false;
+  private fault: AudioFault | null = null;
+  private readyAt: number | null = null;
+  private pubSentAt: number | null = null;
+  private serverVersion: number | null = null;
+  private relayClockOffsetMs: number | null = null;
+  private readonly audioClock = new ClockOffsetEstimator();
+  private textTokens = TEXT_FRAME_BURST;
+  private textBytes = TEXT_BYTES_PER_SECOND;
+  private textRefilledAt = 0;
+  private readonly queuedText = new Map<AudioClientFrame["t"], AudioClientFrame>();
+  private textTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly deps: AudioPublisherDeps) {}
 
@@ -157,10 +187,38 @@ export class AudioPublisher {
       if (this.creds !== null) this.stop();
       return;
     }
-    if (this.creds && this.creds.roomId === creds.roomId && this.creds.hostKey === creds.hostKey) return;
+    if (this.creds && this.creds.roomId === creds.roomId && this.creds.hostKey === creds.hostKey) {
+      if (this.phase === "failed" && this.fault !== "outdated") this.start(this.creds);
+      return;
+    }
 
     this.stop();
+    this.start(creds);
+  }
+
+  setClockOffset(offsetMs: number | null) {
+    this.relayClockOffsetMs = offsetMs;
+  }
+
+  redial() {
+    if (!this.creds || this.phase === "idle" || this.phase === "failed") return;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.transport?.close();
+    this.transport = null;
+    this.readyAt = null;
+    this.phase = "connecting";
+    this.publishUpdate(false, this.webListeners);
+    this.dial();
+  }
+
+  private start(creds: AudioCredentials) {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     this.creds = creds;
+    this.fault = null;
+    this.attempts = 0;
+    this.readyAt = null;
     this.phase = "connecting";
     this.deps.startCapture();
     this.dial();
@@ -189,8 +247,8 @@ export class AudioPublisher {
 
   handleCaptureStatus(status: AudioCaptureStatus) {
     if (status.error !== undefined) {
-      this.deps.log("audio capture failed", status.error);
-      this.stop();
+      if (this.creds && this.phase !== "failed") this.fail("capture", "audio capture failed", status.error);
+      else this.deps.log("audio capture failed", status.error);
       return;
     }
     if (status.cfg) {
@@ -224,8 +282,13 @@ export class AudioPublisher {
     this.reconnectTimer = null;
     this.transport?.close();
     this.transport = null;
+    this.resetText();
     this.phase = "idle";
+    this.fault = null;
     this.attempts = 0;
+    this.readyAt = null;
+    this.serverVersion = null;
+    this.audioClock.reset();
     this.seq = 0;
     this.pendingDiscontinuity = false;
     this.sentStatus = null;
@@ -235,23 +298,30 @@ export class AudioPublisher {
     this.publishUpdate(false, 0);
   }
 
-  private fail(message: string, ...args: unknown[]) {
+  private fail(fault: AudioFault, message: string, ...args: unknown[]) {
     this.deps.log(message, ...args);
     this.phase = "failed";
+    this.fault = fault;
+    this.readyAt = null;
     this.deps.stopCapture();
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     this.transport?.close();
     this.transport = null;
+    this.resetText();
     this.publishUpdate(false, 0);
+    this.deps.onFault?.(fault);
   }
 
   private dial() {
     if (!this.creds) return;
     this.transport?.close();
+    this.resetText();
     this.transport = this.deps.createTransport(audioUrlForRoom(this.creds.roomId), {
       onOpen: () => {
-        if (this.creds) this.transport?.sendText({ t: "pub", r: this.creds.roomId, k: this.creds.hostKey });
+        if (!this.creds) return;
+        this.pubSentAt = this.deps.now();
+        this.sendText({ t: "pub", r: this.creds.roomId, k: this.creds.hostKey });
       },
       onFrame: frame => this.onFrame(frame),
       onClose: detail => this.onClose(detail)
@@ -262,7 +332,10 @@ export class AudioPublisher {
   private onFrame(frame: AudioServerFrame) {
     switch (frame.t) {
       case "ready": {
-        this.attempts = 0;
+        const now = this.deps.now();
+        if (frame.c !== undefined) this.audioClock.add(frame.c, this.pubSentAt ?? now, now);
+        if (frame.v !== undefined) this.serverVersion = frame.v;
+        this.readyAt = now;
         this.phase = "ready";
         this.pendingDiscontinuity = true;
         this.sendCfg();
@@ -282,7 +355,10 @@ export class AudioPublisher {
         return;
       }
       case "e": {
-        if (FATAL_AUDIO_ERRORS.includes(frame.m)) this.fail("audio publisher refused by the relay", frame.m);
+        if (FATAL_AUDIO_ERRORS.includes(frame.m)) this.fail("refused", "audio publisher refused by the relay", frame.m);
+        else if (frame.m === "bad frame" && this.serverVersion !== null && this.serverVersion > AUDIO_PROTOCOL_VERSION) {
+          this.fail("outdated", "audio publisher is older than the relay", this.serverVersion);
+        }
         return;
       }
     }
@@ -291,10 +367,12 @@ export class AudioPublisher {
   private onClose(detail?: string) {
     if (this.phase === "idle" || this.phase === "failed") return;
     this.deps.log("audio publisher connection closed", detail ?? "unknown");
+    if (this.readyAt !== null && this.deps.now() - this.readyAt >= HEALTHY_CONNECTION_MS) this.attempts = 0;
+    this.readyAt = null;
     this.phase = "connecting";
     this.publishUpdate(false, this.webListeners);
     if (this.attempts >= MAX_CONNECTION_ATTEMPTS) {
-      this.fail("audio publisher gave up reconnecting");
+      this.fail("relay", "audio publisher gave up reconnecting");
       return;
     }
     const delay = BACKOFF_MS[Math.min(this.attempts, BACKOFF_MS.length - 1)];
@@ -305,7 +383,7 @@ export class AudioPublisher {
 
   private sendCfg() {
     if (this.phase !== "ready" || !this.cfg) return;
-    this.transport?.sendText({ t: "cfg", codec: "opus", sr: this.cfg.sr, ch: this.cfg.ch, br: this.cfg.br });
+    this.sendText({ t: "cfg", codec: "opus", sr: this.cfg.sr, ch: this.cfg.ch, br: this.cfg.br });
   }
 
   private sendStatus() {
@@ -313,7 +391,7 @@ export class AudioPublisher {
     const status: AudioStatus = this.adPlaying ? "ad" : this.muted ? "muted" : "live";
     if (status === this.sentStatus) return;
     this.sentStatus = status;
-    this.transport?.sendText({ t: "status", s: status });
+    this.sendText({ t: "status", s: status });
   }
 
   private sendMetaIfChanged(state: UplinkState) {
@@ -325,12 +403,12 @@ export class AudioPublisher {
     if (!changed && !metadataLanded) return;
     this.metaVideoId = details.id;
 
-    this.transport?.sendText({
+    this.sendText({
       t: "meta",
       v: details.id,
-      title: details.title || undefined,
-      artist: details.author || undefined,
-      album: details.album || undefined,
+      title: sanitizeMetaText(details.title),
+      artist: sanitizeMetaText(details.author),
+      album: sanitizeMetaText(details.album),
       coverUrl: highestResThumbnail(details.thumbnails),
       durS: Number.isFinite(details.durationSeconds) ? details.durationSeconds : undefined
     });
@@ -344,10 +422,52 @@ export class AudioPublisher {
     const paused = state.trackState === VideoState.Paused;
     if (!playing && !paused) return;
 
-    const frame = anchorFrameFrom(videoId, state.videoProgress, playing, this.deps.now());
+    const frame = anchorFrameFrom(videoId, state.videoProgress, playing, this.deps.now() + this.serverClockOffsetMs());
     if (!isMeaningfulChange(this.lastSentAnchor, frame)) return;
     this.lastSentAnchor = frame;
-    this.transport?.sendText({ t: "anchor", a: frame.a, p: frame.p });
+    this.sendText({ t: "anchor", a: frame.a, p: frame.p });
+  }
+
+  private sendText(frame: AudioClientFrame) {
+    if (!this.transport) return;
+    this.queuedText.delete(frame.t);
+    this.queuedText.set(frame.t, frame);
+    this.flushText();
+  }
+
+  private flushText() {
+    const now = this.deps.now();
+    const elapsed = Math.max(0, now - this.textRefilledAt);
+    this.textRefilledAt = now;
+    this.textTokens = Math.min(TEXT_FRAME_BURST, this.textTokens + (elapsed * TEXT_FRAMES_PER_SECOND) / 1000);
+    this.textBytes = Math.min(TEXT_BYTES_PER_SECOND, this.textBytes + (elapsed * TEXT_BYTES_PER_SECOND) / 1000);
+    for (const [kind, frame] of this.queuedText) {
+      const bytes = Buffer.byteLength(JSON.stringify(frame));
+      if (this.textTokens < 1 || this.textBytes < bytes) break;
+      this.textTokens -= 1;
+      this.textBytes -= bytes;
+      this.queuedText.delete(kind);
+      this.transport?.sendText(frame);
+    }
+    if (this.queuedText.size > 0 && !this.textTimer) {
+      this.textTimer = setTimeout(() => {
+        this.textTimer = null;
+        this.flushText();
+      }, 1000 / TEXT_FRAMES_PER_SECOND);
+    }
+  }
+
+  private resetText() {
+    if (this.textTimer) clearTimeout(this.textTimer);
+    this.textTimer = null;
+    this.queuedText.clear();
+    this.textTokens = TEXT_FRAME_BURST;
+    this.textBytes = TEXT_BYTES_PER_SECOND;
+    this.textRefilledAt = this.deps.now();
+  }
+
+  private serverClockOffsetMs(): number {
+    return this.audioClock.offsetMs ?? this.relayClockOffsetMs ?? 0;
   }
 
   private publishUpdate(streaming: boolean, webListeners: number) {

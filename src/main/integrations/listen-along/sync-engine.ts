@@ -74,7 +74,7 @@ export function decide(ctx: SyncContext): SyncResult {
   // Anything issued now would act on the ad rather than the track.
   if (local.adPlaying) return stay();
 
-  const remoteStale = ctx.lastRemoteUpdateMs !== null && nowMs - ctx.lastRemoteUpdateMs > REMOTE_STALE_MS;
+  const remoteStale = !remote.anchored && ctx.lastRemoteUpdateMs !== null && nowMs - ctx.lastRemoteUpdateMs > REMOTE_STALE_MS;
 
   if (phase === "suspended") {
     const resumed = ctx.previousLocal !== null && ctx.previousLocal.trackState !== VideoState.Playing && local.trackState === VideoState.Playing;

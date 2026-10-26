@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ClockOffsetEstimator,
   anchorFrameFrom,
   buildRoomShareUrl,
   encodeClientFrame,
@@ -27,6 +28,25 @@ describe("parseServerFrame", () => {
       c: 123
     });
     expect(parseServerFrame('{"t":"r","r":"abcdefgh","u":"abcdef","role":1,"n":3,"c":123}')).toMatchObject({ t: "r", role: 1, n: 3 });
+  });
+
+  it("reads the protocol version from a ready frame when the relay sends one", () => {
+    expect(parseServerFrame('{"t":"r","r":"abcdefgh","u":"abcdef","role":0,"n":0,"c":1,"v":2}')).toMatchObject({ t: "r", v: 2 });
+    expect(parseServerFrame('{"t":"r","r":"abcdefgh","u":"abcdef","role":0,"n":0,"c":1}')).not.toHaveProperty("v");
+    expect(parseServerFrame('{"t":"r","r":"abcdefgh","u":"abcdef","role":0,"n":0,"c":1,"v":"2"}')).toBeNull();
+  });
+
+  it("cleans roster names the way the relay cleans ours", () => {
+    const long = "W".repeat(80);
+    expect(parseServerFrame(JSON.stringify({ t: "m", members: [{ u: "abcdef", r: 0, d: `  ${long}\u0007` }], h: `\u0001${long}` }))).toEqual({
+      t: "m",
+      members: [{ u: "abcdef", r: 0, d: "W".repeat(24) }],
+      h: "W".repeat(24)
+    });
+    expect(parseServerFrame(JSON.stringify({ t: "m", members: [{ u: "abcdef", r: 0, d: "\u0002" }], h: " " }))).toEqual({
+      t: "m",
+      members: [{ u: "abcdef", r: 0 }]
+    });
   });
 
   it("parses state, roster, role, control, count and error frames", () => {
@@ -143,5 +163,30 @@ describe("room indicator counts", () => {
     expect(otherListenerCount(snapshot({ phase: "listening", isHost: false, listenerCount: 1 }))).toBe(1);
     expect(otherListenerCount(snapshot({ phase: "listening", isHost: false, listenerCount: 3 }))).toBe(3);
     expect(otherListenerCount(snapshot({ phase: "listening", isHost: false, listenerCount: 1, webListenerCount: 2 }))).toBe(3);
+  });
+});
+
+describe("ClockOffsetEstimator", () => {
+  it("has nothing to say before a sample", () => {
+    expect(new ClockOffsetEstimator().offsetMs).toBeNull();
+  });
+
+  it("takes the midpoint of the round trip and trusts the quickest one", () => {
+    const clock = new ClockOffsetEstimator();
+    clock.add(10_000 + 100 + 3_000, 10_000, 10_200);
+    expect(clock.offsetMs).toBe(3_000);
+
+    clock.add(20_000 + 1_000 + 3_900, 20_000, 22_000);
+    expect(clock.offsetMs).toBe(3_000);
+
+    clock.add(30_000 + 10 + 3_100, 30_000, 30_020);
+    expect(clock.offsetMs).toBe(3_100);
+  });
+
+  it("forgets samples older than half an hour", () => {
+    const clock = new ClockOffsetEstimator();
+    clock.add(100 + 3_000, 0, 200);
+    clock.add(31 * 60_000 + 500 + 4_000, 31 * 60_000, 31 * 60_000 + 1_000);
+    expect(clock.offsetMs).toBe(4_000);
   });
 });

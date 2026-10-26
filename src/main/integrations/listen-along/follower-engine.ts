@@ -22,6 +22,7 @@ export interface FollowerDeps {
   sendCommand(command: "seekTo" | "play" | "pause", value?: number): void;
   onPhase(event: FollowerPhaseEvent): void;
   now(): number;
+  cancelCue?(): void;
 }
 
 export class FollowerEngine {
@@ -35,6 +36,8 @@ export class FollowerEngine {
   private expectations: Expectation[] = [];
   private lastDecisionAtMs = 0;
   private pendingDecision: NodeJS.Timeout | null = null;
+  private cueGeneration = 0;
+  private cuePending = false;
 
   constructor(private readonly deps: FollowerDeps) {}
 
@@ -83,6 +86,11 @@ export class FollowerEngine {
   }
 
   reset() {
+    this.cueGeneration++;
+    if (this.cuePending) {
+      this.cuePending = false;
+      this.deps.cancelCue?.();
+    }
     this.clearRemote();
     if (this.pendingDecision) clearTimeout(this.pendingDecision);
     this.pendingDecision = null;
@@ -106,12 +114,16 @@ export class FollowerEngine {
         this.deps.onPhase({ phase: "loading" });
         // The track cue owns the navigate and the seek that follows it, and
         // supersedes itself when the host skips again.
+        const generation = ++this.cueGeneration;
+        this.cuePending = true;
         void this.deps
           .cueTrack({
             videoId: decision.videoId,
             anchor: this.remote ? { kind: "anchor", epochMs: this.remote.asOfMs - this.remote.progress * 1000 } : null
           })
           .then(result => {
+            if (generation !== this.cueGeneration) return;
+            this.cuePending = false;
             if (this.phase === "loading") {
               this.phase = result === "no-view" ? "idle" : "synced";
               if (this.phase === "synced") this.deps.onPhase({ phase: "synced" });

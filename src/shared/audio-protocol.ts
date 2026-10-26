@@ -19,7 +19,35 @@ export const PACKET_HEADER_BYTES = 6;
 export const MAX_BATCH_BYTES = 32768;
 export const BATCH_FLAG_DISCONTINUITY = 1;
 
+export const AUDIO_PROTOCOL_VERSION = 1;
 export const MAX_AUDIO_TEXT_FRAME = 4096;
+export const MAX_META_TEXT_LENGTH = 200;
+export const MAX_COVER_URL_LENGTH = 512;
+export const PUBLISHER_BURST_BYTES = 98_304;
+
+const COVER_URL_REST = /^[A-Za-z0-9\-._~:/?#[\]@!$&*+,=%]+$/;
+
+export function isCoverUrl(value: string): boolean {
+  return value.length <= MAX_COVER_URL_LENGTH && value.startsWith("https://") && COVER_URL_REST.test(value.slice("https://".length));
+}
+
+export function sanitizeMetaText(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const filtered = [...value]
+    .filter(ch => {
+      const code = ch.codePointAt(0) ?? 0;
+      return code > 31 && code !== 127;
+    })
+    .join("")
+    .trim();
+  let out = "";
+  for (const ch of filtered) {
+    if (out.length + ch.length > MAX_META_TEXT_LENGTH) break;
+    out += ch;
+  }
+  out = out.trim();
+  return out.length > 0 ? out : undefined;
+}
 
 export type AudioStatus = "live" | "ad" | "muted";
 
@@ -30,7 +58,7 @@ export type AudioAnchorFrame = { t: "anchor"; a: number; p: 0 | 1 };
 export type AudioStatusFrame = { t: "status"; s: AudioStatus };
 export type AudioClientFrame = AudioPubFrame | AudioCfgFrame | AudioMetaFrame | AudioAnchorFrame | AudioStatusFrame;
 
-export type AudioReadyFrame = { t: "ready"; n?: number };
+export type AudioReadyFrame = { t: "ready"; n?: number; c?: number; v?: number };
 export type AudioCountFrame = { t: "n"; n: number };
 export type AudioErrorFrame = { t: "e"; m: string };
 export type AudioServerFrame = AudioReadyFrame | AudioCountFrame | AudioErrorFrame;
@@ -54,7 +82,10 @@ export function parseAudioServerFrame(raw: string): AudioServerFrame | null {
   switch (frame.t) {
     case "ready": {
       if (frame.n !== undefined && typeof frame.n !== "number") return null;
-      return { t: "ready", n: frame.n as number | undefined };
+      const ready: AudioReadyFrame = { t: "ready", n: frame.n as number | undefined };
+      if (typeof frame.c === "number" && Number.isFinite(frame.c)) ready.c = frame.c;
+      if (typeof frame.v === "number" && Number.isFinite(frame.v)) ready.v = frame.v;
+      return ready;
     }
     case "n": {
       if (typeof frame.n !== "number" || !Number.isFinite(frame.n)) return null;

@@ -111,7 +111,7 @@ export async function fetchState(host: string, port: number, token: string) {
   const response = await request(`${baseUrl(host, port)}/api/v1/state`, { headers: { Authorization: token } }, REQUEST_TIMEOUT_MS);
   const receivedAt = Date.now();
 
-  if (response.status === 401) throw new ListenAlongError("Host revoked access - pair again");
+  if (response.status === 401) throw new ListenAlongError("The host revoked access. Pair again.");
   if (response.status === 429) return null;
   if (!response.ok) throw new ListenAlongError(`Host returned ${response.status}`);
 

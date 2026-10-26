@@ -10,6 +10,7 @@ export type Sample = {
   // measured one way latency so both sides can be projected onto the same
   // timeline.
   asOfMs: number;
+  anchored?: boolean;
 };
 
 export type SyncPhase = "idle" | "loading" | "synced" | "suspended";

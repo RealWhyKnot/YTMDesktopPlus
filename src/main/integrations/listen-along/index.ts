@@ -6,7 +6,7 @@ import type { Socket } from "socket.io-client";
 import IIntegration from "../integration";
 import MemoryStore from "../../memory-store";
 import playerStateStore, { type PlayerState } from "../../player-state-store";
-import { cueTrack, sendPlaybackCommand } from "../../playback";
+import { cancelCue, cueTrack, sendPlaybackCommand } from "../../playback";
 import type { ListenAlongStatus, MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
 import { ListenAlongError, connectRealtime, fetchState, pair, sampleFromRemoteState } from "./client";
 import { FollowerEngine, type FollowerPhaseEvent } from "./follower-engine";
@@ -24,12 +24,14 @@ export default class ListenAlong implements IIntegration {
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private connectionAttempts = 0;
   private oneWayMs = 0;
+  private connectGeneration = 0;
 
   private engine = new FollowerEngine({
     cueTrack: request => cueTrack(request),
     sendCommand: (command, value) => sendPlaybackCommand(command, value),
     onPhase: event => this.onEnginePhase(event),
-    now: () => Date.now()
+    now: () => Date.now(),
+    cancelCue: () => cancelCue()
   });
 
   public provide(store: Conf<StoreSchema>, memoryStore: MemoryStore<MemoryStoreSchema>): void {
@@ -121,14 +123,18 @@ export default class ListenAlong implements IIntegration {
     this.engine.updateRemote(sampleFromRemoteState(state, Date.now() - this.oneWayMs));
   }
 
+  private closeSocket() {
+    if (!this.socket) return;
+    this.socket.removeAllListeners();
+    this.socket.disconnect();
+    this.socket = null;
+  }
+
   private disconnect() {
+    this.connectGeneration++;
     if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
     this.reconnectTimeout = null;
-    if (this.socket) {
-      this.socket.removeAllListeners();
-      this.socket.disconnect();
-      this.socket = null;
-    }
+    this.closeSocket();
     this.engine.clearRemote();
   }
 
@@ -146,6 +152,10 @@ export default class ListenAlong implements IIntegration {
 
   private async connect() {
     if (!this.enabled) return;
+    const generation = ++this.connectGeneration;
+    if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
+    this.reconnectTimeout = null;
+    this.closeSocket();
 
     const { host, port } = this.target();
     const token = this.readToken();
@@ -157,12 +167,13 @@ export default class ListenAlong implements IIntegration {
     this.setStatus("connecting");
     try {
       const seed = await fetchState(host, port, token);
-      if (!this.enabled) return;
+      if (!this.enabled || generation !== this.connectGeneration) return;
       if (seed) {
         this.oneWayMs = seed.oneWayMs;
         this.engine.updateRemote(seed.sample);
       }
     } catch (error) {
+      if (!this.enabled || generation !== this.connectGeneration) return;
       const detail = error instanceof ListenAlongError ? error.detail : "Could not reach the host";
       // A revoked token will never start working again on its own.
       if (detail.includes("revoked")) {
@@ -174,21 +185,26 @@ export default class ListenAlong implements IIntegration {
       return;
     }
 
+    const current = () => this.enabled && generation === this.connectGeneration;
     this.socket = connectRealtime(host, port, token, {
-      onState: state => this.onRemoteState(state),
+      onState: state => {
+        if (current()) this.onRemoteState(state);
+      },
       onDisconnect: () => {
-        if (!this.enabled) return;
+        if (!current()) return;
         // Keep playing: silence is worse than drift.
         this.setStatus("connecting", "Lost contact with the host");
         this.scheduleReconnect();
       },
       onAuthFailure: () => {
+        if (!current()) return;
         this.disconnect();
-        this.setStatus("failed", "Host revoked access - pair again");
+        this.setStatus("failed", "The host revoked access. Pair again.");
       }
     });
 
     this.socket.on("connect", () => {
+      if (!current()) return;
       this.connectionAttempts = 0;
       this.setStatus("connected");
       this.engine.kick();

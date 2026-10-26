@@ -10,6 +10,8 @@
 export const RELAY_URL = "wss://ytmdesktopplus.com/relay";
 export const SHARE_URL_BASE = "https://ytmdesktopplus.com/r/";
 
+export const RELAY_PROTOCOL_VERSION = 1;
+
 export const ROLE_LISTENER = 0;
 export const ROLE_CONTROLLER = 1;
 export type RoomRole = typeof ROLE_LISTENER | typeof ROLE_CONTROLLER;
@@ -62,7 +64,7 @@ export function encodeClientFrame(frame: RoomClientFrame): string {
 export type RoomMember = { u: string; r: RoomRole; d?: string };
 
 export type RoomServerFrame =
-  | { t: "r"; r: string; k?: string; u: string; role: RoomRole; n: number; c: number }
+  | { t: "r"; r: string; k?: string; u: string; role: RoomRole; n: number; c: number; v?: number }
   | { t: "s"; v: string; a: number; p: 0 | 1; c: number }
   | { t: "m"; members: RoomMember[]; h?: string }
   | { t: "role"; r: RoomRole }
@@ -98,7 +100,18 @@ export function parseServerFrame(raw: string): RoomServerFrame | null {
       if (frame.k !== undefined && !HOST_KEY_PATTERN.test(String(frame.k))) return null;
       if (typeof frame.u !== "string" || !MEMBER_ID_PATTERN.test(frame.u)) return null;
       if (!isRole(frame.role) || !isFiniteNumber(frame.n) || !isFiniteNumber(frame.c)) return null;
-      return { t: "r", r: frame.r, k: frame.k as string | undefined, u: frame.u, role: frame.role, n: frame.n, c: frame.c };
+      if (frame.v !== undefined && !isFiniteNumber(frame.v)) return null;
+      const ready: Extract<RoomServerFrame, { t: "r" }> = {
+        t: "r",
+        r: frame.r,
+        k: frame.k as string | undefined,
+        u: frame.u,
+        role: frame.role,
+        n: frame.n,
+        c: frame.c
+      };
+      if (isFiniteNumber(frame.v)) ready.v = frame.v;
+      return ready;
     }
     case "s": {
       if (typeof frame.v !== "string" || !VIDEO_ID_PATTERN.test(frame.v)) return null;
@@ -117,10 +130,12 @@ export function parseServerFrame(raw: string): RoomServerFrame | null {
         if (!isRole(raw.r)) return null;
         if (raw.d !== undefined && typeof raw.d !== "string") return null;
         const member: RoomMember = { u: raw.u, r: raw.r };
-        if (typeof raw.d === "string") member.d = raw.d;
+        const name = sanitizeDisplayName(raw.d);
+        if (name !== undefined) member.d = name;
         members.push(member);
       }
-      return frame.h !== undefined ? { t: "m", members, h: frame.h as string } : { t: "m", members };
+      const hostName = sanitizeDisplayName(frame.h);
+      return hostName !== undefined ? { t: "m", members, h: hostName } : { t: "m", members };
     }
     case "role": {
       if (!isRole(frame.r)) return null;
@@ -170,6 +185,32 @@ export function anchorFrameFrom(videoId: string, progressSeconds: number, playin
   return { t: "s", v: videoId, a: progressSeconds * 1000, p: 0 };
 }
 
+const CLOCK_SAMPLES = 8;
+const CLOCK_SAMPLE_MAX_AGE_MS = 30 * 60_000;
+
+export class ClockOffsetEstimator {
+  private samples: { offsetMs: number; rttMs: number; atMs: number }[] = [];
+
+  add(serverMs: number, sentAtMs: number, receivedAtMs: number) {
+    const rttMs = Math.max(0, receivedAtMs - sentAtMs);
+    const offsetMs = serverMs - (sentAtMs + receivedAtMs) / 2;
+    const fresh = this.samples.filter(sample => receivedAtMs - sample.atMs <= CLOCK_SAMPLE_MAX_AGE_MS);
+    this.samples = [...fresh, { offsetMs, rttMs, atMs: receivedAtMs }].slice(-CLOCK_SAMPLES);
+  }
+
+  get offsetMs(): number | null {
+    let best: { offsetMs: number; rttMs: number } | null = null;
+    for (const sample of this.samples) {
+      if (!best || sample.rttMs <= best.rttMs) best = sample;
+    }
+    return best ? best.offsetMs : null;
+  }
+
+  reset() {
+    this.samples = [];
+  }
+}
+
 // The relay closes the socket right after these; anything else leaves it open.
 const FATAL_RELAY_ERRORS = new Set(["too many connections", "server busy", "no such room", "room full", "room unavailable", "room closed"]);
 
@@ -192,6 +233,8 @@ export type RoomPhase = "idle" | "connecting" | "hosting" | "listening" | "faile
 
 export type RoomMemberView = { id: string; name: string | null; role: RoomRole };
 
+export type AudioIssue = "retrying" | "stopped" | "outdated";
+
 export type RoomSnapshot = {
   phase: RoomPhase;
   roomId: string | null;
@@ -208,6 +251,7 @@ export type RoomSnapshot = {
   // Live audio for browser listeners, host side only.
   audioStreaming: boolean;
   webListenerCount: number;
+  audioIssue: AudioIssue | null;
 };
 
 export function isRoomLive(snapshot: RoomSnapshot | null): boolean {

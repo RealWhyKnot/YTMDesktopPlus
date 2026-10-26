@@ -1,5 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { RoomSession, type RelayTransport, type RoomSnapshot } from "../src/main/integrations/listen-along/room-session";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  ANCHOR_REFRESH_MS,
+  OUTDATED_APP_ERROR,
+  ROOM_RETURN_GRACE_MS,
+  RoomSession,
+  type RelayTransport,
+  type RoomSnapshot
+} from "../src/main/integrations/listen-along/room-session";
 import type { RelayHandlers } from "../src/main/integrations/listen-along/relay-client";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
 import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
@@ -18,6 +25,8 @@ function makeHarness() {
   const sentFrames: unknown[] = [];
   const commands: Array<[string, unknown]> = [];
   const cues: Array<{ videoId: string }> = [];
+  const cancelCue = vi.fn();
+  let cueResult: Promise<"seeked"> = Promise.resolve("seeked");
   const snapshots: RoomSnapshot[] = [];
   const logs: string[] = [];
   const clients: Array<{ handlers: RelayHandlers; roomId: string | null; connected: boolean; closed: boolean }> = [];
@@ -40,8 +49,9 @@ function makeHarness() {
     },
     cueTrack: request => {
       cues.push({ videoId: request.videoId });
-      return Promise.resolve("seeked");
+      return cueResult;
     },
+    cancelCue,
     sendCommand: (command, value) => commands.push([command, value]),
     publish: snapshot => snapshots.push(snapshot),
     getPlayerState: () => playerState(null, VideoState.Unknown),
@@ -55,8 +65,18 @@ function makeHarness() {
     sentFrames,
     commands,
     cues,
+    cancelCue,
+    holdCues() {
+      cueResult = new Promise(() => {});
+    },
     snapshots,
     clients,
+    now() {
+      return nowMs;
+    },
+    states() {
+      return sentFrames.filter(frame => (frame as { t: string }).t === "s") as Array<{ t: "s"; v: string; a: number; p: 0 | 1 }>;
+    },
     advance(ms: number) {
       nowMs += ms;
     },
@@ -78,6 +98,11 @@ describe("RoomSession hosting", () => {
     h = makeHarness();
     h.session.host("DJ");
     h.current().handlers.onOpen();
+  });
+
+  afterEach(() => {
+    h.session.destroy();
+    vi.useRealTimers();
   });
 
   it("creates a room with the display name and reports the share link", () => {
@@ -158,34 +183,6 @@ describe("RoomSession hosting", () => {
     vi.useRealTimers();
   });
 
-  for (const refusal of ["reclaim that room on the node that owns it", "cannot reclaim room"]) {
-    it(`opens a new room when the relay answers "${refusal}"`, () => {
-      vi.useFakeTimers();
-      h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 2, c: 1 });
-      h.session.setAudioStreamState(true, 2);
-      h.current().handlers.onClose();
-      vi.advanceTimersByTime(1000);
-      h.current().handlers.onOpen();
-      h.current().handlers.onFrame({ t: "e", m: refusal });
-
-      expect(h.lastSnapshot().phase).toBe("connecting");
-      expect(h.lastSnapshot().roomId).toBeNull();
-      expect(h.lastSnapshot().error).toBeNull();
-      expect(h.lastSnapshot().webListenerCount).toBe(0);
-      expect(h.lastSnapshot().audioStreaming).toBe(false);
-      expect(h.clients).toHaveLength(3);
-      expect(h.clients[1].closed).toBe(true);
-      expect(h.current().roomId).toBeNull();
-
-      h.current().handlers.onOpen();
-      expect(h.sentFrames[h.sentFrames.length - 1]).toEqual({ t: "h", d: "DJ" });
-      h.current().handlers.onFrame({ t: "r", r: "bcdefghj", k: HOST_KEY, u: "bcdefg", role: 0, n: 0, c: 1 });
-      expect(h.lastSnapshot().phase).toBe("hosting");
-      expect(h.lastSnapshot().shareUrl).toBe("https://ytmdesktopplus.com/r/bcdefghj");
-      vi.useRealTimers();
-    });
-  }
-
   it("adopts a fresh room the relay hands back for a reclaim and drops the old room's people", () => {
     vi.useFakeTimers();
     h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 1, c: 1 });
@@ -256,7 +253,7 @@ describe("RoomSession hosting", () => {
     h.current().handlers.onClose();
     vi.advanceTimersByTime(1000);
     h.current().handlers.onOpen();
-    h.current().handlers.onFrame({ t: "e", m: "reclaim that room on the node that owns it" });
+    h.current().handlers.onFrame({ t: "r", r: "bcdefghj", k: "e".repeat(32), u: "bcdefg", role: 0, n: 0, c: 1 });
     vi.useRealTimers();
 
     expect(h.logs).toEqual([
@@ -264,7 +261,8 @@ describe("RoomSession hosting", () => {
       "Room hosting",
       "Room connection closed: unknown",
       "Room connecting",
-      "Room could not be reclaimed (reclaim that room on the node that owns it), opening a new one"
+      "Room could not be reclaimed, the relay opened a new one",
+      "Room hosting"
     ]);
     for (const line of h.logs) {
       expect(line).not.toContain("abcdefgh");
@@ -287,6 +285,98 @@ describe("RoomSession hosting", () => {
   it("takes the count from the welcome frame", () => {
     h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 4, c: 1 });
     expect(h.lastSnapshot().listenerCount).toBe(4);
+  });
+
+  it("stamps anchors in server time, measured across the hello round trip", () => {
+    const helloAt = h.now();
+    h.advance(200);
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 0, c: helloAt + 100 + 5_000 });
+    h.session.updateLocalState(playerState("dQw4w9WgXcQ", VideoState.Playing, 10));
+
+    expect(h.session.serverClockOffsetMs).toBe(5_000);
+    expect(h.states().at(-1)).toEqual({ t: "s", v: "dQw4w9WgXcQ", a: h.now() + 5_000 - 10_000, p: 1 });
+  });
+
+  it("keeps the clock offset from the quickest round trip", () => {
+    vi.useFakeTimers();
+    const welcome = (rttMs: number, offsetMs: number) => {
+      h.current().handlers.onOpen();
+      const sentAt = h.now();
+      h.advance(rttMs);
+      h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 0, c: sentAt + rttMs / 2 + offsetMs });
+    };
+    const reconnect = () => {
+      h.current().handlers.onClose();
+      vi.advanceTimersByTime(1000);
+    };
+
+    welcome(200, 5_000);
+    expect(h.session.serverClockOffsetMs).toBe(5_000);
+    reconnect();
+    welcome(2_000, 6_000);
+    expect(h.session.serverClockOffsetMs).toBe(5_000);
+    reconnect();
+    welcome(40, 5_200);
+    expect(h.session.serverClockOffsetMs).toBe(5_200);
+  });
+
+  it("has no server clock until the relay has answered", () => {
+    expect(h.session.serverClockOffsetMs).toBeNull();
+  });
+
+  it("repeats its anchor every 30s while hosting, and stops once the connection drops", () => {
+    vi.useFakeTimers();
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+    h.session.updateLocalState(playerState("dQw4w9WgXcQ", VideoState.Playing, 10));
+    expect(h.states()).toHaveLength(1);
+
+    vi.advanceTimersByTime(ANCHOR_REFRESH_MS);
+    expect(h.states()).toHaveLength(2);
+    expect(h.states()[1]).toEqual(h.states()[0]);
+
+    h.current().handlers.onClose();
+    vi.advanceTimersByTime(ANCHOR_REFRESH_MS - 1000);
+    expect(h.states()).toHaveLength(2);
+  });
+
+  it("fails with a clear message when a newer relay rejects its frames", () => {
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 0, c: 1, v: 2 });
+
+    h.current().handlers.onFrame({ t: "e", m: "bad frame" });
+
+    expect(h.lastSnapshot().phase).toBe("failed");
+    expect(h.lastSnapshot().error).toBe(OUTDATED_APP_ERROR);
+    expect(h.current().closed).toBe(true);
+  });
+
+  it("shows a bad frame from a relay on its own version without giving up", () => {
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 0, c: 1, v: 1 });
+
+    h.current().handlers.onFrame({ t: "e", m: "bad frame" });
+
+    expect(h.lastSnapshot().phase).toBe("hosting");
+    expect(h.current().closed).toBe(false);
+  });
+
+  it("redials at once when told to, keeping the room", () => {
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+
+    h.session.reconnectNow();
+
+    expect(h.clients).toHaveLength(2);
+    expect(h.clients[0].closed).toBe(true);
+    expect(h.current().roomId).toBe("abcdefgh");
+    expect(h.lastSnapshot().phase).toBe("connecting");
+    h.current().handlers.onOpen();
+    expect(h.sentFrames.at(-1)).toEqual({ t: "h", r: "abcdefgh", k: HOST_KEY, d: "DJ" });
+  });
+
+  it("carries the audio issue in the snapshot", () => {
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", k: HOST_KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+    h.session.setAudioStreamState(false, 0, "retrying");
+    expect(h.lastSnapshot().audioIssue).toBe("retrying");
+    h.session.setAudioStreamState(true, 1, null);
+    expect(h.lastSnapshot().audioIssue).toBeNull();
   });
 });
 
@@ -346,6 +436,71 @@ describe("RoomSession listening", () => {
     vi.advanceTimersByTime(60_000);
     expect(h.clients).toHaveLength(1);
     vi.useRealTimers();
+  });
+
+  it("fails at once when the room does not exist on the first join", () => {
+    h.current().handlers.onFrame({ t: "e", m: "no such room" });
+    expect(h.lastSnapshot().phase).toBe("failed");
+    expect(h.lastSnapshot().error).toBe("no such room");
+  });
+
+  it("waits up to 30s for a room it was already in to come back", () => {
+    vi.useFakeTimers();
+    try {
+      const wait = (ms: number) => {
+        h.advance(ms);
+        vi.advanceTimersByTime(ms);
+      };
+      h.current().handlers.onFrame({ t: "r", r: "abcdefgh", u: "aaaaaa", role: 0, n: 1, c: 1 });
+      h.current().handlers.onClose();
+      wait(1000);
+      h.current().handlers.onOpen();
+      h.current().handlers.onFrame({ t: "e", m: "no such room" });
+
+      expect(h.lastSnapshot().phase).toBe("connecting");
+      expect(h.clients[1].closed).toBe(true);
+      wait(2000);
+      expect(h.clients).toHaveLength(3);
+      h.current().handlers.onOpen();
+      h.current().handlers.onFrame({ t: "r", r: "abcdefgh", u: "aaaaaa", role: 0, n: 1, c: 1 });
+      expect(h.lastSnapshot().phase).toBe("listening");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives up on a room that stays gone past the grace period", () => {
+    vi.useFakeTimers();
+    try {
+      h.current().handlers.onFrame({ t: "r", r: "abcdefgh", u: "aaaaaa", role: 0, n: 1, c: 1 });
+      h.current().handlers.onClose();
+      vi.advanceTimersByTime(1000);
+      h.current().handlers.onOpen();
+      h.current().handlers.onFrame({ t: "e", m: "no such room" });
+
+      h.advance(ROOM_RETURN_GRACE_MS);
+      vi.runOnlyPendingTimers();
+      h.current().handlers.onOpen();
+      h.current().handlers.onFrame({ t: "e", m: "no such room" });
+
+      expect(h.lastSnapshot().phase).toBe("failed");
+      expect(h.lastSnapshot().error).toBe("no such room");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels its own pending track cue when it leaves", () => {
+    h.holdCues();
+    h.current().handlers.onFrame({ t: "r", r: "abcdefgh", u: "aaaaaa", role: 0, n: 1, c: 1_754_236_800_000 });
+    h.session.updateLocalState(playerState("localvideo1", VideoState.Playing, 5));
+    h.advance(300);
+    h.current().handlers.onFrame({ t: "s", v: "dQw4w9WgXcQ", a: 1_754_236_800_000 - 42_000, p: 1, c: 1_754_236_800_300 });
+    expect(h.cues).toHaveLength(1);
+
+    h.session.leave();
+
+    expect(h.cancelCue).toHaveBeenCalledTimes(1);
   });
 
   it("leave resets to idle and tells the relay", () => {

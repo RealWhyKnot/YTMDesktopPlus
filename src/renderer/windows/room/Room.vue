@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { otherListenerCount, type RoomSnapshot } from "~shared/room-protocol";
+import { otherListenerCount, type AudioIssue, type RoomSnapshot } from "~shared/room-protocol";
 
 const memoryStore = window.ytmd.memoryStore;
 const store = window.ytmd.store;
@@ -19,6 +19,14 @@ const joinInput = ref<string>(joinPrompt.value ?? "");
 const trackInput = ref<string>("");
 const seekInput = ref<string>("");
 const copied = ref(false);
+const showAllMembers = ref(false);
+
+const MEMBER_PREVIEW = 8;
+const AUDIO_ISSUE_TEXT: Record<AudioIssue, string> = {
+  retrying: "Audio to the web stopped. Trying again soon.",
+  stopped: "Audio to the web stopped. Turn streaming off and back on in Settings to try again.",
+  outdated: "Streaming audio to the web needs a newer version of the app"
+};
 
 memoryStore.onStateChanged(newState => {
   const memory = roomsMemory(newState.addonMemory);
@@ -36,6 +44,15 @@ const isController = computed(() => snapshot.value?.isHost || snapshot.value?.ro
 const pendingInvite = computed(() => (joinPrompt.value && joinPrompt.value !== snapshot.value?.roomId ? joinPrompt.value : null));
 const listenerTotal = computed(() => otherListenerCount(snapshot.value) + 1);
 const webListeners = computed(() => snapshot.value?.webListenerCount ?? 0);
+const audioIssueText = computed(() => (snapshot.value?.isHost && snapshot.value.audioIssue ? AUDIO_ISSUE_TEXT[snapshot.value.audioIssue] : null));
+
+const members = computed(() => snapshot.value?.members ?? []);
+const visibleMembers = computed(() => {
+  if (showAllMembers.value || members.value.length <= MEMBER_PREVIEW) return members.value;
+  const preview = members.value.slice(0, MEMBER_PREVIEW);
+  const you = members.value.find(member => member.id === snapshot.value?.memberId);
+  return you && !preview.includes(you) ? [...preview.slice(0, MEMBER_PREVIEW - 1), you] : preview;
+});
 
 const joinCode = computed(() => {
   const match = /([abcdefghjkmnpqrstuvwxyz23456789]{8})\s*$/.exec(joinInput.value.trim());
@@ -139,7 +156,7 @@ function memberLabel(name: string | null, id: string) {
 
       <div class="card">
         <p class="card-title"><span class="material-symbols-outlined">group_add</span>Join a room</p>
-        <input v-model="joinInput" class="text-input" type="text" placeholder="Room link or 8 letter code" />
+        <input v-model="joinInput" class="text-input" type="text" maxlength="200" placeholder="Room link or 8 letter code" />
         <button class="primary" :disabled="!canSubmitName || !joinCode" @click="joinRoom">Join</button>
       </div>
     </div>
@@ -171,7 +188,7 @@ function memberLabel(name: string | null, id: string) {
           </button>
         </div>
         <p class="room-subtitle">
-          {{ snapshot?.isHost ? "You are hosting" : `Following ${snapshot?.hostName ?? "the host"}` }}
+          <span class="room-subtitle-text">{{ snapshot?.isHost ? "You are hosting" : `Following ${snapshot?.hostName ?? "the host"}` }}</span>
           <span class="listener-count"><span class="material-symbols-outlined">headphones</span>{{ listenerTotal }}</span>
         </p>
       </div>
@@ -180,6 +197,8 @@ function memberLabel(name: string | null, id: string) {
         <span class="live-dot"></span>
         <span>Streaming audio to the web{{ snapshot?.webListenerCount ? ` for ${snapshot.webListenerCount} listening in a browser` : "" }}</span>
       </div>
+
+      <div v-if="audioIssueText" class="notice audio-issue">{{ audioIssueText }}</div>
 
       <div v-if="snapshot?.error" class="notice">{{ snapshot.error }}</div>
 
@@ -191,12 +210,14 @@ function memberLabel(name: string | null, id: string) {
       <div class="members">
         <p class="section-title">In this room</p>
         <div class="member">
-          <span class="member-name">{{ snapshot?.isHost ? displayName || "You" : (snapshot?.hostName ?? "Host") }}</span>
+          <span class="member-label"
+            ><span class="member-name">{{ snapshot?.isHost ? displayName || "You" : (snapshot?.hostName ?? "Host") }}</span></span
+          >
           <span class="badge host-badge">Host</span>
         </div>
-        <div v-for="member in snapshot?.members ?? []" :key="member.id" class="member">
-          <span class="member-name">
-            {{ memberLabel(member.name, member.id) }}
+        <div v-for="member in visibleMembers" :key="member.id" class="member">
+          <span class="member-label">
+            <span class="member-name">{{ memberLabel(member.name, member.id) }}</span>
             <span v-if="member.id === snapshot?.memberId" class="you-tag">you</span>
           </span>
           <span v-if="member.role === 1" class="badge controller-badge">Controller</span>
@@ -206,10 +227,15 @@ function memberLabel(name: string | null, id: string) {
           </template>
         </div>
         <div v-if="webListeners > 0" class="member">
-          <span class="member-name">{{ webListeners === 1 ? "1 listener in a browser" : `${webListeners} listeners in a browser` }}</span>
+          <span class="member-label"
+            ><span class="member-name">{{ webListeners === 1 ? "1 listener in a browser" : `${webListeners} listeners in a browser` }}</span></span
+          >
           <span class="badge web-badge">Web</span>
         </div>
-        <p v-if="(snapshot?.members ?? []).length === 0 && webListeners === 0" class="empty">Nobody else yet. Share the link to invite people.</p>
+        <button v-if="members.length > MEMBER_PREVIEW" class="subtle small show-all" @click="showAllMembers = !showAllMembers">
+          {{ showAllMembers ? "Show fewer" : `Show all ${members.length}` }}
+        </button>
+        <p v-if="members.length === 0 && webListeners === 0" class="empty">Nobody else yet. Share the link to invite people.</p>
       </div>
 
       <div v-if="!snapshot?.isHost && isController" class="controls">
@@ -221,11 +247,11 @@ function memberLabel(name: string | null, id: string) {
           <button class="icon-button" title="Next" @click="control('next')"><span class="material-symbols-outlined">skip_next</span></button>
         </div>
         <div class="inline-field">
-          <input v-model="seekInput" class="text-input" type="text" placeholder="Seek to mm:ss" @keyup.enter="sendSeek" />
+          <input v-model="seekInput" class="text-input" type="text" maxlength="9" placeholder="Seek to mm:ss" @keyup.enter="sendSeek" />
           <button class="subtle small" @click="sendSeek">Seek</button>
         </div>
         <div class="inline-field">
-          <input v-model="trackInput" class="text-input" type="text" placeholder="Play a track (YTM link or id)" @keyup.enter="sendTrack" />
+          <input v-model="trackInput" class="text-input" type="text" maxlength="300" placeholder="Play a track (YTM link or id)" @keyup.enter="sendTrack" />
           <button class="subtle small" @click="sendTrack">Play</button>
         </div>
       </div>
@@ -354,6 +380,12 @@ button:disabled {
   color: var(--text-muted);
 }
 
+.status-screen p {
+  max-width: 100%;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
 .spinning {
   animation: rotation 1s infinite linear;
   font-size: 32px;
@@ -414,9 +446,18 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+.room-subtitle-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .listener-count {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -435,6 +476,7 @@ button:disabled {
   padding: 8px 10px;
   color: var(--text-muted);
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .notice.suspended {
@@ -442,6 +484,11 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.notice.suspended button {
+  flex-shrink: 0;
+  overflow-wrap: normal;
 }
 
 .notice.streaming {
@@ -467,17 +514,29 @@ button:disabled {
   border-bottom: 1px solid var(--border);
 }
 
-.member-name {
+.member-label {
   flex-grow: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+}
+
+.member-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .you-tag {
+  flex-shrink: 0;
   color: var(--text-faint);
   font-size: 12px;
   margin-left: 4px;
+}
+
+.show-all {
+  margin-top: 8px;
 }
 
 .badge {

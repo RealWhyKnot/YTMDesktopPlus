@@ -9,6 +9,8 @@ import { RoomSession } from "../../../main/integrations/listen-along/room-sessio
 import { registerRoomIpc } from "./ipc";
 import { mediaHost } from "../../../main/media/media-host";
 import { AudioUplink, forkAudioUplink } from "../../../main/media/audio-uplink";
+import { onSystemResume } from "../../../main/integrations/listen-along/system-resume";
+import { cancelCue } from "../../../main/playback";
 
 // Listen Along rooms as a bundled addon: hosting and joining relay rooms, the
 // audio stream to browser listeners, the automatic room that follows Discord
@@ -110,7 +112,8 @@ const roomsAddon: BundledAddonDefinition = {
       },
       getPlayerState: () => ctx.player.getState(),
       now: () => Date.now(),
-      log: message => ctx.log.info(message)
+      log: message => ctx.log.info(message),
+      cancelCue: () => cancelCue()
     });
     ctx.memory.set("room", roomSession.snapshot);
 
@@ -119,19 +122,30 @@ const roomsAddon: BundledAddonDefinition = {
       fork: forkAudioUplink,
       connectMediaHost: send => mediaHost.connectUplink(send),
       setCapture: on => (on ? audioStreamCapture.enable() : audioStreamCapture.disable()),
-      onUpdate: ({ streaming, webListeners }) => {
+      onUpdate: ({ streaming, webListeners, issue }) => {
         audioStreamCapture.setListening(streaming && webListeners > 0);
-        roomSession.setAudioStreamState(streaming, webListeners);
+        roomSession.setAudioStreamState(streaming, webListeners, issue);
       },
       now: () => Date.now(),
       log: (message, ...args) => ctx.log.info(message, ...args)
     });
 
     // Idempotent: called on every room snapshot and on the toggle changing.
+    let wasHosting = false;
     function syncAudioUplink() {
       const enabled = ctx.settings.get<boolean>("audioStreamEnabled");
+      audioUplink.setClockOffset(roomSession.serverClockOffsetMs);
       audioUplink.setCredentials(enabled ? roomSession.hostCredentials : null);
+      const hosting = roomSession.snapshot.phase === "hosting";
+      if (hosting && !wasHosting) audioUplink.rearm();
+      wasHosting = hosting;
     }
+
+    const stopResumeWatch = onSystemResume(() => {
+      ctx.log.info("System resumed, reconnecting the room");
+      roomSession.reconnectNow();
+      audioUplink.reconnectNow();
+    });
 
     // While Discord presence is shared, a room exists without being started,
     // so the presence link always has somewhere to land.
@@ -226,6 +240,7 @@ const roomsAddon: BundledAddonDefinition = {
 
     return {
       destroy() {
+        stopResumeWatch();
         autoRoom.dispose();
         roomSession.leave();
         windowHandle?.close();

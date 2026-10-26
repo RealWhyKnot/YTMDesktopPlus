@@ -159,6 +159,17 @@ describe("decide", () => {
     expect(kinds(result)).toEqual([]);
   });
 
+  it("keeps correcting against a room anchor however long ago it arrived", () => {
+    const result = decide(
+      context({
+        remote: sample({ progress: 120, asOfMs: NOW - 30000, anchored: true }),
+        local: sample({ progress: 60 }),
+        lastRemoteUpdateMs: NOW - 30000
+      })
+    );
+    expect(kinds(result)).toEqual(["seek"]);
+  });
+
   it("navigates when the host changes track", () => {
     const result = decide(
       context({

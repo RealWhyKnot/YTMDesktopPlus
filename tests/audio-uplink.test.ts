@@ -2,7 +2,16 @@ import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import type { MessagePortMain } from "electron";
 
-import { AudioUplink, slimState, type AudioUplinkDeps, type UplinkProcess } from "../src/main/media/audio-uplink";
+import {
+  AudioUplink,
+  CAPTURE_RETRY_MS,
+  HEALTHY_STREAM_MS,
+  MAX_CAPTURE_RETRIES,
+  RELAY_REARM_MS,
+  slimState,
+  type AudioUplinkDeps,
+  type UplinkProcess
+} from "../src/main/media/audio-uplink";
 import { cleanAudioPackets, createAudioUplinkService, type MediaPort, type UplinkCommand, type UplinkEvent } from "../src/main/services/audio-uplink";
 import type { AudioTransport, AudioTransportHandlers } from "../src/main/integrations/listen-along/audio-publisher";
 import type { AudioClientFrame } from "../src/shared/audio-protocol";
@@ -146,7 +155,39 @@ describe("audio uplink service", () => {
 
     expect(s.events).toContainEqual({ t: "log", message: "audio publisher refused by the relay", args: ["bad key"] });
     expect(s.events).toContainEqual({ t: "capture", on: false });
-    expect(s.events.at(-1)).toEqual({ t: "update", streaming: false, webListeners: 0 });
+    expect(s.events).toContainEqual({ t: "update", streaming: false, webListeners: 0 });
+    expect(s.events.at(-1)).toEqual({ t: "fault", fault: "refused" });
+  });
+
+  it("tells main about a capture failure and starts again when main hands the credentials back", () => {
+    const s = service();
+    s.send({ t: "creds", creds: CREDS });
+    s.ready();
+
+    s.send({ t: "status", status: { error: "render process gone" } });
+    expect(s.events.at(-1)).toEqual({ t: "fault", fault: "capture" });
+    expect(s.transports).toHaveLength(1);
+
+    s.send({ t: "creds", creds: CREDS });
+    expect(s.transports).toHaveLength(2);
+    expect(s.events.at(-1)).toEqual({ t: "capture", on: true });
+  });
+
+  it("stamps anchors with the clock main sends and redials on request", () => {
+    const s = service();
+    s.send({ t: "clock", offsetMs: 60_000 });
+    s.send({ t: "creds", creds: CREDS });
+    s.ready();
+    const before = Date.now();
+    s.send({ t: "state", state: PLAYING });
+    const after = Date.now();
+
+    const anchor = s.relay().text.find(frame => frame.t === "anchor") as { a: number };
+    expect(anchor.a).toBeGreaterThanOrEqual(before + 60_000 - 10_000);
+    expect(anchor.a).toBeLessThanOrEqual(after + 60_000 - 10_000);
+
+    s.send({ t: "redial" });
+    expect(s.transports).toHaveLength(2);
   });
 });
 
@@ -215,10 +256,10 @@ describe("audio uplink process from main", () => {
     expect(p.deps.fork).not.toHaveBeenCalled();
 
     p.uplink.setCredentials(CREDS);
-    p.uplink.setCredentials(CREDS);
+    p.uplink.setCredentials({ ...CREDS });
 
     expect(p.deps.fork).toHaveBeenCalledTimes(1);
-    expect(p.processes[0].posted.map(entry => entry.message.t)).toEqual(["state", "status", "creds", "creds"]);
+    expect(p.processes[0].posted.map(entry => entry.message.t)).toEqual(["state", "status", "creds"]);
     expect(p.processes[0].posted[1].message).toEqual({ t: "status", status: { muted: true } });
     expect(p.processes[0].posted[2].message).toEqual({ t: "creds", creds: CREDS });
   });
@@ -255,7 +296,7 @@ describe("audio uplink process from main", () => {
     p.processes[0].emit({ t: "log", message: "audio capture failed", args: ["boom"] });
 
     expect(p.deps.setCapture).toHaveBeenCalledWith(true);
-    expect(p.deps.onUpdate).toHaveBeenCalledWith({ streaming: true, webListeners: 3 });
+    expect(p.deps.onUpdate).toHaveBeenCalledWith({ streaming: true, webListeners: 3, issue: null });
     expect(p.deps.log).toHaveBeenCalledWith("audio capture failed", "boom");
   });
 
@@ -336,7 +377,7 @@ describe("audio uplink process from main", () => {
     expect(p.deps.fork).toHaveBeenCalledTimes(3);
     expect(p.deps.setCapture).toHaveBeenCalledWith(false);
     expect(p.deps.onUpdate).toHaveBeenCalledTimes(1);
-    expect(p.deps.onUpdate).toHaveBeenCalledWith({ streaming: false, webListeners: 0 });
+    expect(p.deps.onUpdate).toHaveBeenCalledWith({ streaming: false, webListeners: 0, issue: "stopped" });
     expect(vi.mocked(p.deps.log).mock.calls.filter(([message]) => message.includes("room audio stopped"))).toHaveLength(1);
 
     p.uplink.setCredentials(CREDS);
@@ -358,5 +399,166 @@ describe("audio uplink process from main", () => {
 
     expect(p.deps.fork).toHaveBeenCalledTimes(5);
     expect(p.deps.setCapture).not.toHaveBeenCalled();
+  });
+});
+
+describe("audio uplink retries from main", () => {
+  function hosting() {
+    const p = proxy();
+    p.uplink.setCredentials(CREDS);
+    const child = p.processes[0];
+    const credsPosts = () => child.posted.filter(entry => entry.message.t === "creds").length;
+    const lastUpdate = () => vi.mocked(p.deps.onUpdate).mock.calls.at(-1)?.[0];
+    return { ...p, child, credsPosts, lastUpdate };
+  }
+
+  it("retries a failed capture on a growing delay and shows that it is retrying", () => {
+    vi.useFakeTimers();
+    try {
+      const h = hosting();
+
+      h.child.emit({ t: "fault", fault: "capture" });
+      expect(h.lastUpdate()).toEqual({ streaming: false, webListeners: 0, issue: "retrying" });
+      vi.advanceTimersByTime(CAPTURE_RETRY_MS[0] - 1);
+      expect(h.credsPosts()).toBe(1);
+      vi.advanceTimersByTime(1);
+      expect(h.credsPosts()).toBe(2);
+
+      h.child.emit({ t: "fault", fault: "capture" });
+      vi.advanceTimersByTime(CAPTURE_RETRY_MS[0]);
+      expect(h.credsPosts()).toBe(2);
+      vi.advanceTimersByTime(CAPTURE_RETRY_MS[1] - CAPTURE_RETRY_MS[0]);
+      expect(h.credsPosts()).toBe(3);
+
+      h.child.emit({ t: "update", streaming: true, webListeners: 1 });
+      expect(h.lastUpdate()).toEqual({ streaming: true, webListeners: 1, issue: null });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("goes back to the shortest delay after a stream that stayed up", () => {
+    vi.useFakeTimers();
+    try {
+      const h = hosting();
+      for (let i = 0; i < 3; i++) {
+        h.child.emit({ t: "fault", fault: "capture" });
+        vi.advanceTimersByTime(60_000);
+      }
+      const posted = h.credsPosts();
+
+      h.child.emit({ t: "update", streaming: true, webListeners: 0 });
+      h.advance(HEALTHY_STREAM_MS);
+      h.child.emit({ t: "update", streaming: false, webListeners: 0 });
+      h.child.emit({ t: "fault", fault: "capture" });
+      vi.advanceTimersByTime(CAPTURE_RETRY_MS[0]);
+
+      expect(h.credsPosts()).toBe(posted + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops retrying the capture after too many failures in a row and says so", () => {
+    vi.useFakeTimers();
+    try {
+      const h = hosting();
+      for (let i = 0; i < MAX_CAPTURE_RETRIES; i++) {
+        h.child.emit({ t: "fault", fault: "capture" });
+        vi.advanceTimersByTime(60_000);
+      }
+      const posted = h.credsPosts();
+
+      h.child.emit({ t: "fault", fault: "capture" });
+      vi.advanceTimersByTime(10 * 60_000);
+
+      expect(h.credsPosts()).toBe(posted);
+      expect(h.lastUpdate()).toEqual({ streaming: false, webListeners: 0, issue: "stopped" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("re-arms a publisher that gave up on the relay after a slow wait, or as soon as hosting is back", () => {
+    vi.useFakeTimers();
+    try {
+      const h = hosting();
+      h.child.emit({ t: "fault", fault: "relay" });
+      vi.advanceTimersByTime(RELAY_REARM_MS - 1);
+      expect(h.credsPosts()).toBe(1);
+      vi.advanceTimersByTime(1);
+      expect(h.credsPosts()).toBe(2);
+
+      h.child.emit({ t: "fault", fault: "refused" });
+      h.uplink.rearm();
+      expect(h.credsPosts()).toBe(3);
+      vi.advanceTimersByTime(RELAY_REARM_MS);
+      expect(h.credsPosts()).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not retry when the relay needs a newer app", () => {
+    vi.useFakeTimers();
+    try {
+      const h = hosting();
+      h.child.emit({ t: "fault", fault: "outdated" });
+      h.uplink.rearm();
+      vi.advanceTimersByTime(10 * 60_000);
+
+      expect(h.credsPosts()).toBe(1);
+      expect(h.lastUpdate()).toEqual({ streaming: false, webListeners: 0, issue: "outdated" });
+
+      h.uplink.setCredentials(null);
+      expect(h.lastUpdate()).toEqual({ streaming: false, webListeners: 0, issue: null });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops a pending retry when hosting ends", () => {
+    vi.useFakeTimers();
+    try {
+      const h = hosting();
+      h.child.emit({ t: "fault", fault: "capture" });
+      h.uplink.setCredentials(null);
+      vi.advanceTimersByTime(60_000);
+
+      expect(h.child.posted.filter(entry => entry.message.t === "creds").map(entry => entry.message)).toEqual([
+        { t: "creds", creds: CREDS },
+        { t: "creds", creds: null }
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("redials on resume, or fires a pending retry early", () => {
+    vi.useFakeTimers();
+    try {
+      const h = hosting();
+      h.uplink.reconnectNow();
+      expect(h.child.posted.at(-1)?.message).toEqual({ t: "redial" });
+
+      h.child.emit({ t: "fault", fault: "relay" });
+      h.uplink.reconnectNow();
+      expect(h.credsPosts()).toBe(2);
+      vi.advanceTimersByTime(RELAY_REARM_MS);
+      expect(h.credsPosts()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("forwards the room clock once per change and replays it to a restarted process", () => {
+    const h = hosting();
+    h.uplink.setClockOffset(1500);
+    h.uplink.setClockOffset(1500);
+    expect(h.child.posted.filter(entry => entry.message.t === "clock")).toHaveLength(1);
+
+    h.child.exit(1);
+
+    expect(h.processes[1].posted.map(entry => entry.message)).toContainEqual({ t: "clock", offsetMs: 1500 });
   });
 });

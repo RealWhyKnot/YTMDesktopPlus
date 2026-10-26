@@ -4,15 +4,24 @@ import {
   AudioRelayClient,
   type AudioCaptureStatus,
   type AudioCredentials,
+  type AudioFault,
   type AudioPublisherDeps,
   type UplinkState
 } from "../integrations/listen-along/audio-publisher";
 
 export type UplinkCommand =
-  { t: "creds"; creds: AudioCredentials | null } | { t: "state"; state: UplinkState } | { t: "status"; status: AudioCaptureStatus } | { t: "port" };
+  | { t: "creds"; creds: AudioCredentials | null }
+  | { t: "state"; state: UplinkState }
+  | { t: "status"; status: AudioCaptureStatus }
+  | { t: "port" }
+  | { t: "clock"; offsetMs: number | null }
+  | { t: "redial" };
 
 export type UplinkEvent =
-  { t: "capture"; on: boolean } | { t: "update"; streaming: boolean; webListeners: number } | { t: "log"; message: string; args: string[] };
+  | { t: "capture"; on: boolean }
+  | { t: "update"; streaming: boolean; webListeners: number }
+  | { t: "fault"; fault: AudioFault }
+  | { t: "log"; message: string; args: string[] };
 
 export type MediaPort = {
   on(event: "message", listener: (event: { data: unknown }) => void): unknown;
@@ -41,6 +50,7 @@ export function createAudioUplinkService(parent: ParentPort, createTransport: Au
     startCapture: () => parent.postMessage({ t: "capture", on: true }),
     stopCapture: () => parent.postMessage({ t: "capture", on: false }),
     onUpdate: ({ streaming, webListeners }) => parent.postMessage({ t: "update", streaming, webListeners }),
+    onFault: fault => parent.postMessage({ t: "fault", fault }),
     now: () => Date.now(),
     log: (message, ...args) => parent.postMessage({ t: "log", message, args: args.map(String) })
   });
@@ -62,6 +72,12 @@ export function createAudioUplinkService(parent: ParentPort, createTransport: Au
         return;
       case "status":
         publisher.handleCaptureStatus(data.status);
+        return;
+      case "clock":
+        publisher.setClockOffset(data.offsetMs);
+        return;
+      case "redial":
+        publisher.redial();
         return;
       case "port":
         media?.close();

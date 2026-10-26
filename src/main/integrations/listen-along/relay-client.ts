@@ -5,23 +5,55 @@ import { RELAY_URL, encodeClientFrame, parseServerFrame, type RoomClientFrame, t
 // Thin transport over the relay websocket. Reconnect policy lives in the
 // session; this only dials and frames.
 
+export const LIVENESS_TIMEOUT_MS = 45_000;
+
 export type RelayHandlers = {
   onOpen(): void;
   onFrame(frame: RoomServerFrame): void;
   onClose(detail?: string): void;
 };
 
+export type LiveSocket = Pick<WebSocket, "on" | "removeAllListeners" | "close" | "terminate" | "send" | "readyState" | "bufferedAmount">;
+
+export type SocketFactory = (url: string) => LiveSocket;
+
+export const openSocket: SocketFactory = url => new WebSocket(url);
+
 export function describeClose(code: number, reason: Buffer, failure: string): string {
   const text = reason.toString("utf8");
   return [String(code), text, failure && `(${failure})`].filter(Boolean).join(" ");
 }
 
+export function watchLiveness(socket: LiveSocket, onSilent: () => void, timeoutMs = LIVENESS_TIMEOUT_MS): () => void {
+  let timer: NodeJS.Timeout | null = null;
+  const stop = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+  };
+  const arm = () => {
+    stop();
+    timer = setTimeout(() => {
+      timer = null;
+      onSilent();
+    }, timeoutMs);
+  };
+  socket.on("open", arm);
+  socket.on("message", arm);
+  socket.on("ping", arm);
+  socket.on("pong", arm);
+  socket.on("close", stop);
+  arm();
+  return stop;
+}
+
 export class RelayClient {
-  private socket: WebSocket | null = null;
+  private socket: LiveSocket | null = null;
+  private stopWatch: (() => void) | null = null;
 
   constructor(
     private readonly handlers: RelayHandlers,
-    private readonly url: string = RELAY_URL
+    private readonly url: string = RELAY_URL,
+    private readonly createSocket: SocketFactory = openSocket
   ) {}
 
   get isOpen(): boolean {
@@ -31,7 +63,7 @@ export class RelayClient {
   connect() {
     this.close();
 
-    const socket = new WebSocket(this.url);
+    const socket = this.createSocket(this.url);
     this.socket = socket;
 
     socket.on("open", () => this.handlers.onOpen());
@@ -47,6 +79,10 @@ export class RelayClient {
     socket.on("error", error => {
       failure = error.message;
     });
+    this.stopWatch = watchLiveness(socket, () => {
+      failure = `no traffic for ${LIVENESS_TIMEOUT_MS / 1000}s`;
+      socket.terminate();
+    });
   }
 
   send(frame: RoomClientFrame) {
@@ -56,6 +92,8 @@ export class RelayClient {
   }
 
   close() {
+    this.stopWatch?.();
+    this.stopWatch = null;
     const socket = this.socket;
     if (!socket) return;
     this.socket = null;

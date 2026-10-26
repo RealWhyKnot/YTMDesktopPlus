@@ -7,9 +7,28 @@ import { fakeAddonContext, makePlayerState } from "./helpers/fake-addon-context"
 
 const uplink = vi.hoisted(() => ({
   deps: null as unknown as AudioUplinkDeps,
-  instance: { setCredentials: vi.fn(), updateLocalState: vi.fn(), handleCaptureStatus: vi.fn() }
+  instance: {
+    setCredentials: vi.fn(),
+    updateLocalState: vi.fn(),
+    handleCaptureStatus: vi.fn(),
+    setClockOffset: vi.fn(),
+    rearm: vi.fn(),
+    reconnectNow: vi.fn()
+  }
 }));
 const host = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn(), connectUplink: vi.fn() }));
+const resume = vi.hoisted(() => ({ listeners: [] as (() => void)[] }));
+const playback = vi.hoisted(() => ({ cancelCue: vi.fn() }));
+
+vi.mock("../src/main/integrations/listen-along/system-resume", () => ({
+  onSystemResume: vi.fn((listener: () => void) => {
+    resume.listeners.push(listener);
+    return () => {
+      resume.listeners = resume.listeners.filter(entry => entry !== listener);
+    };
+  })
+}));
+vi.mock("../src/main/playback", () => playback);
 
 vi.mock("../src/main/media/audio-uplink", () => ({
   forkAudioUplink: vi.fn(),
@@ -104,9 +123,12 @@ describe("rooms audio uplink wiring", () => {
     expect(host.start).toHaveBeenCalledTimes(1);
     expect(ctx.ytmview.runScript).toHaveBeenLastCalledWith("enable");
 
-    uplink.deps.onUpdate({ streaming: true, webListeners: 2 });
+    uplink.deps.onUpdate({ streaming: true, webListeners: 2, issue: null });
     expect(ctx.ytmview.runScript).toHaveBeenLastCalledWith("listening-on");
-    expect(ctx.memory.get("room")).toMatchObject({ audioStreaming: true, webListenerCount: 2 });
+    expect(ctx.memory.get("room")).toMatchObject({ audioStreaming: true, webListenerCount: 2, audioIssue: null });
+
+    uplink.deps.onUpdate({ streaming: false, webListeners: 0, issue: "retrying" });
+    expect(ctx.memory.get("room")).toMatchObject({ audioStreaming: false, audioIssue: "retrying" });
 
     const send = vi.fn();
     uplink.deps.connectMediaHost(send);
@@ -159,7 +181,7 @@ describe("rooms relay reconnects", () => {
     vi.useRealTimers();
   });
 
-  it("reclaims the room through its owner, and opens a new one when the relay refuses", async () => {
+  it("reclaims the room through its owner, and adopts a new one when the relay hands one back", async () => {
     const { ctx, lastBadge, logged } = await hostAutomatically();
     expect(relay.clients.map(client => client.url)).toEqual(["wss://ytmdesktopplus.com/relay"]);
     relay.clients[0].handlers.onOpen();
@@ -173,10 +195,7 @@ describe("rooms relay reconnects", () => {
     relay.clients[1].handlers.onOpen();
     expect(relay.clients[1].sent).toEqual([{ t: "h", r: "czuupyef", k: KEY }]);
 
-    relay.clients[1].handlers.onFrame({ t: "e", m: "reclaim that room on the node that owns it" });
-    expect(relay.clients[2].url).toBe("wss://ytmdesktopplus.com/relay");
-    relay.clients[2].handlers.onOpen();
-    relay.clients[2].handlers.onFrame({ t: "r", r: "aaaaaaaa", k: KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+    relay.clients[1].handlers.onFrame({ t: "r", r: "aaaaaaaa", k: KEY, u: "abcdef", role: 0, n: 0, c: 1 });
     expect(lastBadge()?.icon).toBe("headphones");
     expect(ctx.memory.get("room")).toMatchObject({ phase: "hosting", shareUrl: "https://ytmdesktopplus.com/r/aaaaaaaa" });
 
@@ -204,6 +223,40 @@ describe("rooms relay reconnects", () => {
     relay.clients[2].handlers.onOpen();
     relay.clients[2].handlers.onFrame({ t: "r", r: "aaaaaaaa", k: KEY, u: "abcdef", role: 0, n: 0, c: 1 });
     expect(lastBadge()?.icon).toBe("headphones");
+  });
+
+  it("redials the room and the audio when the system wakes up, until the addon is destroyed", async () => {
+    resume.listeners = [];
+    const { instance } = await hostAutomatically();
+    relay.clients[0].handlers.onOpen();
+    relay.clients[0].handlers.onFrame({ t: "r", r: "czuupyef", k: KEY, u: "abcdef", role: 0, n: 0, c: 1 });
+    expect(resume.listeners).toHaveLength(1);
+
+    resume.listeners[0]();
+
+    expect(relay.clients).toHaveLength(2);
+    expect(relay.clients[1].url).toBe("wss://ytmdesktopplus.com/relay?ytmdproom=czuupyef");
+    expect(uplink.instance.reconnectNow).toHaveBeenCalledTimes(1);
+
+    instance.destroy();
+    expect(resume.listeners).toHaveLength(0);
+  });
+
+  it("hands the uplink the relay clock and re-arms it each time hosting comes back", async () => {
+    await hostAutomatically();
+    relay.clients[0].handlers.onOpen();
+    relay.clients[0].handlers.onFrame({ t: "r", r: "czuupyef", k: KEY, u: "abcdef", role: 0, n: 0, c: Date.now() + 4_000 });
+
+    expect(uplink.instance.setClockOffset).toHaveBeenLastCalledWith(expect.any(Number));
+    expect(vi.mocked(uplink.instance.setClockOffset).mock.calls.at(-1)?.[0]).toBeGreaterThan(3_000);
+    expect(uplink.instance.rearm).toHaveBeenCalledTimes(1);
+
+    relay.clients[0].handlers.onClose();
+    vi.advanceTimersByTime(1000);
+    relay.clients[1].handlers.onOpen();
+    relay.clients[1].handlers.onFrame({ t: "r", r: "czuupyef", k: KEY, u: "abcdef", role: 0, n: 0, c: Date.now() + 4_000 });
+
+    expect(uplink.instance.rearm).toHaveBeenCalledTimes(2);
   });
 
   it("stops touching the relay once the addon is destroyed", async () => {
