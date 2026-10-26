@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- ci: move checks onto the shared workflows
 - fix(last-fm): scrobble on time actually played
 - fix(rooms): harden listen along and the room window
 - fix(addons): time out slow addons and harden theme CSS
