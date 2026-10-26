@@ -68,6 +68,7 @@ import type { ThemeCss } from "~shared/themes/sdk";
 import { createAppStore } from "./store/create-store";
 import { createStoreBroadcaster } from "./windows/broadcast";
 import { coalesce } from "./windows/coalesce";
+import { applyLaunchVisibility, startsHidden } from "./windows/launch-visibility";
 import { createDeepLinkRouter, findProtocolUrl } from "./deep-links";
 import { anyShortcutChanged, createShortcutRegistrar } from "./shortcuts";
 import { createTrayController } from "./tray";
@@ -1042,9 +1043,7 @@ const createMainWindow = (): void => {
   if (windowBounds) {
     mainWindow.setBounds(windowBounds);
   }
-  if (windowMaximized) {
-    mainWindow.maximize();
-  }
+  applyLaunchVisibility(mainWindow, { hidden: startsHidden(store.get("general"), process.platform), maximized: windowMaximized });
 
   // Attach events to main window
   mainWindow.on(
@@ -1121,7 +1120,6 @@ const createMainWindow = (): void => {
   });
 
   mainWindow.on("ready-to-show", () => {
-    mainWindow.show();
     // Open the DevTools.
     if (process.env.NODE_ENV === "development") {
       mainWindow.webContents.openDevTools({

@@ -73,6 +73,11 @@ function tabs() {
   return wrapper!.findAll("[role='tab']");
 }
 
+function checkboxNamed(name: string) {
+  const label = wrapper!.findAll("p[id]").find(node => node.text() === name);
+  return label ? wrapper!.find(`input[type='checkbox'][aria-labelledby='${label.attributes("id")}']`) : null;
+}
+
 beforeEach(() => {
   vi.stubGlobal("YTMD_GIT_COMMIT_HASH", "0123456789abcdef");
   vi.stubGlobal("YTMD_GIT_BRANCH", "main");
@@ -160,6 +165,24 @@ describe("Settings window", () => {
     expect(document.activeElement).toBe(buttons[0].element);
     await buttons[0].trigger("keydown", { key: "Tab", shiftKey: true });
     expect(document.activeElement).toBe(buttons[buttons.length - 1].element);
+  });
+
+  it("saves the start minimized setting", async () => {
+    const { ytmd } = createYtmd();
+    await mountSettings(ytmd);
+    const toggle = checkboxNamed("Start minimized to tray");
+    expect(toggle?.exists()).toBe(true);
+    expect((toggle!.element as HTMLInputElement).checked).toBe(false);
+    await toggle!.setValue(true);
+    await wrapper!.find(".save-bar .save-button").trigger("click");
+    expect(ytmd.store.setMany).toHaveBeenCalledWith([["general.startMinimized", true]]);
+  });
+
+  it("leaves out start minimized on macOS", async () => {
+    const { ytmd } = createYtmd();
+    await mountSettings({ ...ytmd, isDarwin: true });
+    expect(checkboxNamed("Start minimized to tray")).toBeNull();
+    expect(wrapper!.text()).not.toContain("Start minimized to tray");
   });
 
   it("restarts for an update straight away when nothing is unsaved", async () => {

@@ -13,6 +13,7 @@ const { isDarwin, isLinux, autoUpdaterDisabled } = shell;
 const hideToTrayOnClose = staged.refs["general.hideToTrayOnClose"];
 const showNotificationOnSongChange = staged.refs["general.showNotificationOnSongChange"];
 const startOnBoot = staged.refs["general.startOnBoot"];
+const startMinimized = staged.refs["general.startMinimized"];
 const disableHardwareAcceleration = staged.refs["general.disableHardwareAcceleration"];
 const debugLogging = staged.refs["developer.debugLogging"];
 const autoUpdateEnabled = staged.refs["updates.autoUpdateEnabled"];
@@ -24,6 +25,7 @@ const updateChannel = staged.refs["updates.channel"];
     <YTMDSetting v-if="!isDarwin" v-model="hideToTrayOnClose" type="checkbox" name="Hide to tray on close" @change="stageChanged" />
     <YTMDSetting v-model="showNotificationOnSongChange" type="checkbox" name="Show notification on song change" @change="stageChanged" />
     <YTMDSetting v-if="!isLinux" v-model="startOnBoot" type="checkbox" name="Start on boot" @change="stageChanged" />
+    <YTMDSetting v-if="!isDarwin" v-model="startMinimized" type="checkbox" name="Start minimized to tray" @change="stageChanged" />
     <YTMDSetting v-model="disableHardwareAcceleration" type="checkbox" restart-required name="Disable hardware acceleration" @change="stageChanged" />
     <YTMDSetting v-model="debugLogging" type="checkbox" name="Debug logging" @change="stageChanged" />
     <YTMDSetting
