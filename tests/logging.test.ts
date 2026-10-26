@@ -20,11 +20,13 @@ describe("setupLogging", () => {
   it("queues log file writes instead of writing on the calling thread", async () => {
     setupLogging(false);
     log.transports.file.level = "info";
+    const writeSync = vi.spyOn(fs, "writeFileSync");
 
     log.info("queued line");
 
-    expect(fs.readFileSync(file, "utf8")).toBe("");
+    expect(writeSync.mock.calls.some(([, data]) => String(data).includes("queued line"))).toBe(false);
     await vi.waitFor(() => expect(fs.readFileSync(file, "utf8")).toContain("queued line"));
+    writeSync.mockRestore();
   });
 });
 
