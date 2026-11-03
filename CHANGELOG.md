@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- docs: count only installer downloads in the badge
+- fix(window): respect the start minimized setting
+- feat(lyrics): highlight lyrics as they're sung
+- test(harness): keep test windows off screen
 - test(logging): check the queue without racing the write
 - ci: find the macOS app without parsing ls
 - ci: move checks onto the shared workflows
