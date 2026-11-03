@@ -117,6 +117,7 @@
   "resolutions": {
     "extract-zip/yauzl": "^3.4.0",
     "socket.io-adapter": "~2.5.8",
-    "vite": "5.4.21"
+    "vite": "5.4.21",
+    "electron-installer-redhat@npm:^3.2.0": "patch:electron-installer-redhat@npm%3A3.4.0#~/.yarn/patches/electron-installer-redhat-npm-3.4.0-7f790e86e4.patch"
   }
 }
