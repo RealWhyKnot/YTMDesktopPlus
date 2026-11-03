@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix(settings): repair settings saved by older builds
+- fix(ipc): check every field of queue payloads
+- fix(updates): skip updates in test clients
+- ci: stop the release jobs downloading their own assets
+- style: apply the shared code style across the repo
 - docs: count only installer downloads in the badge
 - fix(window): respect the start minimized setting
 - feat(lyrics): highlight lyrics as they're sung
