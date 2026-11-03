@@ -1,3 +1,4 @@
+import { requireValue } from "./helpers/require-value";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -7,12 +8,12 @@ import {
   markWindowMessages,
   watchMainThreadStalls,
   type IpcListener,
-  type IpcRegistrationSource
+  type IpcRegistrationSource,
 } from "../src/main/stall-watch";
 
 function stepClock(values: number[]): () => number {
   let index = 0;
-  return () => values[index++];
+  return () => requireValue(values[index++]);
 }
 
 describe("watchMainThreadStalls", () => {
@@ -33,7 +34,7 @@ describe("watchMainThreadStalls", () => {
 
   it("reports a tick that arrives late past the threshold, and nothing for normal jitter", () => {
     const reports: number[] = [];
-    const stop = watchMainThreadStalls({ now: () => clock, report: ms => reports.push(ms) });
+    const stop = watchMainThreadStalls({ now: () => clock, report: (ms) => reports.push(ms) });
 
     tick(12);
     tick(299);
@@ -46,7 +47,7 @@ describe("watchMainThreadStalls", () => {
 
   it("ignores the gap left by the machine sleeping", () => {
     const reports: number[] = [];
-    const stop = watchMainThreadStalls({ now: () => clock, report: ms => reports.push(ms) });
+    const stop = watchMainThreadStalls({ now: () => clock, report: (ms) => reports.push(ms) });
 
     tick(3_600_000);
     stop();
@@ -56,7 +57,7 @@ describe("watchMainThreadStalls", () => {
 
   it("stops reporting once stopped", () => {
     const reports: number[] = [];
-    const stop = watchMainThreadStalls({ now: () => clock, report: ms => reports.push(ms) });
+    const stop = watchMainThreadStalls({ now: () => clock, report: (ms) => reports.push(ms) });
 
     stop();
     tick(1000);
@@ -82,7 +83,7 @@ describe("watchMainThreadStalls", () => {
       { label: "c", start: 0, duration: 50 },
       { label: "d", start: 0, duration: 40 },
       { label: "e", start: 0, duration: 30 },
-      { label: "f", start: 0, duration: 20 }
+      { label: "f", start: 0, duration: 20 },
     ];
     const stop = watchMainThreadStalls({ now: () => clock, tasks: { overlapping }, report: (_ms, summary) => reports.push(summary) });
 
@@ -100,9 +101,9 @@ describe("watchMainThreadStalls", () => {
         overlapping: (start, end) => {
           seen.push([start, end]);
           return [];
-        }
+        },
       },
-      report: () => undefined
+      report: () => undefined,
     });
 
     tick(400);
@@ -129,7 +130,7 @@ describe("watchMainThreadStalls", () => {
     expect(reports).toEqual([
       "1161 no labelled work; system: display change, display metrics changed x2",
       "1044 no labelled work; system: display change, display metrics changed x2",
-      "7213 no labelled work; system: display change, display metrics changed x2, display removed"
+      "7213 no labelled work; system: display change, display metrics changed x2, display removed",
     ]);
   });
 
@@ -177,7 +178,7 @@ describe("createTaskRing", () => {
     ring.timeSync("inside", (): void => undefined);
     ring.timeSync("outside", (): void => undefined);
 
-    expect(ring.overlapping(10, 30).map(task => task.label)).toEqual(["inside"]);
+    expect(ring.overlapping(10, 30).map((task) => task.label)).toEqual(["inside"]);
   });
 
   it("keeps only the most recent tasks once the ring is full", () => {
@@ -192,7 +193,7 @@ describe("createTaskRing", () => {
     expect(
       ring
         .overlapping(0, 1000)
-        .map(task => task.label)
+        .map((task) => task.label)
         .sort()
     ).toEqual(["b", "c"]);
   });
@@ -207,7 +208,7 @@ describe("system event marks", () => {
       [1_000, "too old"],
       [6_000, "lookback edge"],
       [20_000, "inside"],
-      [21_001, "after"]
+      [21_001, "after"],
     ] as const) {
       clock = at;
       ring.mark(label);
@@ -236,7 +237,7 @@ describe("system event marks", () => {
     const marked: string[] = [];
     const logged: string[] = [];
 
-    markSystemEvents({ screen, powerMonitor }, { mark: label => marked.push(label) }, label => logged.push(label));
+    markSystemEvents({ screen, powerMonitor }, { mark: (label) => marked.push(label) }, (label) => logged.push(label));
     screen.emit("display-removed", {}, { id: 1 });
     screen.emit("display-metrics-changed", {}, { id: 2 }, ["workArea"]);
     powerMonitor.emit("resume");
@@ -255,10 +256,10 @@ describe("system event marks", () => {
       return buffer;
     };
 
-    markWindowMessages({ hookWindowMessage: (message, callback) => hooks.set(message, callback) }, { mark: label => marked.push(label) });
-    hooks.get(0x007e)(wParam(32), Buffer.alloc(8));
-    hooks.get(0x0219)(wParam(0x8000), Buffer.alloc(8));
-    hooks.get(0x0219)(wParam(0x0007), Buffer.alloc(8));
+    markWindowMessages({ hookWindowMessage: (message, callback) => hooks.set(message, callback) }, { mark: (label) => marked.push(label) });
+    requireValue(hooks.get(0x007e))(wParam(32), Buffer.alloc(8));
+    requireValue(hooks.get(0x0219))(wParam(0x8000), Buffer.alloc(8));
+    requireValue(hooks.get(0x0219))(wParam(0x0007), Buffer.alloc(8));
 
     expect(marked).toEqual(["display change", "device change"]);
   });
@@ -266,14 +267,14 @@ describe("system event marks", () => {
 
 describe("instrumentIpc", () => {
   function fakeTarget() {
-    const listeners: Record<string, IpcListener> = {};
+    const listeners = new Map<string, IpcListener>();
     const target: IpcRegistrationSource & EventEmitter = Object.assign(new EventEmitter(), {
       handle: (channel: string, listener: IpcListener) => {
-        listeners[`handle:${channel}`] = listener;
+        listeners.set(`handle:${channel}`, listener);
       },
       handleOnce: (channel: string, listener: IpcListener) => {
-        listeners[`handleOnce:${channel}`] = listener;
-      }
+        listeners.set(`handleOnce:${channel}`, listener);
+      },
     });
     return { target, listeners };
   }
@@ -284,7 +285,7 @@ describe("instrumentIpc", () => {
 
     instrumentIpc(target, ring.timeSync);
     target.handle("settings:setMany", () => "ok");
-    const result = listeners["handle:settings:setMany"]();
+    const result = requireValue(listeners.get("handle:settings:setMany")).call(listeners);
 
     expect(result).toBe("ok");
     expect(ring.overlapping(0, 25)).toEqual([{ label: "ipc settings:setMany", start: 0, duration: 25 }]);
@@ -298,7 +299,7 @@ describe("instrumentIpc", () => {
     target.once("ytmView:getPlaylists:response:1", () => undefined);
     target.emit("ytmView:getPlaylists:response:1");
 
-    expect(ring.overlapping(0, 30).map(task => task.label)).toEqual(["ipc ytmView:getPlaylists:response:1"]);
+    expect(ring.overlapping(0, 30).map((task) => task.label)).toEqual(["ipc ytmView:getPlaylists:response:1"]);
   });
 
   it("still removes an on listener by the reference it was added with", () => {

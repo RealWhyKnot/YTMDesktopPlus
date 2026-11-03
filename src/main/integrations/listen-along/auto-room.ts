@@ -1,13 +1,5 @@
 import type { RoomPhase } from "~shared/room-protocol";
 
-// Keeps a room open automatically while Discord presence is shared, so the
-// Join Room button and its web player link exist without the user starting
-// anything. The room is anonymous unless a display name was saved.
-//
-// A manual "leave" while hosting means the user does not want a room right
-// now, so automation stands down until one of the governing toggles cycles or
-// the app restarts.
-
 export const REGROW_DELAYS_MS = [5_000, 30_000, 120_000, 300_000];
 
 export type AutoRoomDeps = {
@@ -21,16 +13,18 @@ export type AutoRoomDeps = {
 };
 
 export class AutoRoom {
-  private suppressed = false;
-  private startedCurrent = false;
+  private isSuppressed = false;
+  private isStartedCurrent = false;
   private regrowTimer: NodeJS.Timeout | null = null;
   private regrowAttempts = 0;
 
-  constructor(private readonly deps: AutoRoomDeps) {}
+  private readonly deps: AutoRoomDeps;
+  constructor(deps: AutoRoomDeps) {
+    this.deps = deps;
+  }
 
-  /** Idempotent; safe to call on any state change. */
   evaluate() {
-    if (this.suppressed) return;
+    if (this.isSuppressed) return;
     if (!this.deps.enabled()) return;
     const phase = this.deps.phase();
     if (phase === "hosting") {
@@ -44,34 +38,28 @@ export class AutoRoom {
     }
     if (phase !== "idle") return;
     this.cancelRegrow();
-    this.startedCurrent = true;
+    this.isStartedCurrent = true;
     this.deps.host(this.deps.savedDisplayName());
   }
 
-  /** The user started or joined a room themselves; it is theirs to manage. */
   noteManualSession() {
-    this.startedCurrent = false;
+    this.isStartedCurrent = false;
   }
 
   noteManualLeave(wasHost: boolean) {
-    this.startedCurrent = false;
+    this.isStartedCurrent = false;
     if (wasHost) {
-      this.suppressed = true;
+      this.isSuppressed = true;
       this.cancelRegrow();
     }
   }
 
-  /**
-   * A governing toggle changed. Turning the feature off closes a room this
-   * class opened; turning it on is the user steering again, so any earlier
-   * stand-down is forgotten.
-   */
   syncToggles() {
-    this.suppressed = false;
+    this.isSuppressed = false;
     if (!this.deps.enabled()) {
       this.cancelRegrow();
-      if (this.startedCurrent) {
-        this.startedCurrent = false;
+      if (this.isStartedCurrent) {
+        this.isStartedCurrent = false;
         this.deps.leave();
       }
       return;
@@ -80,20 +68,21 @@ export class AutoRoom {
   }
 
   dispose() {
-    this.suppressed = true;
+    this.isSuppressed = true;
     this.cancelRegrow();
   }
 
   private scheduleRegrow() {
     if (this.regrowTimer) return;
     const delay = REGROW_DELAYS_MS[Math.min(this.regrowAttempts, REGROW_DELAYS_MS.length - 1)];
+    if (delay === undefined) throw new Error("Room retry delay is unavailable");
     this.regrowAttempts++;
     this.deps.log(`Room failed, opening a new one in ${delay / 1000}s`);
     this.regrowTimer = setTimeout(() => {
       this.regrowTimer = null;
-      if (this.suppressed || !this.deps.enabled()) return;
+      if (this.isSuppressed || !this.deps.enabled()) return;
       if (this.deps.phase() !== "failed" || !this.deps.isHost()) return;
-      this.startedCurrent = true;
+      this.isStartedCurrent = true;
       this.deps.host(this.deps.savedDisplayName());
     }, delay);
   }

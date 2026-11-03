@@ -1,13 +1,16 @@
 import crypto from "crypto";
 import { safeStorage } from "electron";
 import log from "electron-log";
-import Conf from "conf";
-import { FastifyReply, FastifyRequest, HookHandlerDoneFunction } from "fastify";
-import { StoreSchema } from "../../../../shared/store/schema";
-import { AuthToken } from "../../../../shared/integrations/companion-server/types";
+import { type FastifyReply, type FastifyRequest, type HookHandlerDoneFunction } from "fastify";
+import { type AuthToken } from "../../../../shared/integrations/companion-server/types";
 
-const temporaryCodeMap: { [code: string]: { appId: string; appVersion: string; appName: string } } = {};
-let decryptedAuthTokens: { encrypted: string | null; tokens: AuthToken[] } | undefined;
+type AuthTokenStore = {
+  get(key: "integrations.companionServerAuthTokens"): string | null | undefined;
+  set(key: "integrations.companionServerAuthTokens", value: string): void;
+};
+
+const temporaryCodeMap = new Map<string, { appId: string; appVersion: string; appName: string }>();
+let decryptedAuthTokens: { encrypted: string | null | undefined; tokens: AuthToken[] } | undefined;
 
 export const LAST_USED_RESOLUTION_MS = 60 * 60 * 1000;
 export const FAILED_AUTH_LIMIT = 20;
@@ -16,12 +19,37 @@ export const FAILED_AUTH_LOCKOUT_MS = 60 * 1000;
 
 const failedAuthAttempts = new Map<string, { count: number; windowStart: number; lockedUntil: number }>();
 
-export function getAuthTokens(store: Conf<StoreSchema>): AuthToken[] {
+function isAuthToken(value: unknown): value is AuthToken {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "appId" in value &&
+    typeof value.appId === "string" &&
+    "appVersion" in value &&
+    typeof value.appVersion === "string" &&
+    "appName" in value &&
+    typeof value.appName === "string" &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "token" in value &&
+    typeof value.token === "string" &&
+    (!("lastUsed" in value) || value.lastUsed === undefined || typeof value.lastUsed === "number") &&
+    "metadata" in value &&
+    typeof value.metadata === "object" &&
+    value.metadata !== null &&
+    "version" in value.metadata &&
+    typeof value.metadata.version === "number"
+  );
+}
+
+export function getAuthTokens(store: AuthTokenStore): AuthToken[] {
   const encrypted = store.get("integrations.companionServerAuthTokens");
-  if (!decryptedAuthTokens || decryptedAuthTokens.encrypted !== encrypted) {
+  if (decryptedAuthTokens?.encrypted !== encrypted || decryptedAuthTokens === undefined) {
     let tokens: AuthToken[];
     try {
-      tokens = JSON.parse(safeStorage.decryptString(Buffer.from(encrypted, "hex")));
+      if (encrypted === undefined) throw new TypeError("Auth tokens are missing");
+      const value: unknown = encrypted === null ? [] : JSON.parse(safeStorage.decryptString(Buffer.from(encrypted, "hex")));
+      tokens = Array.isArray(value) ? value.filter(isAuthToken) : [];
     } catch {
       tokens = [];
     }
@@ -31,19 +59,18 @@ export function getAuthTokens(store: Conf<StoreSchema>): AuthToken[] {
 }
 
 async function getUnusedCode() {
-  return new Promise<string>(resolve => {
+  return new Promise<string | null>((resolve) => {
     let code;
     const generateStart = Date.now();
-    // Because of this setInterval it does take 250ms before it executes which delays everything by 250ms
+
     const interval = setInterval(() => {
-      // Failsafe timeout bail. It could be that every code is exhausted or we simply didn't find a code fast enough
       if (Date.now() - generateStart > 3 * 1000) {
         clearInterval(interval);
         resolve(null);
       }
 
       code = `${crypto.randomInt(0, 10)}${crypto.randomInt(0, 10)}${crypto.randomInt(0, 10)}${crypto.randomInt(0, 10)}`;
-      if (!temporaryCodeMap[code]) {
+      if (!temporaryCodeMap.has(code)) {
         clearInterval(interval);
         resolve(code);
       }
@@ -54,33 +81,31 @@ async function getUnusedCode() {
 export async function getTemporaryAuthCode(appId: string, appVersion: string, appName: string) {
   const code = await getUnusedCode();
   if (code) {
-    temporaryCodeMap[code] = {
+    temporaryCodeMap.set(code, {
       appId,
       appVersion,
-      appName
-    };
+      appName,
+    });
     setTimeout(() => {
-      delete temporaryCodeMap[code];
+      temporaryCodeMap.delete(code);
     }, 60 * 1000);
   }
   return code;
 }
 
 export function getIsTemporaryAuthCodeValidAndRemove(appId: string, code: string) {
-  if (temporaryCodeMap[code]) {
-    if (temporaryCodeMap[code].appId === appId) {
-      const data = temporaryCodeMap[code];
-      delete temporaryCodeMap[code];
-      return data;
-    }
+  const data = temporaryCodeMap.get(code);
+  if (data?.appId === appId) {
+    temporaryCodeMap.delete(code);
+    return data;
   }
 
   return false;
 }
 
-export function createAuthToken(store: Conf<StoreSchema>, appId: string, appVersion: string, appName: string) {
+export function createAuthToken(store: AuthTokenStore, appId: string, appVersion: string, appName: string) {
   const authTokens = [...getAuthTokens(store)];
-  const currentTokenIndex = authTokens.findIndex(token => token.appId === appId);
+  const currentTokenIndex = authTokens.findIndex((token) => token.appId === appId);
   if (currentTokenIndex > -1) {
     authTokens.splice(currentTokenIndex, 1);
   }
@@ -95,8 +120,8 @@ export function createAuthToken(store: Conf<StoreSchema>, appId: string, appVers
     token: crypto.createHash("sha256").update(token).digest("hex"),
     lastUsed: Date.now(),
     metadata: {
-      version: 1
-    }
+      version: 1,
+    },
   });
 
   store.set("integrations.companionServerAuthTokens", safeStorage.encryptString(JSON.stringify(authTokens)).toString("hex"));
@@ -104,12 +129,12 @@ export function createAuthToken(store: Conf<StoreSchema>, appId: string, appVers
   return token;
 }
 
-function touchAuthToken(store: Conf<StoreSchema>, id: string, now: number) {
+function touchAuthToken(store: AuthTokenStore, id: string, now: number) {
   const tokens = getAuthTokens(store);
-  const current = tokens.find(token => token.id === id);
+  const current = tokens.find((token) => token.id === id);
   if (!current || (typeof current.lastUsed === "number" && now - current.lastUsed < LAST_USED_RESOLUTION_MS)) return;
 
-  const updated = tokens.map(token => (token.id === id ? { ...token, lastUsed: now } : token));
+  const updated = tokens.map((token) => (token.id === id ? { ...token, lastUsed: now } : token));
   try {
     const encrypted = safeStorage.encryptString(JSON.stringify(updated)).toString("hex");
     store.set("integrations.companionServerAuthTokens", encrypted);
@@ -119,26 +144,15 @@ function touchAuthToken(store: Conf<StoreSchema>, id: string, now: number) {
   }
 }
 
-export function isAuthValid(store: Conf<StoreSchema>, authToken: string): [boolean, string] {
+export function isAuthValid(store: AuthTokenStore, authToken: string | undefined): [true, string] | [false, null] {
   if (!authToken) return [false, null];
-
   const authTokenHash = crypto.createHash("sha256").update(authToken).digest("hex");
-
-  let validSession = false;
-  let id = null;
   for (const authSession of getAuthTokens(store)) {
-    if (authSession.token == authTokenHash) {
-      id = authSession.id;
-      validSession = true;
-      break;
+    if (authSession.token === authTokenHash) {
+      touchAuthToken(store, authSession.id, Date.now());
+      return [true, authSession.id];
     }
   }
-
-  if (validSession) {
-    touchAuthToken(store, id, Date.now());
-    return [true, id];
-  }
-
   return [false, null];
 }
 
@@ -174,16 +188,16 @@ export function clearFailedAuth(ip: string) {
   failedAuthAttempts.delete(ip);
 }
 
-export function rateLimitKey(store: Conf<StoreSchema>, request: FastifyRequest) {
-  const [validSession, tokenId] = isAuthValid(store, request.headers.authorization);
-  return validSession ? `token:${tokenId}` : `ip:${request.ip}`;
+export function rateLimitKey(store: AuthTokenStore, request: FastifyRequest) {
+  const [isValidSession, tokenId] = isAuthValid(store, request.headers.authorization);
+  return isValidSession ? `token:${tokenId}` : `ip:${request.ip}`;
 }
 
-export function isAuthValidMiddleware(store: Conf<StoreSchema>, request: FastifyRequest, response: FastifyReply, next: HookHandlerDoneFunction) {
+export function isAuthValidMiddleware(store: AuthTokenStore, request: FastifyRequest, response: FastifyReply, next: HookHandlerDoneFunction) {
   if (isAuthLockedOut(request.ip)) {
     response.code(429);
     response.send({
-      error: "TOO_MANY_FAILED_ATTEMPTS"
+      error: "TOO_MANY_FAILED_ATTEMPTS",
     });
     return;
   }
@@ -193,21 +207,21 @@ export function isAuthValidMiddleware(store: Conf<StoreSchema>, request: Fastify
     recordFailedAuth(request.ip);
     response.code(401);
     response.send({
-      error: "UNAUTHORIZED"
+      error: "UNAUTHORIZED",
     });
     return;
   }
 
-  const [validSession, tokenId] = isAuthValid(store, authToken);
+  const [isValidSession, tokenId] = isAuthValid(store, authToken);
 
-  if (validSession) {
-    request.authId = tokenId;
+  if (isValidSession) {
+    Object.assign(request, { authId: tokenId });
     next();
   } else {
     recordFailedAuth(request.ip);
     response.code(401);
     response.send({
-      error: "UNAUTHORIZED"
+      error: "UNAUTHORIZED",
     });
   }
 }

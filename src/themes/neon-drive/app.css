@@ -1,15 +1,29 @@
-.titlebar {
-  background: linear-gradient(to right, #1b0b3a 0%, #2c1160 55%, #3d1a5e 100%) !important;
-  border-bottom: 1px solid #ff2e97;
+:root {
+  --color-neon-drive-app-background-1: #1b0b3a;
+  --color-neon-drive-app-background-2: #2c1160;
+  --color-neon-drive-app-background-3: #3d1a5e;
+  --color-neon-drive-app-border-bottom-4: #ff2e97;
+  --color-neon-drive-app-text-shadow-5: rgb(255 46 151 / 55%);
+  --color-neon-drive-app-box-shadow-6: rgb(255 46 151 / 45%);
+}
+
+:root .app-root .titlebar {
+  background: linear-gradient(
+    to right,
+    var(--color-neon-drive-app-background-1) 0%,
+    var(--color-neon-drive-app-background-2) 55%,
+    var(--color-neon-drive-app-background-3) 100%
+  );
+  border-bottom: 1px solid var(--color-neon-drive-app-border-bottom-4);
 }
 
 .title-text {
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  text-shadow: 0 0 10px rgba(255, 46, 151, 0.55);
+  text-shadow: 0 0 10px var(--color-neon-drive-app-text-shadow-5);
 }
 
-.sidebar li.active,
-button.primary {
-  box-shadow: 0 0 12px rgba(255, 46, 151, 0.45);
+.sidebar li[aria-selected="true"],
+.primary {
+  box-shadow: 0 0 12px var(--color-neon-drive-app-box-shadow-6);
 }

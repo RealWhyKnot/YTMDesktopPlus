@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import type { AppWindow } from "../../app-window";
+declare const window: AppWindow;
+defineOptions({ name: "CompanionAuthorization" });
 import { onBeforeMount, ref } from "vue";
 
 const appName = ref("");
@@ -66,22 +69,22 @@ onBeforeMount(async () => {
 
 .title {
   margin-bottom: 16px;
-  font-size: 36px;
+  font-size: calc(36rem / var(--font-size-reference));
 }
 
 .subtitle {
   font-weight: normal;
-  font-size: 20px;
+  font-size: calc(20rem / var(--font-size-reference));
 }
 
 .code-confirm {
   margin-top: 32px;
-  font-size: 20px;
+  font-size: calc(20rem / var(--font-size-reference));
 }
 
 .code {
   margin-top: 16px;
-  font-size: 36px;
+  font-size: calc(36rem / var(--font-size-reference));
   color: var(--accent);
 }
 

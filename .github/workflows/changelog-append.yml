@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       range:
-        description: 'Override commit range, for example abc123..def456.'
+        description: "Override commit range, for example abc123..def456."
         required: false
-        default: ''
+        default: ""
 
 concurrency:
   group: changelog-writes

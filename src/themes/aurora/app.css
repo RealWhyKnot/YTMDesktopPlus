@@ -1,25 +1,33 @@
+:root {
+  --color-aurora-app-background-1: rgb(52 211 153 / 12%);
+  --color-aurora-app-background-2: rgb(167 139 250 / 10%);
+  --color-aurora-app-box-shadow-3: rgb(52 211 153 / 35%);
+}
+
 body::after {
   content: "";
   position: fixed;
-  inset: -60% -20% 40% -20%;
+  inset: -60% -20% 40%;
   pointer-events: none;
   z-index: 1;
   background:
-    radial-gradient(60% 40% at 25% 30%, rgba(52, 211, 153, 0.12), transparent 70%),
-    radial-gradient(50% 35% at 70% 20%, rgba(167, 139, 250, 0.1), transparent 70%);
+    radial-gradient(60% 40% at 25% 30%, var(--color-aurora-app-background-1), transparent 70%),
+    radial-gradient(50% 35% at 70% 20%, var(--color-aurora-app-background-2), transparent 70%);
   animation: aurora-drift 60s ease-in-out infinite alternate;
   will-change: transform, opacity;
 }
 
 @keyframes aurora-drift {
-  from {
+  0% {
     transform: translate3d(-6%, 0, 0) rotate(-2deg);
     opacity: 0.7;
   }
+
   50% {
     opacity: 1;
   }
-  to {
+
+  100% {
     transform: translate3d(6%, 3%, 0) rotate(2deg);
     opacity: 0.8;
   }
@@ -36,6 +44,6 @@ button {
   transition: background-color var(--motion-fast) var(--ease);
 }
 
-.sidebar li.active {
-  box-shadow: 0 0 12px rgba(52, 211, 153, 0.35);
+.sidebar li[aria-selected="true"] {
+  box-shadow: 0 0 12px var(--color-aurora-app-box-shadow-3);
 }

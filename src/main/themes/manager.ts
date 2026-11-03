@@ -35,8 +35,13 @@ type LoadedTheme = {
 export function parseTokens(css: string): ThemeTokens {
   const tokens: ThemeTokens = {};
   for (const block of css.matchAll(ROOT_BLOCK)) {
-    for (const declaration of block[1].matchAll(TOKEN_DECLARATION)) {
-      tokens["--" + declaration[1]] = declaration[2].trim();
+    const body = block[1];
+    if (body === undefined) continue;
+    for (const declaration of body.matchAll(TOKEN_DECLARATION)) {
+      const name = declaration[1];
+      const value = declaration[2];
+      if (name === undefined || value === undefined) continue;
+      tokens["--" + name] = value.trim();
     }
   }
   return tokens;
@@ -50,7 +55,10 @@ export class ThemeManager {
   private rebuildTimer: NodeJS.Timeout | null = null;
   private listeners = new Set<(theme: ActiveTheme) => void>();
 
-  constructor(private services: ThemeManagerServices) {}
+  private services: ThemeManagerServices;
+  constructor(services: ThemeManagerServices) {
+    this.services = services;
+  }
 
   public refresh(): void {
     const bundled = scanThemes(this.services.bundledThemesDir, "bundled");
@@ -84,7 +92,7 @@ export class ThemeManager {
         message = "theme targets a newer theme API than this app serves";
       } else if (!themeSatisfiesApp(scan.manifest, this.services.appVersion)) {
         state = "incompatible";
-        message = "theme needs app version " + scan.manifest.minAppVersion + " or newer";
+        message = `theme needs app version ${String(scan.manifest.minAppVersion)} or newer`;
       }
     }
 
@@ -97,7 +105,7 @@ export class ThemeManager {
       warnings: state === "ok" ? this.warningsFor(scan) : (scan.warnings ?? []),
       previewDataUrl: this.previewFor(scan),
       swatch: this.swatchFor(scan),
-      watching: false
+      watching: false,
     };
   }
 
@@ -107,7 +115,7 @@ export class ThemeManager {
 
     const tokens: ThemeTokens = {
       ...parseTokens(this.baseFile("app.css")),
-      ...parseTokens(this.baseFile("ytm-tokens.css"))
+      ...parseTokens(this.baseFile("ytm-tokens.css")),
     };
     for (const field of ["styles", "appStyles", "ytmStyles"] as const) {
       for (const relative of scan.manifest[field] ?? []) {
@@ -174,7 +182,7 @@ export class ThemeManager {
 
   private rebuild(): void {
     const activeId = this.services.getActiveId();
-    const active = this.themes.find(theme => theme.descriptor.manifest.id === activeId && theme.descriptor.state === "ok") ?? null;
+    const active = this.themes.find((theme) => theme.descriptor.manifest.id === activeId && theme.descriptor.state === "ok") ?? null;
 
     for (const theme of this.themes) {
       theme.descriptor.active = theme === active;
@@ -192,11 +200,11 @@ export class ThemeManager {
 
     const baseTokens = this.baseFile("app.css");
     const ytmTokens = this.baseFile("ytm-tokens.css");
-    const ytmPaint = active ? this.baseFile("ytm.css") : "";
+    const ytmPaint = active ? this.baseFile("ytm.user.css") : "";
     this.css = {
       app: [baseTokens, shared.css, app.css].filter(Boolean).join("\n"),
       ytm: [baseTokens, ytmTokens, ytmPaint, shared.css, ytm.css].filter(Boolean).join("\n"),
-      addonWindow: [baseTokens, this.baseFile("addon-ui.css"), shared.css, app.css].filter(Boolean).join("\n")
+      addonWindow: [baseTokens, this.baseFile("addon-ui.css"), shared.css, app.css].filter(Boolean).join("\n"),
     };
     this.tokens = parseTokens(this.css.app);
 
@@ -258,16 +266,16 @@ export class ThemeManager {
   }
 
   public descriptors(): ThemeDescriptor[] {
-    return this.themes.map(theme => theme.descriptor);
+    return this.themes.map((theme) => theme.descriptor);
   }
 
   public activeTheme(): ActiveTheme {
-    const active = this.themes.find(theme => theme.descriptor.active);
+    const active = this.themes.find((theme) => theme.descriptor.active);
     return { id: active?.descriptor.manifest.id ?? null, name: active?.descriptor.manifest.name ?? "None", tokens: this.tokens };
   }
 
   public titleBarOverlay(): { color: string; symbolColor: string; height: number } {
-    const active = this.themes.find(theme => theme.descriptor.active);
+    const active = this.themes.find((theme) => theme.descriptor.active);
     const overlay = active?.descriptor.manifest.titleBarOverlay;
     if (!overlay) return DEFAULT_TITLE_BAR_OVERLAY;
     return { color: overlay.color, symbolColor: overlay.symbolColor, height: DEFAULT_TITLE_BAR_OVERLAY.height };
@@ -275,7 +283,7 @@ export class ThemeManager {
 
   public setActive(id: string | null): { ok: true } | { ok: false; reason: string } {
     if (id !== null) {
-      const target = this.themes.find(theme => theme.descriptor.manifest.id === id);
+      const target = this.themes.find((theme) => theme.descriptor.manifest.id === id);
       if (!target) return { ok: false, reason: "that theme is not installed" };
       if (target.descriptor.state !== "ok") return { ok: false, reason: target.descriptor.error ?? "that theme cannot be applied" };
     }
@@ -294,7 +302,7 @@ export class ThemeManager {
   }
 
   public duplicate(id: string): { ok: true; id: string; dir: string } | { ok: false; reason: string } {
-    const source = this.themes.find(theme => theme.descriptor.manifest.id === id);
+    const source = this.themes.find((theme) => theme.descriptor.manifest.id === id);
     if (!source) return { ok: false, reason: "that theme is not installed" };
     const result = duplicateTheme(source.scan.dir, this.services.userThemesDir);
     if ("reason" in result) return { ok: false, reason: result.reason };
@@ -304,7 +312,7 @@ export class ThemeManager {
   }
 
   public exportTo(id: string, destination: string): { ok: true } | { ok: false; reason: string } {
-    const source = this.themes.find(theme => theme.descriptor.manifest.id === id);
+    const source = this.themes.find((theme) => theme.descriptor.manifest.id === id);
     if (!source) return { ok: false, reason: "that theme is not installed" };
     const result = exportTheme(source.scan.dir, destination);
     if ("reason" in result) return { ok: false, reason: result.reason };

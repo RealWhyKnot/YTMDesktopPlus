@@ -21,11 +21,11 @@ Steam overlay and audio output still need a real device.
 ## Use
 
 ```
-node tools/steamdeck/run.mjs setup                  # provision the distro, safe to re-run
-node tools/steamdeck/run.mjs run --tag v2026.820.0-beta   # install a published release and launch it
-node tools/steamdeck/run.mjs build                  # build the flatpak from the working tree
-node tools/steamdeck/run.mjs run                    # launch the newest local bundle
-node tools/steamdeck/run.mjs shell                  # shell in the distro, as the deck user
+node tools/steamdeck/run.ts setup                  # provision the distro, safe to re-run
+node tools/steamdeck/run.ts run --tag v2026.820.0-beta   # install a published release and launch it
+node tools/steamdeck/run.ts build                  # build the flatpak from the working tree
+node tools/steamdeck/run.ts run                    # launch the newest local bundle
+node tools/steamdeck/run.ts shell                  # shell in the distro, as the deck user
 ```
 
 `setup` expects the distro to exist already:

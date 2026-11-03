@@ -1,4 +1,6 @@
 import log from "electron-log";
+import { vi } from "vitest";
 
-// Keep test runs from writing into the installed app's log file
+vi.mock("electron", () => ({}));
+
 log.transports.file.level = false;

@@ -7,9 +7,9 @@ function makeHarness() {
   const listeners = new Set<(state: PlayerState) => void>();
   const sent: string[] = [];
   const launchPause = createLaunchPause({
-    addEventListener: listener => listeners.add(listener),
-    removeEventListener: listener => listeners.delete(listener),
-    send: command => sent.push(command)
+    addEventListener: (listener) => listeners.add(listener),
+    removeEventListener: (listener) => listeners.delete(listener),
+    send: (command) => sent.push(command),
   });
   const emit = (videoId: string, trackState: VideoState) => {
     const state = makePlayerState({ trackState, videoDetails: makeVideoDetails({ id: videoId }) });

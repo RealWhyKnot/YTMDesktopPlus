@@ -2,8 +2,9 @@
 
 A working starting point for a YTMDesktopPlus addon.
 
-1. Copy this folder into the app's addons directory (Settings -> Addons -> Open addons folder).
-2. Rename the folder and the `id` in `manifest.json`. They have to match.
-3. Restart the app, enable the addon under Settings -> Addons, restart again.
+1. From the repository root, run `yarn addon:template`.
+2. Copy `.vite/addon-template` into the app's addons directory (Settings -> Addons -> Open addons folder).
+3. Rename the folder and the `id` in `manifest.json`. They have to match.
+4. Restart the app, enable the addon under Settings -> Addons, restart again.
 
-The full guide is [docs/addons.md](../../docs/addons.md). Types are in `ytmd-addon.d.ts`, and `tsconfig.json` checks `index.js` against them as you edit.
+The TypeScript sources use the [addon SDK](../../docs/addons.md) and are checked against `ytmd-addon.d.ts`. After editing them, rebuild with `yarn addon:template` to write the JavaScript named by the manifest into `.vite/addon-template`.

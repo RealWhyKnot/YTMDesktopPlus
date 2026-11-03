@@ -1,0 +1,29 @@
+:root {
+  --color-neon-drive-ytm-background-image-1: #0f0722;
+  --color-neon-drive-ytm-background-image-2: #1a0b3d;
+  --color-neon-drive-ytm-border-top-3: #ff2e97;
+  --color-neon-drive-ytm-box-shadow-4: rgb(255 46 151 / 22%);
+  --color-neon-drive-ytm-box-shadow-5: rgb(255 46 151 / 70%);
+  --color-neon-drive-ytm-text-shadow-6: rgb(34 211 238 / 60%);
+}
+
+ytmusic-app {
+  background-image: linear-gradient(
+    to bottom,
+    var(--color-neon-drive-ytm-background-image-1) 0%,
+    var(--color-neon-drive-ytm-background-image-2) 100%
+  ) !important;
+}
+
+ytmusic-player-bar {
+  border-top: 1px solid var(--color-neon-drive-ytm-border-top-3) !important;
+  box-shadow: 0 -6px 24px var(--color-neon-drive-ytm-box-shadow-4) !important;
+}
+
+ytmusic-player-bar #sliderBar #primaryProgress {
+  box-shadow: 0 0 10px var(--color-neon-drive-ytm-box-shadow-5) !important;
+}
+
+ytmusic-pivot-bar-item-renderer[selected] {
+  text-shadow: 0 0 10px var(--color-neon-drive-ytm-text-shadow-6) !important;
+}

@@ -9,7 +9,7 @@ export type LastfmRequestBody = {
 
   format: "json" | "xml";
   api_key: string;
-  sk?: string;
+  sk?: string | null;
   api_sig?: string | null;
   token?: string;
 };
@@ -32,10 +32,5 @@ export type LastfmTokenResponse = {
   token: string;
 };
 
-export type LastfmApiResult = {
-  ok: boolean;
-  json?: Record<string, unknown>;
-  kind?: "auth" | "temporary" | "fatal";
-  code?: number | null;
-  message?: string;
-};
+export type LastfmApiResult =
+  { ok: true; json: Record<string, unknown> } | { ok: false; kind: "auth" | "temporary" | "fatal"; code: number | null; message: string };

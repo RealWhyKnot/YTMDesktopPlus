@@ -16,11 +16,12 @@ after that, the app turns it off at the next launch and asks again when you turn
 The quickest start is the working template at
 [`examples/addon-template`](../examples/addon-template) in this repository.
 
-1. Open Settings, go to the Addons tab and click "Open addons folder".
-2. Copy the template folder in there, then rename the folder and the `id` in
+1. From the repository root, run `yarn addon:template`.
+2. Open Settings, go to the Addons tab and click "Open addons folder".
+3. Copy `.vite/addon-template` in there, then rename the folder and the `id` in
    `manifest.json`. They have to match.
-3. Restart the app. The addon appears in the Addons tab, disabled.
-4. Enable it and restart once more.
+4. Restart the app. The addon appears in the Addons tab, disabled.
+5. Enable it and restart once more.
 
 You should see a badge in the title bar, settings on the addon's card, and
 rounded album art in the player bar. Now edit `styles.css` while the app runs.
@@ -68,20 +69,20 @@ my-addon/
 }
 ```
 
-| Field           | Required | Meaning                                                                                        |
-| --------------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `id`            | yes      | Lowercase letters, digits and dashes. Must equal the folder name.                              |
-| `name`          | yes      | Shown on the addon's card.                                                                     |
-| `version`       | yes      | Your addon's own version, semver style (`1.2.3`). Other formats only log a warning.            |
-| `author`        | yes      | Shown on the card.                                                                             |
-| `description`   | yes      | Shown on the card.                                                                             |
-| `homepage`      | no       | An http(s) link. The card gets a Homepage button.                                              |
-| `minAppVersion` | no       | Oldest app version the addon works with. An older app lists the addon but never loads it.      |
-| `apiVersion`    | no       | Addon API generation the addon targets. The current generation is 1. See Versioning below.    |
-| `styles`        | no       | CSS files injected into the YouTube Music view and watched for edits.                          |
-| `ytmScripts`    | no       | Script files run in the YouTube Music view on every page load.                                 |
-| `main`          | no       | A CommonJS entry loaded in the main process.                                                   |
-| `defaultEnabled`| no       | Bundled addons only. External addons always start disabled.                                    |
+| Field            | Required | Meaning                                                                                    |
+| ---------------- | -------- | ------------------------------------------------------------------------------------------ |
+| `id`             | yes      | Lowercase letters, digits and dashes. Must equal the folder name.                          |
+| `name`           | yes      | Shown on the addon's card.                                                                 |
+| `version`        | yes      | Your addon's own version, semver style (`1.2.3`). Other formats only log a warning.        |
+| `author`         | yes      | Shown on the card.                                                                         |
+| `description`    | yes      | Shown on the card.                                                                         |
+| `homepage`       | no       | An http(s) link. The card gets a Homepage button.                                          |
+| `minAppVersion`  | no       | Oldest app version the addon works with. An older app lists the addon but never loads it.  |
+| `apiVersion`     | no       | Addon API generation the addon targets. The current generation is 1. See Versioning below. |
+| `styles`         | no       | CSS files injected into the YouTube Music view and watched for edits.                      |
+| `ytmScripts`     | no       | Script files run in the YouTube Music view on every page load.                             |
+| `main`           | no       | A CommonJS entry loaded in the main process.                                               |
+| `defaultEnabled` | no       | Bundled addons only. External addons always start disabled.                                |
 
 All paths are relative and must stay inside the addon folder.
 
@@ -93,15 +94,17 @@ A longer value makes the manifest invalid.
 
 The whole SDK is declared in one self-contained file, `ytmd-addon.d.ts`,
 generated from the app's own source. The app compiles against the same
-declarations, which keeps the two in sync. The template includes a copy and a
-`tsconfig.json` with `checkJs` turned on, which gives plain JavaScript full
-completion and checking. Type your entry like this:
+declarations, which keeps the two in sync. The template's TypeScript sources
+are checked against `ytmd-addon.d.ts`. After editing them, rebuild with
+`yarn addon:template` to write the JavaScript named by the manifest into
+`.vite/addon-template`.
 
-```js
-/** @type {import("./ytmd-addon").AddonActivate} */
-module.exports.activate = ctx => {
-  // ctx is fully typed from here on
-};
+```ts
+import type { AddonContext } from "./ytmd-addon.d.ts";
+
+export function activate(ctx: AddonContext) {
+  ctx.log.info("Addon active");
+}
 ```
 
 `main` is loaded with `require()` and has to be CommonJS. An addon can't load
@@ -140,7 +143,7 @@ cookbook below.
 return an object with a `destroy` method:
 
 ```js
-module.exports.activate = ctx => {
+module.exports.activate = (ctx) => {
   ctx.settings.registerDefaults({ greeting: "hi" });
   ctx.settings.registerSettingsUI([{ fields: [{ key: "greeting", type: "text", label: "Greeting" }] }]);
 
@@ -185,16 +188,16 @@ and shows on the addon's card as a recent error, and the addon keeps running.
   full-snapshot `onStateChanged` stream, and typed events through
   `on(event, callback)`:
 
-  | Event               | Payload                                        |
-  | ------------------- | ---------------------------------------------- |
-  | `trackChanged`      | `{ current, previous, playlistId }`            |
-  | `playStateChanged`  | `{ playing, trackState }`                      |
-  | `volumeChanged`     | `{ volume, muted }`                            |
-  | `seeked`            | `{ fromSeconds, toSeconds }`                   |
-  | `adStateChanged`    | `{ adPlaying }`                                |
-  | `queueChanged`      | `{ queue }`                                    |
-  | `likeChanged`       | `{ likeStatus, videoId }`                      |
-  | `repeatModeChanged` | `{ repeatMode }`                               |
+  | Event               | Payload                             |
+  | ------------------- | ----------------------------------- |
+  | `trackChanged`      | `{ current, previous, playlistId }` |
+  | `playStateChanged`  | `{ playing, trackState }`           |
+  | `volumeChanged`     | `{ volume, muted }`                 |
+  | `seeked`            | `{ fromSeconds, toSeconds }`        |
+  | `adStateChanged`    | `{ adPlaying }`                     |
+  | `queueChanged`      | `{ queue }`                         |
+  | `likeChanged`       | `{ likeStatus, videoId }`           |
+  | `repeatModeChanged` | `{ repeatMode }`                    |
 
 - `ctx.playback`: playback control. The methods `play`, `pause`, `playPause`,
   `next`, `previous`, `toggleLike`, `toggleDislike`, `setVolume`, `volumeUp`,
@@ -277,7 +280,7 @@ window.ytmd.postAddonMessage("my-addon", "levels", { peak: 0.8 });
 
 ```js
 // in index.js
-ctx.ytmview.onMessage("levels", payload => {
+ctx.ytmview.onMessage("levels", (payload) => {
   ctx.log.info("peak", payload);
 });
 ```

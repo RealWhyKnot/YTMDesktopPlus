@@ -1,9 +1,25 @@
+import { requireElement } from "../helpers/require-element";
 import { describe, expect, it } from "vitest";
 import { mount } from "@vue/test-utils";
 import YTMDSetting from "../../src/renderer/components/YTMDSetting.vue";
 import { LONG_WORD } from "./fixtures";
 
 describe("YTMDSetting", () => {
+  it.each([
+    { raw: "", expected: NaN },
+    { raw: "12px", expected: 12 },
+    { raw: "1.5", expected: 1 },
+    { raw: " 7 ", expected: 7 },
+    { raw: "3beta", expected: 3 },
+    { raw: "0x10", expected: 16 },
+    { raw: "-0", expected: -0 },
+  ])("keeps numeric select parsing for '$raw'", async ({ raw, expected }) => {
+    const wrapper = mount(YTMDSetting, { props: { type: "select", name: "Number", valueType: "number", optionsMap: { [raw]: "Choice" } } });
+    await wrapper.get("select").setValue(raw);
+    expect(wrapper.emitted("update:modelValue")?.[0]?.[0]).toBe(expected);
+    wrapper.unmount();
+  });
+
   it("renders an oversized name and description in full and lets them wrap", () => {
     const name = `Name ${LONG_WORD}`;
     const description = `Description ${LONG_WORD} ${LONG_WORD}`;
@@ -22,8 +38,8 @@ describe("YTMDSetting", () => {
           modelValue: type === "checkbox" ? false : type === "text" ? "" : 1,
           name: `The ${type} name`,
           description: "Some help",
-          optionsMap: { 1: "One" }
-        }
+          optionsMap: { 1: "One" },
+        },
       });
       const control = wrapper.find(type === "select" ? "select" : "input");
       const labelId = control.attributes("aria-labelledby");
@@ -36,7 +52,7 @@ describe("YTMDSetting", () => {
 
   it("describes a disabled control with its disabled message", () => {
     const wrapper = mount(YTMDSetting, {
-      props: { type: "checkbox", modelValue: false, name: "Thing", disabled: true, disabledMessage: "Not available here" }
+      props: { type: "checkbox", modelValue: false, name: "Thing", disabled: true, disabledMessage: "Not available here" },
     });
     const control = wrapper.find("input");
     expect(wrapper.find(`[id="${control.attributes("aria-describedby")}"]`).text()).toBe("Not available here");
@@ -54,7 +70,7 @@ describe("YTMDSetting", () => {
     const wrapper = mount(YTMDSetting, { props: { type: "text", modelValue: "", name: "Text" } });
     const input = wrapper.find("input");
     for (const value of ["a", "ab"]) {
-      (input.element as HTMLInputElement).value = value;
+      requireElement(input.element, HTMLInputElement).value = value;
       await input.trigger("input");
     }
     expect(wrapper.emitted("update:modelValue")).toEqual([["a"], ["ab"]]);

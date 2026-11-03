@@ -1,13 +1,17 @@
 <script setup lang="ts">
+import type { AppWindow } from "../app-window";
+declare const window: AppWindow;
 import { onBeforeMount, ref } from "vue";
 import logo from "~assets/icons/ytmd.png";
 
+const loaderPieces = ["c-top-left", "c-top-right", "c-bottom-left", "c-bottom-right", "c-top-strip", "c-bottom-strip", "c-middle"] as const;
+
 const memoryStore = window.ytmd.memoryStore;
 
-const ytmViewLoading = ref<boolean>(await memoryStore.get("ytmViewLoading"));
-const ytmViewLoadingError = ref<boolean>(await memoryStore.get("ytmViewLoadingError"));
-const ytmViewLoadTimedout = ref<boolean>(await memoryStore.get("ytmViewLoadTimedout"));
-const ytmViewLoadingStatus = ref<string>((await memoryStore.get("ytmViewLoadingStatus")) ?? "");
+const ytmViewLoading = ref<boolean | undefined>(await memoryStore.get("ytmViewLoading"));
+const ytmViewLoadingError = ref<boolean | undefined>(await memoryStore.get("ytmViewLoadingError"));
+const ytmViewLoadTimedout = ref<boolean | undefined>(await memoryStore.get("ytmViewLoadTimedout"));
+const ytmViewLoadingStatus = ref<string | undefined>((await memoryStore.get("ytmViewLoadingStatus")) ?? "");
 
 onBeforeMount(async () => {
   ytmViewLoading.value = await memoryStore.get("ytmViewLoading");
@@ -16,7 +20,7 @@ onBeforeMount(async () => {
   ytmViewLoadingStatus.value = (await memoryStore.get("ytmViewLoadingStatus")) ?? "";
 });
 
-memoryStore.onStateChanged(newState => {
+memoryStore.onStateChanged((newState) => {
   ytmViewLoading.value = newState.ytmViewLoading;
   ytmViewLoadingError.value = newState.ytmViewLoadingError;
   ytmViewLoadTimedout.value = newState.ytmViewLoadTimedout;
@@ -34,16 +38,11 @@ function retry() {
       <div v-if="ytmViewLoading" class="ytmview-loading">
         <img class="logo" :src="logo" />
         <div class="music-loader">
-          <div class="loader-line"></div>
-          <div class="loader-line"></div>
-          <div class="loader-line"></div>
-          <div class="loader-line"></div>
-          <div class="loader-line"></div>
-          <div class="loader-line"></div>
-          <div class="loader-line"></div>
-          <div class="loader-line"></div>
+          <div v-for="bar in 8" :key="bar" class="loader-line">
+            <div v-for="piece in loaderPieces" :key="piece" class="loader-piece" :class="piece"></div>
+          </div>
         </div>
-        <p :class="{ 'ytmview-loading-status': true, 'error': ytmViewLoadingError }">{{ ytmViewLoadingStatus }}</p>
+        <p :class="{ 'ytmview-loading-status': true, error: ytmViewLoadingError }">{{ ytmViewLoadingStatus }}</p>
         <p v-if="ytmViewLoadTimedout" class="ytmview-loading-timeout">YouTube Music is taking longer than usual to load</p>
         <button v-if="ytmViewLoadingError" class="ytmview-loading-retry" @click="retry">Retry</button>
       </div>
@@ -118,10 +117,8 @@ function retry() {
 
 .loader-line {
   width: 12px;
-  height: 4px;
-  border-radius: 10px;
-  background-color: var(--text);
-  animation: musicloader 1.5s ease-in-out infinite;
+  height: 72px;
+  position: relative;
 }
 
 .loader-line:nth-child(1) {
@@ -156,15 +153,264 @@ function retry() {
   animation-delay: 1s;
 }
 
-@keyframes musicloader {
+.loader-piece {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  background: var(--text);
+  transform-origin: 0 0;
+  animation-duration: 1.5s;
+  animation-iteration-count: infinite;
+  animation-delay: inherit;
+  animation-timing-function: linear;
+}
+
+.c-middle {
+  width: 12px;
+  height: 60px;
+  animation-name: loader-c-middle;
+  transform: translate(0, -0.75px) scale(1, 0.025);
+}
+
+.c-top-left,
+.c-top-right,
+.c-bottom-left,
+.c-bottom-right {
+  width: 6px;
+  height: 6px;
+}
+
+.c-top-left {
+  border-top-left-radius: 6px;
+  animation-name: loader-c-top-left;
+  transform: translate(0, -2px) scale(0.3333, 0.3333);
+}
+
+.c-top-right {
+  border-top-right-radius: 6px;
+  animation-name: loader-c-top-right;
+  transform: translate(10px, -2px) scale(0.3333, 0.3333);
+}
+
+.c-bottom-left {
+  border-bottom-left-radius: 6px;
+  animation-name: loader-c-bottom-left;
+  transform: translate(0, 0) scale(0.3333, 0.3333);
+}
+
+.c-bottom-right {
+  border-bottom-right-radius: 6px;
+  animation-name: loader-c-bottom-right;
+  transform: translate(10px, 0) scale(0.3333, 0.3333);
+}
+
+.c-top-strip,
+.c-bottom-strip {
+  width: 12px;
+  height: 6px;
+}
+
+.c-top-strip {
+  animation-name: loader-c-top-strip;
+  transform: translate(2px, -2px) scale(0.6667, 0.3333);
+}
+
+.c-bottom-strip {
+  animation-name: loader-c-bottom-strip;
+  transform: translate(2px, 0) scale(0.6667, 0.3333);
+}
+
+@keyframes loader-c-top-left {
   0% {
-    height: 4px;
+    transform: translate(0, -2px) scale(0.3333, 0.3333);
+    animation-timing-function: cubic-bezier(0.376, 0, 0.7023, 0.3888);
   }
+
+  11.9438% {
+    transform: translate(0, -6px) scale(1, 1);
+    animation-timing-function: cubic-bezier(0.3435, 0.2996, 0.5662, 1);
+  }
+
   50% {
-    height: 72px;
+    transform: translate(0, -36px) scale(1, 1);
+    animation-timing-function: cubic-bezier(0.4338, 0, 0.6565, 0.7004);
   }
+
+  88.0562% {
+    transform: translate(0, -6px) scale(1, 1);
+    animation-timing-function: cubic-bezier(0.2977, 0.6112, 0.624, 1);
+  }
+
   100% {
+    transform: translate(0, -2px) scale(0.3333, 0.3333);
+  }
+}
+
+@keyframes loader-c-top-right {
+  0% {
+    transform: translate(10px, -2px) scale(0.3333, 0.3333);
+    animation-timing-function: cubic-bezier(0.376, 0, 0.7023, 0.3888);
+  }
+
+  11.9438% {
+    transform: translate(6px, -6px) scale(1, 1);
+    animation-timing-function: cubic-bezier(0.3435, 0.2996, 0.5662, 1);
+  }
+
+  50% {
+    transform: translate(6px, -36px) scale(1, 1);
+    animation-timing-function: cubic-bezier(0.4338, 0, 0.6565, 0.7004);
+  }
+
+  88.0562% {
+    transform: translate(6px, -6px) scale(1, 1);
+    animation-timing-function: cubic-bezier(0.2977, 0.6112, 0.624, 1);
+  }
+
+  100% {
+    transform: translate(10px, -2px) scale(0.3333, 0.3333);
+  }
+}
+
+@keyframes loader-c-bottom-left {
+  0% {
+    transform: translate(0, 0) scale(0.3333, 0.3333);
+    animation-timing-function: cubic-bezier(0.376, 0, 0.7023, 0.3888);
+  }
+
+  11.9438% {
+    transform: translate(0, 0) scale(1, 1);
+    animation-timing-function: cubic-bezier(0.3435, 0.2996, 0.5662, 1);
+  }
+
+  50% {
+    transform: translate(0, 30px) scale(1, 1);
+    animation-timing-function: cubic-bezier(0.4338, 0, 0.6565, 0.7004);
+  }
+
+  88.0562% {
+    transform: translate(0, 0) scale(1, 1);
+    animation-timing-function: cubic-bezier(0.2977, 0.6112, 0.624, 1);
+  }
+
+  100% {
+    transform: translate(0, 0) scale(0.3333, 0.3333);
+  }
+}
+
+@keyframes loader-c-bottom-right {
+  0% {
+    transform: translate(10px, 0) scale(0.3333, 0.3333);
+    animation-timing-function: cubic-bezier(0.376, 0, 0.7023, 0.3888);
+  }
+
+  11.9438% {
+    transform: translate(6px, 0) scale(1, 1);
+    animation-timing-function: cubic-bezier(0.3435, 0.2996, 0.5662, 1);
+  }
+
+  50% {
+    transform: translate(6px, 30px) scale(1, 1);
+    animation-timing-function: cubic-bezier(0.4338, 0, 0.6565, 0.7004);
+  }
+
+  88.0562% {
+    transform: translate(6px, 0) scale(1, 1);
+    animation-timing-function: cubic-bezier(0.2977, 0.6112, 0.624, 1);
+  }
+
+  100% {
+    transform: translate(10px, 0) scale(0.3333, 0.3333);
+  }
+}
+
+@keyframes loader-c-top-strip {
+  0% {
+    transform: translate(2px, -2px) scale(0.6667, 0.3333);
+    animation-timing-function: cubic-bezier(0.376, 0, 0.7023, 0.3888);
+  }
+
+  11.9438% {
+    transform: translate(6px, -6px) scale(0, 1);
+    animation-timing-function: cubic-bezier(0.3435, 0.2996, 0.5662, 1);
+  }
+
+  50% {
+    transform: translate(6px, -36px) scale(0, 1);
+    animation-timing-function: cubic-bezier(0.4338, 0, 0.6565, 0.7004);
+  }
+
+  88.0562% {
+    transform: translate(6px, -6px) scale(0, 1);
+    animation-timing-function: cubic-bezier(0.2977, 0.6112, 0.624, 1);
+  }
+
+  100% {
+    transform: translate(2px, -2px) scale(0.6667, 0.3333);
+  }
+}
+
+@keyframes loader-c-bottom-strip {
+  0% {
+    transform: translate(2px, 0) scale(0.6667, 0.3333);
+    animation-timing-function: cubic-bezier(0.376, 0, 0.7023, 0.3888);
+  }
+
+  11.9438% {
+    transform: translate(6px, 0) scale(0, 1);
+    animation-timing-function: cubic-bezier(0.3435, 0.2996, 0.5662, 1);
+  }
+
+  50% {
+    transform: translate(6px, 30px) scale(0, 1);
+    animation-timing-function: cubic-bezier(0.4338, 0, 0.6565, 0.7004);
+  }
+
+  88.0562% {
+    transform: translate(6px, 0) scale(0, 1);
+    animation-timing-function: cubic-bezier(0.2977, 0.6112, 0.624, 1);
+  }
+
+  100% {
+    transform: translate(2px, 0) scale(0.6667, 0.3333);
+  }
+}
+
+@keyframes loader-c-middle {
+  0% {
+    transform: translate(0, -0.75px) scale(1, 0.025);
+    animation-timing-function: cubic-bezier(0.376, 0, 0.7023, 0.3888);
+  }
+
+  11.9438% {
+    transform: translate(0, -0.75px) scale(1, 0.025);
+    animation-timing-function: cubic-bezier(0.3435, 0.2996, 0.5662, 1);
+  }
+
+  50% {
+    transform: translate(0, -30.75px) scale(1, 1.025);
+    animation-timing-function: cubic-bezier(0.4338, 0, 0.6565, 0.7004);
+  }
+
+  88.0562% {
+    transform: translate(0, -0.75px) scale(1, 0.025);
+    animation-timing-function: cubic-bezier(0.2977, 0.6112, 0.624, 1);
+  }
+
+  100% {
+    transform: translate(0, -0.75px) scale(1, 0.025);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader-line {
     height: 4px;
+    border-radius: 10px;
+    background: var(--text);
+  }
+
+  .loader-piece {
+    display: none;
   }
 }
 </style>

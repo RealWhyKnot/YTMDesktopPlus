@@ -1,8 +1,9 @@
-import { readFileSync } from "node:fs";
+import { requireValue, requireRecord } from "./helpers/require-value";
+import { readPageScript, runPageScript } from "./helpers/page-script";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installQueueProjection } from "../src/shared/queue-projection";
 
-const source = readFileSync("src/renderer/ytmview/scripts/hookplayerapievents.script.js", "utf8").trim();
+const source = await readPageScript("src/renderer/ytmview/scripts/hookplayerapievents.script.ts");
 
 type Listener = (event: unknown) => void;
 
@@ -23,13 +24,13 @@ const ALBUM_RUN = {
   navigationEndpoint: {
     browseEndpoint: {
       browseId: "MPREb_album",
-      browseEndpointContextSupportedConfigs: { browseEndpointContextMusicConfig: { pageType: "MUSIC_PAGE_TYPE_ALBUM" } }
-    }
-  }
+      browseEndpointContextSupportedConfigs: { browseEndpointContextMusicConfig: { pageType: "MUSIC_PAGE_TYPE_ALBUM" } },
+    },
+  },
 };
 
 function run() {
-  return new Function(`return (${source.replace(/;$/, "")})`)()();
+  return runPageScript(source);
 }
 
 function videoDataEvent() {
@@ -52,7 +53,7 @@ beforeEach(() => {
   const playerApi = {
     addEventListener: (name: string, listener: Listener) => apiListeners.set(name, listener),
     getPlayerResponse: () => playerResponse,
-    getPlaylistId: () => "PL1"
+    getPlaylistId: () => "PL1",
   };
 
   const playerBar = {
@@ -60,7 +61,7 @@ beforeEach(() => {
     querySelector: () => likeButton,
     get currentItem() {
       return currentItem;
-    }
+    },
   };
 
   vi.stubGlobal("document", { querySelector: () => playerBar });
@@ -69,14 +70,22 @@ beforeEach(() => {
     addEventListener: (name: string, listener: Listener) => windowListeners.set(name, listener),
     ytmd: {
       reportContractMiss: (what: string, detail?: string) => misses.push([what, detail]),
-      sendVideoProgress: () => {},
-      sendVideoState: () => {},
+      sendVideoProgress: () => {
+        return undefined;
+      },
+      sendVideoState: () => {
+        return undefined;
+      },
       sendStoreUpdate: (...args: unknown[]) => storeUpdates.push(args),
       sendQueueUpdate: (queue: unknown) => queueUpdates.push(queue),
       sendVideoData: (...args: unknown[]) => videoData.push(args),
-      sendCreatePlaylistObservation: () => {},
-      sendDeletePlaylistObservation: () => {}
-    }
+      sendCreatePlaylistObservation: () => {
+        return undefined;
+      },
+      sendDeletePlaylistObservation: () => {
+        return undefined;
+      },
+    },
   });
   installQueueProjection();
   vi.useFakeTimers();
@@ -105,7 +114,7 @@ describe("hookplayerapievents", () => {
   it("prefers the store like status over the button", () => {
     state.likeStatus = { videos: { abc: "DISLIKE" } };
     run();
-    expect(storeUpdates[0][0]).toBe("DISLIKE");
+    expect(requireValue(storeUpdates[0])[0]).toBe("DISLIKE");
   });
 
   it("keeps sending state when the like button element moves", () => {
@@ -118,17 +127,17 @@ describe("hookplayerapievents", () => {
   it("reports and survives a store shape change instead of throwing at the subscriber", () => {
     state = {};
     expect(() => run()).not.toThrow();
-    expect(() => storeSubscribers[0]({})).not.toThrow();
+    expect(() => requireValue(storeSubscribers[0]).call(storeSubscribers, {})).not.toThrow();
     vi.runAllTimers();
     expect(storeUpdates).toEqual([]);
-    expect(misses[0][0]).toBe("store-state");
+    expect(requireValue(misses[0])[0]).toBe("store-state");
   });
 
   it("folds a burst of store dispatches into one send", () => {
     run();
     storeUpdates.length = 0;
     state = { ...state, player: { volume: 55, muted: false, adPlaying: false } };
-    for (let i = 0; i < 5; i++) storeSubscribers[0]({});
+    for (let i = 0; i < 5; i++) requireValue(storeSubscribers[0]).call(storeSubscribers, {});
     expect(storeUpdates).toEqual([]);
 
     vi.runAllTimers();
@@ -139,7 +148,7 @@ describe("hookplayerapievents", () => {
 
   it("stays quiet for dispatches that change nothing it sends", () => {
     run();
-    storeSubscribers[0]({});
+    requireValue(storeSubscribers[0]).call(storeSubscribers, {});
     vi.runAllTimers();
 
     expect(storeUpdates).toHaveLength(1);
@@ -153,10 +162,10 @@ describe("hookplayerapievents", () => {
       queue: {
         items: [{ playlistPanelVideoRenderer: { videoId: "v1", title: { runs: [{ text: "One" }] }, selected: true } }],
         automixItems: [],
-        repeatMode: "ALL"
-      }
+        repeatMode: "ALL",
+      },
     };
-    storeSubscribers[0]({});
+    requireValue(storeSubscribers[0]).call(storeSubscribers, {});
     vi.runAllTimers();
 
     expect(storeUpdates).toHaveLength(1);
@@ -168,8 +177,8 @@ describe("hookplayerapievents", () => {
     run();
     videoDataEvent();
     expect(videoData).toHaveLength(1);
-    const [details, playlistId, album, likeStatus, hasFullMetadata] = videoData[0];
-    expect((details as { title: string }).title).toBe("Song");
+    const [details, playlistId, album, likeStatus, hasFullMetadata] = requireValue(videoData[0]);
+    expect(requireRecord(details).title).toBe("Song");
     expect(playlistId).toBe("PL1");
     expect(album).toEqual({ id: "MPREb_album", text: "An Album" });
     expect(likeStatus).toBe("LIKE");
@@ -184,7 +193,7 @@ describe("hookplayerapievents", () => {
       currentItem = { title: { runs: [{ text: "Song" }] }, thumbnail, longBylineText: { runs: [ALBUM_RUN] } };
       run();
       videoDataEvent();
-      expect((videoData.at(-1)[0] as { thumbnail: unknown }).thumbnail).toEqual(rawThumbnail);
+      expect(requireRecord(requireValue(videoData.at(-1))[0]).thumbnail).toEqual(rawThumbnail);
     }
   });
 
@@ -194,17 +203,17 @@ describe("hookplayerapievents", () => {
     currentItem = { title: { runs: [{ text: "Song" }] }, thumbnail: itemThumbnail, longBylineText: { runs: [ALBUM_RUN] } };
     run();
     videoDataEvent();
-    expect((videoData[0][0] as { thumbnail: unknown }).thumbnail).toEqual(itemThumbnail);
+    expect(requireRecord(requireValue(videoData[0])[0]).thumbnail).toEqual(itemThumbnail);
   });
 
   it("ignores byline runs that are not album links", () => {
     currentItem = {
       title: { runs: [{ text: "Song" }] },
-      longBylineText: { runs: [{ text: "Artist", navigationEndpoint: { watchEndpoint: { videoId: "x" } } }] }
+      longBylineText: { runs: [{ text: "Artist", navigationEndpoint: { watchEndpoint: { videoId: "x" } } }] },
     };
     run();
     videoDataEvent();
-    expect(videoData[0][2]).toBeNull();
+    expect(requireValue(videoData[0])[2]).toBeNull();
     expect(misses).toEqual([]);
   });
 
@@ -213,7 +222,7 @@ describe("hookplayerapievents", () => {
     run();
     videoDataEvent();
     expect(videoData).toHaveLength(1);
-    expect(videoData[0][2]).toBeNull();
+    expect(requireValue(videoData[0])[2]).toBeNull();
     expect(misses).toEqual([["currentItem.longBylineText.runs", undefined]]);
   });
 
@@ -237,8 +246,8 @@ describe("hookplayerapievents", () => {
     currentItem = null;
     run();
     videoDataEvent();
-    expect(videoData[0][0]).toEqual({ videoId: "abc", title: "Raw" });
-    expect(videoData[0][4]).toBe(false);
+    expect(requireValue(videoData[0])[0]).toEqual({ videoId: "abc", title: "Raw" });
+    expect(requireValue(videoData[0])[4]).toBe(false);
   });
 
   it("ignores player events for other player types and states", () => {
@@ -251,6 +260,6 @@ describe("hookplayerapievents", () => {
   it("reports a yt-action shape change instead of throwing into the page bus", () => {
     run();
     expect(() => windowListeners.get("yt-action")?.({ detail: { actionName: "yt-service-request", args: [] } })).not.toThrow();
-    expect(misses[0][0]).toBe("yt-action");
+    expect(requireValue(misses[0])[0]).toBe("yt-action");
   });
 });

@@ -1,11 +1,4 @@
-// Client side of the relay's /audio channel. The relay repository holds the
-// canonical copy of these constants and the batch layout; the two are kept in
-// deliberate sync the same way room-protocol.ts mirrors the relay protocol.
-//
-// One socket carries JSON text frames (authentication, codec config, track
-// metadata, anchors, status, listener count) and binary frames of batched
-// Opus packets. The edge routes /audio/<roomId> to the node that owns the
-// room, so the client only ever needs this one URL.
+import { isRecord } from "./unknown";
 
 export const AUDIO_URL_BASE = "wss://ytmdesktopplus.com/audio/";
 
@@ -31,15 +24,14 @@ export function isCoverUrl(value: string): boolean {
   return value.length <= MAX_COVER_URL_LENGTH && value.startsWith("https://") && COVER_URL_REST.test(value.slice("https://".length));
 }
 
-export function sanitizeMetaText(value: string | undefined): string | undefined {
+export function sanitizeMetaText(value: string | null | undefined): string | undefined {
   if (!value) return undefined;
-  const filtered = [...value]
-    .filter(ch => {
-      const code = ch.codePointAt(0) ?? 0;
-      return code > 31 && code !== 127;
-    })
-    .join("")
-    .trim();
+  let filtered = "";
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code > 31 && code !== 127) filtered += character;
+  }
+  filtered = filtered.trim();
   let out = "";
   for (const ch of filtered) {
     if (out.length + ch.length > MAX_META_TEXT_LENGTH) break;
@@ -63,26 +55,22 @@ export type AudioCountFrame = { t: "n"; n: number };
 export type AudioErrorFrame = { t: "e"; m: string };
 export type AudioServerFrame = AudioReadyFrame | AudioCountFrame | AudioErrorFrame;
 
-// Errors after which redialing the same room is pointless.
 export const FATAL_AUDIO_ERRORS = ["no such room", "bad key", "room closed"];
 
-/** Parses what the relay sends a publisher. Unknown frames are null. */
 export function parseAudioServerFrame(raw: string): AudioServerFrame | null {
   if (raw.length > MAX_AUDIO_TEXT_FRAME) return null;
 
-  let value: unknown;
+  let frame: unknown;
   try {
-    value = JSON.parse(raw);
+    frame = JSON.parse(raw);
   } catch {
     return null;
   }
-  if (typeof value !== "object" || value === null) return null;
-
-  const frame = value as Record<string, unknown>;
+  if (!isRecord(frame)) return null;
   switch (frame.t) {
     case "ready": {
       if (frame.n !== undefined && typeof frame.n !== "number") return null;
-      const ready: AudioReadyFrame = { t: "ready", n: frame.n as number | undefined };
+      const ready: AudioReadyFrame = { t: "ready", n: frame.n };
       if (typeof frame.c === "number" && Number.isFinite(frame.c)) ready.c = frame.c;
       if (typeof frame.v === "number" && Number.isFinite(frame.v)) ready.v = frame.v;
       return ready;
@@ -102,16 +90,10 @@ export function parseAudioServerFrame(raw: string): AudioServerFrame | null {
 
 export type BatchPacket = { timestampUs: number; payload: Uint8Array };
 
-/**
- * Builds a binary batch in the wire layout:
- *
- *   u8 version | u8 flags | u16be packetCount | u32be batchSeq
- *   | f64be baseTimestampUs
- *   | packetCount x { u32be deltaTimestampUs, u16be byteLength, bytes }
- */
 export function encodeBatch(packets: BatchPacket[], batchSeq: number, options?: { discontinuity?: boolean }): Uint8Array {
-  if (packets.length === 0 || packets.length > 0xffff) throw new Error("bad packet count");
-  const base = packets[0].timestampUs;
+  const first = packets[0];
+  if (first === undefined || packets.length > 0xffff) throw new Error("bad packet count");
+  const base = first.timestampUs;
   const total = BATCH_HEADER_BYTES + packets.reduce((sum, packet) => sum + PACKET_HEADER_BYTES + packet.payload.byteLength, 0);
   if (total > MAX_BATCH_BYTES) throw new Error("batch too large");
 

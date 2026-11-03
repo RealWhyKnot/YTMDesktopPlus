@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { AddonContext } from "../../src/main/addons/context";
+import type { AddonContext } from "~shared/addons/sdk";
 import {
   VideoState,
   VideoType,
@@ -16,7 +16,7 @@ import {
   type PlayerEventName,
   type PlayerState,
   type RemoteTrackActivity,
-  type VideoDetails
+  type VideoDetails,
 } from "../../src/shared/addons/sdk";
 
 export function makeManifest(overrides: Partial<AddonManifest> = {}): AddonManifest {
@@ -26,7 +26,7 @@ export function makeManifest(overrides: Partial<AddonManifest> = {}): AddonManif
     version: "1.0.0",
     author: "someone",
     description: "a sample addon",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -43,7 +43,7 @@ export function makeVideoDetails(overrides: Partial<VideoDetails> = {}): VideoDe
     likeStatus: LikeStatus.Indifferent,
     videoType: VideoType.MusicAudio,
     isLive: false,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -58,79 +58,98 @@ export function makePlayerState(overrides: Partial<PlayerState> = {}): PlayerSta
     muted: false,
     adPlaying: false,
     hasFullMetadata: false,
-    ...overrides
+    ...overrides,
   };
 }
 
 export type FakeAddonContextOptions = {
   manifest?: AddonManifest;
-  /** Initial addon settings served by ctx.settings.get */
+
   settings?: Record<string, unknown>;
-  /** What ctx.discord.isEnabled() reports; off by default */
+
   discordEnabled?: boolean;
-  /** Resolves invokeScript calls; defaults to resolving true */
+
   invokeScript?: (name: string, arg?: unknown) => Promise<unknown>;
-  /** Resolves innertube requests; defaults to resolving an empty object */
+
   innertube?: (endpoint: string, body?: Record<string, unknown>) => Promise<unknown>;
 };
 
-/** A complete, compiler-checked context double. The object literal is typed
- *  against the real interface with no whole-object cast, so a new context
- *  member breaks this file instead of silently drifting past the fakes. */
 export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
   const manifest = options.manifest ?? makeManifest();
-  const settings: Record<string, unknown> = { ...options.settings };
+  const settings = new Map<string, unknown>(Object.entries(options.settings ?? {}));
   const unsubscribe = vi.fn();
-  const invoke = options.invokeScript ?? (async () => true);
-  const innertube = options.innertube ?? (async () => ({}));
+  const invoke = options.invokeScript ?? (() => Promise.resolve(true));
+  const innertube = options.innertube ?? (() => Promise.resolve({}));
+  const invocationListeners = new Set<(name: string, arg: unknown) => void>();
 
-  const captured = {
-    scripts: {} as Record<string, string>,
-    invocations: [] as { name: string; arg: unknown }[],
-    loadedCallbacks: [] as (() => void)[],
-    messageCallbacks: {} as Record<string, ((payload: unknown) => void)[]>,
-    stateListeners: [] as ((state: PlayerState) => void)[],
-    eventListeners: {} as Record<string, ((payload: unknown) => void)[]>,
-    settingsListeners: {} as Record<string, (next?: unknown, prev?: unknown) => void>,
-    actionCallbacks: {} as Record<string, () => void>,
-    sections: [] as AddonSettingsSection[],
-    remoteProviders: [] as (() => RemoteTrackActivity | undefined)[],
-    buttonsProviders: [] as (() => { label: string; url: string }[] | undefined)[],
-    badges: [] as (Omit<AddonTitlebarBadge, "addonId"> | null)[],
-    deepLinks: {} as Record<string, (segments: string[], params: URLSearchParams) => void>,
-    innertubeCalls: [] as { endpoint: string; body?: Record<string, unknown> }[],
-    trayItems: [] as AddonTrayMenuItem[],
-    windows: [] as AddonWindowHandle[],
-    ipcHandlers: {} as Record<string, (event: AddonIpcEvent, ...args: unknown[]) => void>,
-    notificationsShown: [] as { title: string; body?: string }[],
-    cssRemoved: 0
+  const captured: {
+    scripts: Record<string, string>;
+    invocations: { name: string; arg: unknown }[];
+    loadedCallbacks: (() => unknown)[];
+    messageCallbacks: Record<string, ((payload: unknown) => void)[]>;
+    stateListeners: ((state: PlayerState) => void)[];
+    eventListeners: Record<string, ((payload: unknown) => void)[]>;
+    settingsListeners: Record<string, (next?: unknown, prev?: unknown) => unknown>;
+    actionCallbacks: Record<string, () => void>;
+    sections: AddonSettingsSection[];
+    remoteProviders: (() => RemoteTrackActivity | undefined)[];
+    buttonsProviders: (() => { label: string; url: string }[] | undefined)[];
+    badges: (Omit<AddonTitlebarBadge, "addonId"> | null)[];
+    deepLinks: Record<string, (segments: string[], params: URLSearchParams) => void>;
+    innertubeCalls: { endpoint: string; body?: Record<string, unknown> }[];
+    trayItems: AddonTrayMenuItem[];
+    windows: AddonWindowHandle[];
+    ipcHandlers: Record<string, (event: AddonIpcEvent, ...args: unknown[]) => void>;
+    notificationsShown: { title: string; body?: string }[];
+    cssRemoved: number;
+  } = {
+    scripts: {},
+    invocations: [],
+    loadedCallbacks: [],
+    messageCallbacks: {},
+    stateListeners: [],
+    eventListeners: {},
+    settingsListeners: {},
+    actionCallbacks: {},
+    sections: [],
+    remoteProviders: [],
+    buttonsProviders: [],
+    badges: [],
+    deepLinks: {},
+    innertubeCalls: [],
+    trayItems: [],
+    windows: [],
+    ipcHandlers: {},
+    notificationsShown: [],
+    cssRemoved: 0,
   };
 
-  const memoryBag: Record<string, unknown> = {};
+  const memoryBag = new Map<string, unknown>();
 
-  function cssHandle(): AddonCssHandle {
+  function cssHandle() {
     return {
-      update: vi.fn(async () => {}),
-      remove: vi.fn(async () => {
+      update: vi.fn(() => Promise.resolve(undefined)),
+      remove: vi.fn(() => {
         captured.cssRemoved++;
-      })
-    };
+        return Promise.resolve(undefined);
+      }),
+    } satisfies AddonCssHandle;
   }
 
-  function windowHandle(): AddonWindowHandle {
-    let open = true;
+  function windowHandle() {
+    let isOpen = true;
     return {
       show: vi.fn(),
       close: vi.fn(() => {
-        open = false;
+        isOpen = false;
       }),
-      isOpen: () => open,
+      isOpen: () => isOpen,
       webContents: () => null,
-      send: vi.fn()
-    };
+      send: vi.fn(),
+    } satisfies AddonWindowHandle;
   }
 
-  const ctx: AddonContext = {
+  const ctx = {
     manifest,
     log: {
       error: vi.fn(),
@@ -139,19 +158,19 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       verbose: vi.fn(),
       debug: vi.fn(),
       silly: vi.fn(),
-      log: vi.fn()
+      log: vi.fn(),
     },
     paths: { data: "" },
     app: { version: "0.0.0" },
     settings: {
       registerDefaults: vi.fn((defaults: Record<string, unknown>) => {
         for (const [key, value] of Object.entries(defaults)) {
-          if (settings[key] === undefined) settings[key] = value;
+          if (settings.get(key) === undefined) settings.set(key, value);
         }
       }),
-      get: <T>(key: string) => settings[key] as T,
+      get: (key) => settings.get(key),
       set: vi.fn((key: string, value: unknown) => {
-        settings[key] = value;
+        settings.set(key, value);
       }),
       onDidChange: vi.fn((key: string, callback: (next: unknown, prev: unknown) => void) => {
         captured.settingsListeners[key] = callback;
@@ -163,13 +182,13 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       onAction: vi.fn((key: string, callback: () => void) => {
         captured.actionCallbacks[key] = callback;
         return unsubscribe;
-      })
+      }),
     },
     memory: {
-      get: <T>(key: string) => memoryBag[key] as T,
+      get: (key) => memoryBag.get(key),
       set: vi.fn((key: string, value: unknown) => {
-        memoryBag[key] = value;
-      })
+        memoryBag.set(key, value);
+      }),
     },
     ytmview: {
       registerScript: vi.fn((name: string, script: string) => {
@@ -178,9 +197,10 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       runScript: vi.fn(),
       invokeScript: vi.fn((name: string, arg?: unknown) => {
         captured.invocations.push({ name, arg });
+        for (const listener of invocationListeners) listener(name, arg);
         return invoke(name, arg);
       }),
-      onLoaded: vi.fn((callback: () => void) => {
+      onLoaded: vi.fn((callback: () => unknown) => {
         captured.loadedCallbacks.push(callback);
         return unsubscribe;
       }),
@@ -189,11 +209,11 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
         return unsubscribe;
       }),
       insertCSS: vi.fn(() => cssHandle()),
-      watchCSSFile: vi.fn(() => cssHandle())
+      watchCSSFile: vi.fn(() => cssHandle()),
     },
     player: {
       getState: vi.fn(() => makePlayerState()),
-      getQueue: vi.fn(() => null),
+      getQueue: vi.fn<AddonContext["player"]["getQueue"]>(() => null),
       getPlaylistId: vi.fn(() => null),
       onStateChanged: vi.fn((callback: (state: PlayerState) => void) => {
         captured.stateListeners.push(callback);
@@ -202,7 +222,7 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       on: vi.fn((event: PlayerEventName, callback: (payload: unknown) => void) => {
         (captured.eventListeners[event] ??= []).push(callback);
         return unsubscribe;
-      }) as AddonContext["player"]["on"]
+      }) as AddonContext["player"]["on"],
     },
     playback: {
       play: vi.fn(() => true),
@@ -221,45 +241,45 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
       setRepeatMode: vi.fn(() => true),
       shuffle: vi.fn(() => true),
       playQueueIndex: vi.fn(() => true),
-      cueTrack: vi.fn(async (): Promise<CueResult> => "no-view"),
+      cueTrack: vi.fn((): Promise<CueResult> => Promise.resolve("no-view")),
       sendPlaybackCommand: vi.fn(() => true),
-      getPlaylists: vi.fn(async () => [])
+      getPlaylists: vi.fn(() => Promise.resolve([])),
     },
     ipc: {
       handle: vi.fn(() => unsubscribe),
       on: vi.fn((channel: string, listener: (event: AddonIpcEvent, ...args: unknown[]) => void) => {
         captured.ipcHandlers[channel] = listener;
         return unsubscribe;
-      })
+      }),
     },
     innertube: {
       request: vi.fn((endpoint: string, body?: Record<string, unknown>) => {
         captured.innertubeCalls.push({ endpoint, body });
         return innertube(endpoint, body);
-      }) as AddonContext["innertube"]["request"]
+      }),
     },
 
     notifications: {
       show: vi.fn((options: { title: string; body?: string }) => {
         captured.notificationsShown.push(options);
-      })
+      }),
     },
     windows: {
       create: vi.fn(() => {
         const handle = windowHandle();
         captured.windows.push(handle);
         return handle;
-      })
+      }),
     },
     deepLinks: {
       register: vi.fn((command: string, handler: (segments: string[], params: URLSearchParams) => void) => {
         captured.deepLinks[command] = handler;
         return unsubscribe;
-      })
+      }),
     },
     theme: {
       get: vi.fn(() => ({ id: null, name: "None", tokens: {} })),
-      onChanged: vi.fn(() => unsubscribe)
+      onChanged: vi.fn(() => unsubscribe),
     },
     discord: {
       isEnabled: vi.fn(() => options.discordEnabled ?? false),
@@ -272,37 +292,49 @@ export function fakeAddonContext(options: FakeAddonContextOptions = {}) {
         captured.remoteProviders.push(provider);
         return unsubscribe;
       }),
-      refreshActivity: vi.fn()
+      refreshActivity: vi.fn(),
     },
     titlebar: {
       setBadge: vi.fn((badge: Omit<AddonTitlebarBadge, "addonId"> | null) => {
         captured.badges.push(badge);
       }),
-      onBadgeClick: vi.fn(() => unsubscribe)
+      onBadgeClick: vi.fn(() => unsubscribe),
     },
     tray: {
       setMenuItems: vi.fn((items: AddonTrayMenuItem[]) => {
         captured.trayItems = items;
-      })
-    }
-  };
+      }),
+    },
+  } satisfies AddonContext;
 
   return {
     ctx,
     captured,
     settings,
     unsubscribe,
-    fireLoaded() {
+    waitForInvocation(name: string, matches: (arg: unknown) => boolean) {
+      const existing = captured.invocations.find((call) => call.name === name && matches(call.arg));
+      if (existing) return Promise.resolve(existing.arg);
+      return new Promise<unknown>((resolve) => {
+        const listener = (called: string, arg: unknown) => {
+          if (called !== name || !matches(arg)) return;
+          invocationListeners.delete(listener);
+          resolve(arg);
+        };
+        invocationListeners.add(listener);
+      });
+    },
+    fireLoaded: () => {
       for (const callback of captured.loadedCallbacks) callback();
     },
-    emitPlayerState(state: PlayerState) {
+    emitPlayerState: (state: PlayerState) => {
       for (const listener of captured.stateListeners) listener(state);
     },
-    emitPlayerEvent<K extends PlayerEventName>(event: K, payload: PlayerEventMap[K]) {
+    emitPlayerEvent: <K extends PlayerEventName>(event: K, payload: PlayerEventMap[K]) => {
       for (const listener of captured.eventListeners[event] ?? []) listener(payload);
     },
-    emitViewMessage(name: string, payload: unknown) {
+    emitViewMessage: (name: string, payload: unknown) => {
       for (const listener of captured.messageCallbacks[name] ?? []) listener(payload);
-    }
+    },
   };
 }

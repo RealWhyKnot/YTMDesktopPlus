@@ -14,5 +14,5 @@ export const BUNDLED_THEME_IDS = [
   "placard",
   "sakura",
   "velvet",
-  "vitrine"
+  "vitrine",
 ];

@@ -1,6 +1,7 @@
+import { requireValue } from "./helpers/require-value";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installQueueProjection, type ProjectedQueue } from "../src/shared/queue-projection";
-import playerStateStore, { RepeatMode } from "../src/main/player-state-store";
+import { playerStateStore, RepeatMode } from "../src/main/player-state-store";
 
 type Projector = (queue: unknown) => ProjectedQueue | null;
 
@@ -10,7 +11,7 @@ beforeEach(() => {
   const stub: { __ytmdProjectQueue?: Projector } = {};
   vi.stubGlobal("window", stub);
   installQueueProjection();
-  project = stub.__ytmdProjectQueue!;
+  project = requireValue(stub.__ytmdProjectQueue);
 });
 
 afterEach(() => {
@@ -25,7 +26,7 @@ const renderer = (videoId: string, extra: Record<string, unknown> = {}) => ({
   thumbnail: { thumbnails: [{ url: `https://i.ytimg.com/${videoId}.jpg`, width: 60, height: 60, extra: "dropped" }] },
   menu: { menuRenderer: { items: new Array(20).fill({ menuServiceItemRenderer: { text: { runs: [{ text: "x" }] } } }) } },
   navigationEndpoint: { watchEndpoint: { videoId, playlistId: "RD" } },
-  ...extra
+  ...extra,
 });
 
 describe("queue projection", () => {
@@ -35,7 +36,7 @@ describe("queue projection", () => {
       automixItems: [],
       autoplay: true,
       isInfinite: true,
-      repeatMode: "ONE"
+      repeatMode: "ONE",
     });
 
     expect(queue).toEqual({
@@ -47,14 +48,14 @@ describe("queue projection", () => {
           duration: "3:21",
           selected: true,
           videoId: "a",
-          counterparts: null
-        }
+          counterparts: null,
+        },
       ],
       automixItems: [],
       autoplay: true,
       isGenerating: false,
       isInfinite: true,
-      repeatMode: "ONE"
+      repeatMode: "ONE",
     });
   });
 
@@ -64,23 +65,23 @@ describe("queue projection", () => {
         {
           playlistPanelVideoWrapperRenderer: {
             primaryRenderer: { playlistPanelVideoRenderer: renderer("audio") },
-            counterpart: [{ counterpartRenderer: { playlistPanelVideoRenderer: renderer("video") } }, { counterpartRenderer: {} }]
-          }
-        }
+            counterpart: [{ counterpartRenderer: { playlistPanelVideoRenderer: renderer("video") } }, { counterpartRenderer: {} }],
+          },
+        },
       ],
-      automixItems: [{ playlistPanelVideoRenderer: renderer("next") }]
+      automixItems: [{ playlistPanelVideoRenderer: renderer("next") }],
     });
 
-    expect(queue.items[0].videoId).toBe("audio");
-    expect(queue.items[0].counterparts?.map(item => item.videoId)).toEqual(["video"]);
-    expect(queue.automixItems.map(item => item.videoId)).toEqual(["next"]);
+    expect(requireValue(requireValue(queue).items[0]).videoId).toBe("audio");
+    expect(requireValue(requireValue(queue).items[0]).counterparts?.map((item) => item.videoId)).toEqual(["video"]);
+    expect(requireValue(queue).automixItems.map((item) => requireValue(item).videoId)).toEqual(["next"]);
   });
 
   it("keeps a slot for an entry it cannot read so queue indexes still line up", () => {
     const queue = project({ items: [{ somethingNew: {} }, { playlistPanelVideoRenderer: renderer("b", { selected: true }) }] });
 
-    expect(queue.items[0]).toBeNull();
-    expect(queue.items[1].videoId).toBe("b");
+    expect(requireValue(queue).items[0]).toBeNull();
+    expect(requireValue(requireValue(queue).items[1]).videoId).toBe("b");
   });
 
   it("passes a missing queue through as null", () => {

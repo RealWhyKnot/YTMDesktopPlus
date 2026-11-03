@@ -1,23 +1,22 @@
 import path from "path";
 import { app, Menu, nativeTheme, Tray } from "electron";
-import type Conf from "conf";
-import { StoreSchema, TrayIconStyle } from "../shared/store/schema";
+import { type StoreSchema, TrayIconStyle } from "../shared/store/schema";
 
-export interface TrayDeps {
-  store: Conf<StoreSchema>;
+export type TrayDeps = {
+  store: { get(key: "appearance"): Pick<StoreSchema["appearance"], "trayIconStyle"> };
   getMainWindow(): Electron.BrowserWindow | null;
   sendRemoteCommand(command: string): void;
   addonTrayItems(): { label: string; enabled: boolean; click: () => void }[];
-}
+};
 
-export interface TrayController {
-  createTray(): void;
-  setTrayIcon(): void;
-  refreshTrayMenu(): void;
-}
+export type TrayController = {
+  createTray: () => void;
+  setTrayIcon: () => void;
+  refreshTrayMenu: () => void;
+};
 
 export function createTrayController(deps: TrayDeps): TrayController {
-  let tray: Tray = null;
+  let tray: Tray | null = null;
 
   function trayIconFileName(style: TrayIconStyle) {
     if (process.platform === "win32") return "tray.ico";
@@ -40,17 +39,15 @@ export function createTrayController(deps: TrayDeps): TrayController {
     return path.join(iconsDir, trayIconFileName(style));
   }
 
-  // The static menu plus whatever tray items addons registered; rebuilt through
-  // refreshTrayMenu whenever those change.
   function buildTrayContextMenu(): Electron.MenuItemConstructorOptions[] {
     const template: Electron.MenuItemConstructorOptions[] = [
       {
         label: "YouTube Music Desktop",
         type: "normal",
-        enabled: false
+        enabled: false,
       },
       {
-        type: "separator"
+        type: "separator",
       },
       {
         label: "Show/Hide Window",
@@ -64,29 +61,29 @@ export function createTrayController(deps: TrayDeps): TrayController {
               mainWindow.show();
             }
           }
-        }
+        },
       },
       {
         label: "Play/Pause",
         type: "normal",
         click: () => {
           deps.sendRemoteCommand("playPause");
-        }
+        },
       },
       {
         label: "Previous",
         type: "normal",
         click: () => {
           deps.sendRemoteCommand("previous");
-        }
+        },
       },
       {
         label: "Next",
         type: "normal",
         click: () => {
           deps.sendRemoteCommand("next");
-        }
-      }
+        },
+      },
     ];
 
     const addonItems = deps.addonTrayItems();
@@ -104,7 +101,7 @@ export function createTrayController(deps: TrayDeps): TrayController {
         type: "normal",
         click: () => {
           app.quit();
-        }
+        },
       }
     );
     return template;
@@ -132,6 +129,6 @@ export function createTrayController(deps: TrayDeps): TrayController {
     },
     refreshTrayMenu() {
       if (tray) tray.setContextMenu(Menu.buildFromTemplate(buildTrayContextMenu()));
-    }
+    },
   };
 }

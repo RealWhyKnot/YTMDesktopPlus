@@ -1,17 +1,25 @@
-import type { AddonDescriptor, AddonTitlebarBadge } from "../addons/types";
+import type { AddonDescriptor, AddonTitlebarBadge } from "~shared/addons/sdk";
 import type { ThemeDescriptor } from "../themes/sdk";
 
-export enum TrayIconStyle {
-  Auto = 0,
-  White = 1,
-  Black = 2
-}
+export const TrayIconStyle = {
+  Auto: 0,
+  [0]: "Auto",
+  White: 1,
+  [1]: "White",
+  Black: 2,
+  [2]: "Black",
+} as const;
+export type TrayIconStyle = (typeof TrayIconStyle)[Exclude<keyof typeof TrayIconStyle, number>];
 
-export enum UpdateChannel {
-  Auto = 0,
-  Stable = 1,
-  Beta = 2
-}
+export const UpdateChannel = {
+  Auto: 0,
+  [0]: "Auto",
+  Stable: 1,
+  [1]: "Stable",
+  Beta: 2,
+  [2]: "Beta",
+} as const;
+export type UpdateChannel = (typeof UpdateChannel)[Exclude<keyof typeof UpdateChannel, number>];
 
 export type StoreSchema = {
   metadata: {
@@ -35,21 +43,21 @@ export type StoreSchema = {
     enableSpeakerFill: boolean;
     progressInTaskbar: boolean;
     ratioVolume: boolean;
-    adBlockerEnabled: boolean; // filters requests across the whole YouTube Music session
-    preventIdlePause: boolean; // hold back YTM's inactivity pause and dismiss its prompt
+    adBlockerEnabled: boolean;
+    preventIdlePause: boolean;
   };
   integrations: {
     companionServerEnabled: boolean;
-    companionServerAuthTokens: string | null; // array[object] | Encrypted for security
+    companionServerAuthTokens: string | null;
     companionServerCORSWildcardEnabled: boolean;
     companionServerLANEnabled: boolean;
     discordPresenceEnabled: boolean;
-    discordPresenceHideOnPause: boolean; // clear the activity while paused instead of showing the paused badge
+    discordPresenceHideOnPause: boolean;
     lastFMEnabled: boolean;
     listenAlongEnabled: boolean;
-    listenAlongHost: string | null; // hostname or address, no scheme
+    listenAlongHost: string | null;
     listenAlongHostPort: number;
-    listenAlongToken: string | null; // Encrypted for security
+    listenAlongToken: string | null;
   };
   shortcuts: {
     playPause: string;
@@ -62,7 +70,7 @@ export type StoreSchema = {
   };
   state: {
     lastUrl: string;
-    lastPlaylistId: string;
+    lastPlaylistId: string | null | undefined;
     lastVideoId: string;
     windowBounds: Electron.Rectangle | null;
     windowMaximized: boolean;
@@ -84,7 +92,7 @@ export type StoreSchema = {
     firstRunPromptShown: boolean;
   };
   addons: {
-    states: Record<string, { enabled: boolean; riskAcknowledged?: boolean; fingerprint?: string }>;
+    states: Record<string, { enabled: boolean; riskAcknowledged?: boolean; fingerprint?: string } | undefined>;
     settings: Record<string, Record<string, unknown>>;
   };
   themes: {

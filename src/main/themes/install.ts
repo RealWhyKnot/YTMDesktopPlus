@@ -3,7 +3,7 @@ import path from "path";
 import { unzipSync } from "fflate";
 import type { ThemeManifest } from "~shared/themes/sdk";
 import { THEME_MANIFEST_NAME } from "./loader";
-import { validateThemeManifest } from "./validate-manifest";
+import { isThemeManifest, validateThemeManifest } from "./validate-manifest";
 
 export const ALLOWED_THEME_EXTENSIONS = new Set([".css", ".json", ".woff2", ".woff", ".ttf", ".otf", ".png", ".jpg", ".jpeg", ".webp", ".svg", ".md", ".txt"]);
 
@@ -15,10 +15,12 @@ export type InstallResult = { installed: true; manifest: ThemeManifest; dir: str
 function isSafeEntryPath(name: string): boolean {
   if (name.includes("\\")) return false;
   if (name.startsWith("/") || /^[a-zA-Z]:/.test(name)) return false;
-  return !name.split("/").some(segment => segment === ".." || segment === "");
+  return !name.split("/").some((segment) => segment === ".." || segment === "");
 }
 
-class ArchiveLimitError extends Error {}
+class ArchiveLimitError extends Error {
+  override name = "ArchiveLimitError";
+}
 
 export function readThemeArchive(bytes: Uint8Array): { files: Map<string, Uint8Array> } | { reason: string } {
   let unzipped: Record<string, Uint8Array>;
@@ -27,7 +29,7 @@ export function readThemeArchive(bytes: Uint8Array): { files: Map<string, Uint8A
   let declaredTotal = 0;
   try {
     unzipped = unzipSync(bytes, {
-      filter: file => {
+      filter: (file) => {
         entryCount++;
         if (entryCount > MAX_THEME_ENTRIES * 2) throw new ArchiveLimitError(`the archive holds more than ${MAX_THEME_ENTRIES * 2} entries`);
         if (file.name.endsWith("/")) return false;
@@ -36,11 +38,11 @@ export function readThemeArchive(bytes: Uint8Array): { files: Map<string, Uint8A
         declaredTotal += Math.max(file.size, file.originalSize);
         if (declaredTotal > MAX_THEME_BYTES) throw new ArchiveLimitError("the archive unpacks to more than 32MB");
         return true;
-      }
+      },
     });
   } catch (error) {
     if (error instanceof ArchiveLimitError) return { reason: error.message };
-    return { reason: `the archive could not be read: ${error}` };
+    return { reason: `the archive could not be read: ${String(error)}` };
   }
 
   const entries = Object.entries(unzipped).filter(([name]) => !name.endsWith("/"));
@@ -54,10 +56,12 @@ export function readThemeArchive(bytes: Uint8Array): { files: Map<string, Uint8A
     if (total > MAX_THEME_BYTES) return { reason: "the archive unpacks to more than 32MB" };
   }
 
-  const manifests = entries.map(([name]) => name).filter(name => path.posix.basename(name) === THEME_MANIFEST_NAME);
+  const manifests = entries.map(([name]) => name).filter((name) => path.posix.basename(name) === THEME_MANIFEST_NAME);
   if (manifests.length === 0) return { reason: `the archive has no ${THEME_MANIFEST_NAME}` };
   manifests.sort((a, b) => a.split("/").length - b.split("/").length);
-  const prefixDir = path.posix.dirname(manifests[0]);
+  const firstManifest = manifests[0];
+  if (firstManifest === undefined) throw new Error("Theme manifest is unavailable");
+  const prefixDir = path.posix.dirname(firstManifest);
   const prefix = prefixDir === "." ? "" : `${prefixDir}/`;
 
   const files = new Map<string, Uint8Array>();
@@ -80,7 +84,7 @@ export function installThemeFromZip(zipPath: string, themesDir: string): Install
   try {
     bytes = fs.readFileSync(zipPath);
   } catch (error) {
-    return { installed: false, reason: `the file could not be read: ${error}` };
+    return { installed: false, reason: `the file could not be read: ${String(error)}` };
   }
 
   const archive = readThemeArchive(new Uint8Array(bytes));
@@ -88,14 +92,16 @@ export function installThemeFromZip(zipPath: string, themesDir: string): Install
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(Buffer.from(archive.files.get(THEME_MANIFEST_NAME)!).toString("utf8"));
+    const content = archive.files.get(THEME_MANIFEST_NAME);
+    if (content === undefined) throw new Error(`The archive has no ${THEME_MANIFEST_NAME}`);
+    parsed = JSON.parse(Buffer.from(content).toString("utf8"));
   } catch (error) {
-    return { installed: false, reason: `${THEME_MANIFEST_NAME} could not be parsed: ${error}` };
+    return { installed: false, reason: `${THEME_MANIFEST_NAME} could not be parsed: ${String(error)}` };
   }
   const invalid = validateThemeManifest(parsed);
-  if (invalid) return { installed: false, reason: `${THEME_MANIFEST_NAME} is invalid: ${invalid}` };
+  if (invalid || !isThemeManifest(parsed)) return { installed: false, reason: `${THEME_MANIFEST_NAME} is invalid: ${invalid}` };
 
-  const manifest = parsed as ThemeManifest;
+  const manifest = parsed;
   const target = path.join(themesDir, manifest.id);
   if (fs.existsSync(target)) return { installed: false, reason: `a theme with the id "${manifest.id}" is already installed` };
 

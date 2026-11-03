@@ -13,7 +13,7 @@ import {
   positionMsFrom,
   relayUrlFor,
   sanitizeDisplayName,
-  type RoomSnapshot
+  type RoomSnapshot,
 } from "../src/shared/room-protocol";
 
 describe("parseServerFrame", () => {
@@ -25,7 +25,7 @@ describe("parseServerFrame", () => {
       u: "abcdef",
       role: 0,
       n: 0,
-      c: 123
+      c: 123,
     });
     expect(parseServerFrame('{"t":"r","r":"abcdefgh","u":"abcdef","role":1,"n":3,"c":123}')).toMatchObject({ t: "r", role: 1, n: 3 });
   });
@@ -41,11 +41,11 @@ describe("parseServerFrame", () => {
     expect(parseServerFrame(JSON.stringify({ t: "m", members: [{ u: "abcdef", r: 0, d: `  ${long}\u0007` }], h: `\u0001${long}` }))).toEqual({
       t: "m",
       members: [{ u: "abcdef", r: 0, d: "W".repeat(24) }],
-      h: "W".repeat(24)
+      h: "W".repeat(24),
     });
     expect(parseServerFrame(JSON.stringify({ t: "m", members: [{ u: "abcdef", r: 0, d: "\u0002" }], h: " " }))).toEqual({
       t: "m",
-      members: [{ u: "abcdef", r: 0 }]
+      members: [{ u: "abcdef", r: 0 }],
     });
   });
 
@@ -54,7 +54,7 @@ describe("parseServerFrame", () => {
     expect(parseServerFrame('{"t":"m","members":[{"u":"abcdef","r":1,"d":"Alice"}],"h":"DJ"}')).toEqual({
       t: "m",
       members: [{ u: "abcdef", r: 1, d: "Alice" }],
-      h: "DJ"
+      h: "DJ",
     });
     expect(parseServerFrame('{"t":"role","r":1}')).toEqual({ t: "role", r: 1 });
     expect(parseServerFrame('{"t":"c","a":"seek","m":42,"u":"abcdef"}')).toEqual({ t: "c", a: "seek", m: 42, u: "abcdef" });
@@ -133,7 +133,24 @@ describe("helpers", () => {
 });
 
 function snapshot(fields: Partial<RoomSnapshot>): RoomSnapshot {
-  return { phase: "hosting", isHost: true, listenerCount: 0, webListenerCount: 0, ...fields } as RoomSnapshot;
+  return {
+    phase: "hosting",
+    isHost: true,
+    listenerCount: 0,
+    webListenerCount: 0,
+    roomId: null,
+    shareUrl: null,
+    memberId: null,
+    role: 1,
+    hostName: null,
+    members: [],
+    error: null,
+    syncStatus: null,
+    syncDetail: null,
+    audioStreaming: false,
+    audioIssue: null,
+    ...fields,
+  };
 }
 
 describe("room indicator counts", () => {
@@ -157,8 +174,6 @@ describe("room indicator counts", () => {
     expect(otherListenerCount(snapshot({ listenerCount: 2, webListenerCount: 3 }))).toBe(5);
   });
 
-  // The relay counts members, so a listener is in its own count and the host
-  // is not: trading yourself for the host leaves the total unchanged.
   it("trades a listener for the host it cannot see in the count", () => {
     expect(otherListenerCount(snapshot({ phase: "listening", isHost: false, listenerCount: 1 }))).toBe(1);
     expect(otherListenerCount(snapshot({ phase: "listening", isHost: false, listenerCount: 3 }))).toBe(3);

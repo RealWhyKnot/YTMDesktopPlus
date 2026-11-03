@@ -1,5 +1,5 @@
 :root {
-  --bg: #000000;
+  --bg: #000;
   --bg-raised: #0a0a0c;
   --bg-control: #131316;
   --bg-control-hover: #1d1d21;
@@ -14,7 +14,7 @@
   --danger: #ff4d6d;
   --danger-hover: #d63a57;
   --knob: #ededf0;
-  --overlay: rgba(0, 0, 0, 0.8);
+  --overlay: rgb(0 0 0 / 80%);
   --scrollbar-thumb: #2a2a31;
   --titlebar-symbol: #4cc9f0;
   --titlebar-separator: #1a1a1f;

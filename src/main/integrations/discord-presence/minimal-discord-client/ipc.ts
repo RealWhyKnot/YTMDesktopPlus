@@ -2,25 +2,31 @@ import EventEmitter from "events";
 import { Socket } from "net";
 import log from "electron-log";
 
-export enum OPCode {
-  HANDSHAKE = 0,
-  FRAME = 1,
-  CLOSE = 2,
-  PING = 3,
-  PONG = 4
-}
+export const OPCode = {
+  HANDSHAKE: 0,
+  [0]: "HANDSHAKE",
+  FRAME: 1,
+  [1]: "FRAME",
+  CLOSE: 2,
+  [2]: "CLOSE",
+  PING: 3,
+  [3]: "PING",
+  PONG: 4,
+  [4]: "PONG",
+} as const;
+export type OPCode = (typeof OPCode)[Exclude<keyof typeof OPCode, number>];
 
 export const FRAME_HEADER_BYTES = 8;
 export const MAX_FRAME_BYTES = 1024 * 1024;
 
-export default class IPCClient extends EventEmitter {
+export class IPCClient extends EventEmitter {
   private socket: Socket;
   private pending: Buffer = Buffer.alloc(0);
 
   constructor() {
     super();
 
-    this.createSocket();
+    this.socket = this.createSocket();
   }
 
   private receive(chunk: Buffer) {
@@ -57,28 +63,29 @@ export default class IPCClient extends EventEmitter {
 
   private createSocket() {
     this.pending = Buffer.alloc(0);
-    this.socket = new Socket();
-    this.socket.on("connect", () => {
+    const socket = new Socket();
+    socket.on("connect", () => {
       this.emit("connect");
     });
-    this.socket.on("close", (hadError: boolean) => {
-      this.emit("close", hadError);
+    socket.on("close", (isHadError: boolean) => {
+      this.emit("close", isHadError);
     });
-    this.socket.on("error", error => {
+    socket.on("error", (error) => {
       if (this.listenerCount("error") > 0) this.emit("error", error);
       else log.warn("dipc: socket error", error);
     });
-    this.socket.on("data", (chunk: Buffer) => this.receive(chunk));
+    socket.on("data", (chunk: Buffer) => this.receive(chunk));
+    return socket;
   }
 
   public connect(ipcPath: string) {
     if (this.socket.destroyed) {
-      this.createSocket();
+      this.socket = this.createSocket();
     }
     this.socket.connect(ipcPath);
   }
 
-  public send(data: unknown, op = OPCode.FRAME) {
+  public send(data: unknown, op: OPCode = OPCode.FRAME) {
     const json = JSON.stringify(data);
     const length = Buffer.byteLength(json);
     const buffer = Buffer.alloc(8 + length);
@@ -90,7 +97,7 @@ export default class IPCClient extends EventEmitter {
       this.socket.write(buffer);
     } else {
       this.socket.end();
-      this.createSocket();
+      this.socket = this.createSocket();
     }
   }
 

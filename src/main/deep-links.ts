@@ -2,20 +2,17 @@ import log from "electron-log";
 import { parseProtocolUrl } from "../shared/protocol-url";
 
 export function findProtocolUrl(argv: string[]) {
-  return argv.find(argument => argument.startsWith("ytmdplus://")) ?? "";
+  return argv.find((argument) => argument.startsWith("ytmdplus://")) ?? "";
 }
 
-export interface DeepLinkRouter {
-  // A feature registers its command name and owns everything after it in the url.
-  registerDeepLink(command: string, handler: (segments: string[], params: URLSearchParams) => void): () => void;
-  handleProtocol(url: string): void;
-  queueProtocolUrl(url: string): void;
-  flushPending(): void;
-}
+export type DeepLinkRouter = {
+  registerDeepLink: (command: string, handler: (segments: string[], params: URLSearchParams) => void) => () => void;
+  handleProtocol: (url: string) => void;
+  queueProtocolUrl: (url: string) => void;
+  flushPending: () => void;
+};
 
 export function createDeepLinkRouter(deps: { hasYtmView(): boolean }): DeepLinkRouter {
-  // A link that starts the app arrives on argv, before there is a view to
-  // drive. It is replayed once YouTube Music reports itself loaded.
   let pendingProtocolUrl: string | null = null;
 
   const deepLinkHandlers = new Map<string, (segments: string[], params: URLSearchParams) => void>();
@@ -54,7 +51,7 @@ export function createDeepLinkRouter(deps: { hasYtmView(): boolean }): DeepLinkR
   return {
     registerDeepLink,
     handleProtocol,
-    queueProtocolUrl: url => {
+    queueProtocolUrl: (url) => {
       pendingProtocolUrl = url;
     },
     flushPending: () => {
@@ -63,6 +60,6 @@ export function createDeepLinkRouter(deps: { hasYtmView(): boolean }): DeepLinkR
         pendingProtocolUrl = null;
         handleProtocol(url);
       }
-    }
+    },
   };
 }

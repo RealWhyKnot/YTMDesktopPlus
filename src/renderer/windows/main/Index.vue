@@ -1,24 +1,28 @@
 <script setup lang="ts">
+import type { AppWindow } from "../../app-window";
+declare const window: AppWindow;
+defineOptions({ name: "MainWindow" });
 import { onMounted, ref } from "vue";
 import TitleBar from "../../components/TitleBar.vue";
 import YTMViewLoading from "../../components/YTMViewLoading.vue";
 import logo from "~assets/icons/ytmd_white.png";
 
-const keyboardFocus = ref<HTMLElement>(null);
-const keyboardFocusZero = ref<HTMLElement>(null);
+const keyboardFocus = ref<HTMLElement | null>(null);
+const keyboardFocusZero = ref<HTMLElement | null>(null);
 
 onMounted(() => {
   window.onfocus = () => {
-    if (document.activeElement != keyboardFocusZero.value) {
-      // This resets the focus of keyboard navigation
-      keyboardFocusZero.value.focus();
-      keyboardFocusZero.value.blur();
+    if (document.activeElement !== keyboardFocusZero.value) {
+      keyboardFocusZero.value?.focus();
+      keyboardFocusZero.value?.blur();
     }
   };
 
-  keyboardFocus.value.onfocus = () => {
-    window.ytmd.switchFocus("ytm");
-  };
+  if (keyboardFocus.value !== null) {
+    keyboardFocus.value.onfocus = () => {
+      window.ytmd.switchFocus("ytm");
+    };
+  }
 
   window.ytmd.requestWindowState();
 });

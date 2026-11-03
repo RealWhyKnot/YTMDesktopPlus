@@ -1,12 +1,6 @@
-import type { BrowserView } from "electron";
 import { describe, expect, it } from "vitest";
-import NonStop from "../src/main/integrations/nonstop";
-import VolumeRatio from "../src/main/integrations/volume-ratio";
-
-// The sign-in round trip navigates music.youtube.com -> accounts.google.com and
-// back inside the same BrowserView. Each document gets its own main world, so an
-// integration that only re-injects when the view object changes comes back with
-// its script missing from the page.
+import { NonStop } from "../src/main/integrations/nonstop";
+import { VolumeRatio } from "../src/main/integrations/volume-ratio";
 
 type Sent = [name: string, script: string];
 
@@ -15,9 +9,9 @@ function fakeView(sent: Sent[]) {
     webContents: {
       send: (_channel: string, name: string, script: string) => {
         sent.push([name, script]);
-      }
-    }
-  } as unknown as BrowserView;
+      },
+    },
+  };
 }
 
 describe("nonstop injection", () => {
@@ -44,7 +38,7 @@ describe("nonstop injection", () => {
 
     expect(sent).toEqual([
       ["nonStop", "enable"],
-      ["nonStop", "enable"]
+      ["nonStop", "enable"],
     ]);
   });
 
@@ -71,7 +65,7 @@ describe("volume ratio injection", () => {
     ratioVolume.ytmViewLoaded();
     expect(sent).toEqual([
       ["ratioVolume", "enable"],
-      ["ratioVolume", "forceUpdateVolume"]
+      ["ratioVolume", "forceUpdateVolume"],
     ]);
   });
 

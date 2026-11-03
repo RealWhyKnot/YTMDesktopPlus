@@ -4,23 +4,12 @@ import { zipSync } from "fflate";
 import type { ThemeManifest } from "~shared/themes/sdk";
 import { THEME_MANIFEST_NAME } from "./loader";
 import { ALLOWED_THEME_EXTENSIONS } from "./install";
+import { isThemeManifest } from "./validate-manifest";
 
 export type DuplicateResult = { duplicated: true; manifest: ThemeManifest; dir: string } | { duplicated: false; reason: string };
 export type CreateResult = { created: true; manifest: ThemeManifest; dir: string } | { created: false; reason: string };
 
-const STARTER_CSS = `:root {
-  --bg: #000000;
-  --bg-raised: #111111;
-  --bg-control: #212121;
-  --bg-control-hover: #323232;
-  --border: #212121;
-  --text: #eeeeee;
-  --text-muted: #bbbbbb;
-  --text-faint: #969696;
-  --accent: #f44336;
-  --on-accent: #ffffff;
-}
-`;
+import starterCss from "./starter.css?raw";
 
 export function createTheme(themesDir: string): CreateResult {
   fs.mkdirSync(themesDir, { recursive: true });
@@ -39,15 +28,15 @@ export function createTheme(themesDir: string): CreateResult {
     author: "you",
     description: "One sentence about what it looks like.",
     apiVersion: 1,
-    styles: ["theme.css"]
+    styles: ["theme.css"],
   };
 
   try {
     fs.mkdirSync(dir);
     fs.writeFileSync(path.join(dir, THEME_MANIFEST_NAME), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-    fs.writeFileSync(path.join(dir, "theme.css"), STARTER_CSS, "utf8");
+    fs.writeFileSync(path.join(dir, "theme.css"), starterCss, "utf8");
   } catch (error) {
-    return { created: false, reason: `the theme could not be created: ${error}` };
+    return { created: false, reason: `the theme could not be created: ${String(error)}` };
   }
   return { created: true, manifest, dir };
 }
@@ -64,13 +53,14 @@ function freeId(themesDir: string, baseId: string): string {
 }
 
 export function duplicateTheme(sourceDir: string, themesDir: string): DuplicateResult {
-  let manifest: ThemeManifest;
+  let manifest: unknown;
   try {
-    manifest = JSON.parse(fs.readFileSync(path.join(sourceDir, THEME_MANIFEST_NAME), "utf8")) as ThemeManifest;
+    manifest = JSON.parse(fs.readFileSync(path.join(sourceDir, THEME_MANIFEST_NAME), "utf8"));
   } catch (error) {
-    return { duplicated: false, reason: `${THEME_MANIFEST_NAME} could not be read: ${error}` };
+    return { duplicated: false, reason: `${THEME_MANIFEST_NAME} could not be read: ${String(error)}` };
   }
 
+  if (!isThemeManifest(manifest)) return { duplicated: false, reason: `${THEME_MANIFEST_NAME} is invalid` };
   fs.mkdirSync(themesDir, { recursive: true });
   const id = freeId(themesDir, manifest.id);
   const target = path.join(themesDir, id);
@@ -78,7 +68,7 @@ export function duplicateTheme(sourceDir: string, themesDir: string): DuplicateR
   try {
     fs.cpSync(sourceDir, target, { recursive: true });
   } catch (error) {
-    return { duplicated: false, reason: `the theme could not be copied: ${error}` };
+    return { duplicated: false, reason: `the theme could not be copied: ${String(error)}` };
   }
 
   const copied: ThemeManifest = { ...manifest, id, name: `${manifest.name} copy` };
@@ -86,7 +76,7 @@ export function duplicateTheme(sourceDir: string, themesDir: string): DuplicateR
   return { duplicated: true, manifest: copied, dir: target };
 }
 
-function collectFiles(root: string, prefix: string, into: Record<string, Uint8Array>): void {
+function collectFiles(root: string, prefix: string, into: Map<string, Uint8Array>): void {
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     const absolute = path.join(root, entry.name);
     const relative = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
@@ -96,24 +86,24 @@ function collectFiles(root: string, prefix: string, into: Record<string, Uint8Ar
     }
     if (!entry.isFile()) continue;
     if (!ALLOWED_THEME_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
-    into[relative] = new Uint8Array(fs.readFileSync(absolute));
+    into.set(relative, new Uint8Array(fs.readFileSync(absolute)));
   }
 }
 
 export function exportTheme(themeDir: string, destination: string): { exported: true } | { exported: false; reason: string } {
   const id = path.basename(themeDir);
-  const files: Record<string, Uint8Array> = {};
+  const files = new Map<string, Uint8Array>();
   try {
     collectFiles(themeDir, id, files);
   } catch (error) {
-    return { exported: false, reason: `the theme could not be read: ${error}` };
+    return { exported: false, reason: `the theme could not be read: ${String(error)}` };
   }
-  if (Object.keys(files).length === 0) return { exported: false, reason: "the theme folder is empty" };
+  if (files.size === 0) return { exported: false, reason: "the theme folder is empty" };
 
   try {
-    fs.writeFileSync(destination, Buffer.from(zipSync(files)));
+    fs.writeFileSync(destination, Buffer.from(zipSync(Object.fromEntries(files))));
   } catch (error) {
-    return { exported: false, reason: `the archive could not be written: ${error}` };
+    return { exported: false, reason: `the archive could not be written: ${String(error)}` };
   }
   return { exported: true };
 }

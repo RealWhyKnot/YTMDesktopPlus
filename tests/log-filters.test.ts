@@ -17,7 +17,7 @@ describe("isSpamLogMessage", () => {
 
   it("ignores normal messages and non-strings", () => {
     expect(isSpamLogMessage("Integration enabled: Companion Server")).toBe(false);
-    // Near miss: a real failure that happens to mention autofill must survive.
+
     expect(isSpamLogMessage("Autofill request failed for the settings window")).toBe(false);
     expect(isSpamLogMessage(42)).toBe(false);
     expect(isSpamLogMessage(undefined)).toBe(false);
@@ -27,7 +27,7 @@ describe("isSpamLogMessage", () => {
 describe("isInitialDocumentBootstrapError", () => {
   const bootstrapErrors = [
     "Electron sandboxed_renderer.bundle.js script failed to run",
-    "TypeError: Cannot destructure property 'preloadScripts' of 'binding.startupData' as it is null."
+    "TypeError: Cannot destructure property 'preloadScripts' of 'binding.startupData' as it is null.",
   ];
 
   it("matches Electron's preload bootstrap errors from a frame that has not committed a document", () => {

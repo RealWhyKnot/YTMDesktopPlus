@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { devToolsActivePort, inspectorPort } from "../tools/test-harness/cdp.mjs";
+import { devToolsActivePort, inspectorPort } from "../tools/test-harness/cdp.ts";
 
 describe("devToolsActivePort", () => {
   it("reads the port from the first line", () => {

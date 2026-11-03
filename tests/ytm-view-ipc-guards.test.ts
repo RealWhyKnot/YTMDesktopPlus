@@ -1,4 +1,3 @@
-import type { WebContents } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import { appWindowPermissionAllowed, createSenderGuards, type SenderEvent } from "../src/main/ipc/sender-guards";
 import {
@@ -7,18 +6,18 @@ import {
   isFiniteNumber,
   isQueuePayload,
   isStoreStatePayload,
-  isVideoDetailsPayload
+  isVideoDetailsPayload,
 } from "../src/main/ipc/ytm-view-payloads";
 import { YTM_ORIGIN, YTM_SIGN_IN_ORIGINS } from "../src/main/ytm-navigation";
 
-const contents = () => ({}) as WebContents;
+const contents = () => ({});
 
-function guardsFor(view: { webContents: WebContents }) {
+function guardsFor(view: { webContents: object }) {
   return createSenderGuards({
     getMainWindow: () => null,
     getSettingsWindow: () => null,
     getYtmView: () => view,
-    ownsAddonContents: () => false
+    ownsAddonContents: () => false,
   });
 }
 
@@ -61,7 +60,7 @@ describe("isYtmViewPage", () => {
       parent: null as unknown,
       get url(): string {
         throw new Error("Render frame was disposed before WebFrameMain could be accessed");
-      }
+      },
     };
     expect(isYtmViewPage(event(disposed))).toBe(false);
   });
@@ -75,7 +74,7 @@ describe("appWindowPermissionAllowed", () => {
   const settings = contents();
   const addon = contents();
   const main = contents();
-  const deps = { isSettingsSender: (sender: WebContents) => sender === settings, ownsAddonContents: (sender: WebContents) => sender === addon };
+  const deps = { isSettingsSender: (sender: object) => sender === settings, ownsAddonContents: (sender: object) => sender === addon };
 
   it("lets settings and addon windows write to the clipboard", () => {
     expect(appWindowPermissionAllowed(deps, settings, "clipboard-sanitized-write")).toBe(true);
@@ -100,7 +99,7 @@ const realVideoDetails = {
   lengthSeconds: "213",
   isLive: false,
   musicVideoType: "MUSIC_VIDEO_TYPE_ATV",
-  thumbnail: { thumbnails: [{ url: "https://lh3.googleusercontent.com/x", width: 60, height: 60 }] }
+  thumbnail: { thumbnails: [{ url: "https://lh3.googleusercontent.com/x", width: 60, height: 60 }] },
 };
 
 describe("ytmView payload checks", () => {
@@ -119,7 +118,7 @@ describe("ytmView payload checks", () => {
         autoplay: true,
         isGenerating: false,
         isInfinite: false,
-        repeatMode: "NONE"
+        repeatMode: "NONE",
       })
     ).toBe(true);
     expect(isStoreStatePayload("LIKE", 50, false, false)).toBe(true);
@@ -147,7 +146,7 @@ describe("ytmView payload checks", () => {
     expect(isStoreStatePayload("LIKE", "50", false, false)).toBe(false);
     expect(isStoreStatePayload("LIKE", 50, "no", false)).toBe(false);
     for (const value of [NaN, Infinity, "1", null, undefined, {}]) {
-      expect(isFiniteNumber(value), String(value)).toBe(false);
+      expect(isFiniteNumber(value), JSON.stringify(value)).toBe(false);
     }
   });
 

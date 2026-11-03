@@ -1,61 +1,85 @@
-import IIntegration from "../integration";
-import Fastify, { FastifyError, FastifyInstance } from "fastify";
+import type { Integration } from "../integration";
+import Fastify, { type FastifyInstance } from "fastify";
 import FastifyIO from "fastify-socket.io/dist/index";
-import CompanionServerAPIv1 from "./api/v1";
-import { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
+import { CompanionServerAPIv1, type CompanionYtmView } from "./api/v1";
+import { type MemoryStoreSchema, type StoreSchema } from "~shared/store/schema";
 import Conf from "conf";
-import { BrowserView } from "electron";
-import { TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
-import { RemoteSocket, DefaultEventsMap } from "socket.io";
+import { type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
+import { type RemoteSocket, type DefaultEventsMap } from "socket.io";
 import { WebSocketServer } from "ws";
 import cors from "@fastify/cors";
-import MemoryStore from "../../memory-store";
+import { MemoryStore } from "../../memory-store";
 import log from "electron-log";
 import { isDefinedAPIError } from "./api-shared/errors";
 import { getAuthTokens } from "./api-shared/auth";
+import { socketServer } from "./api-shared/socket-server";
 import { isAllowedHost, isAllowedOrigin } from "./host-check";
 
-export default class CompanionServer implements IIntegration {
-  private fastifyServer: FastifyInstance;
-  private store: Conf<StoreSchema>;
-  private memoryStore: MemoryStore<MemoryStoreSchema>;
-  private ytmView: BrowserView;
-  private storeListener: () => void | null = null;
+export class CompanionServer implements Integration {
+  private fastifyServerValue: FastifyInstance | undefined;
+  private get fastifyServer(): FastifyInstance {
+    const value = this.fastifyServerValue;
+    if (value === undefined) throw new Error("Integration fastifyServer has not been provided");
+    return value;
+  }
+  private set fastifyServer(value: FastifyInstance) {
+    this.fastifyServerValue = value;
+  }
+  private storeValue: Conf<StoreSchema> | undefined;
+  private get store(): Conf<StoreSchema> {
+    const value = this.storeValue;
+    if (value === undefined) throw new Error("Integration store has not been provided");
+    return value;
+  }
+  private set store(value: Conf<StoreSchema>) {
+    this.storeValue = value;
+  }
+  private memoryStoreValue: MemoryStore<MemoryStoreSchema> | undefined;
+  private get memoryStore(): MemoryStore<MemoryStoreSchema> {
+    const value = this.memoryStoreValue;
+    if (value === undefined) throw new Error("Integration memoryStore has not been provided");
+    return value;
+  }
+  private set memoryStore(value: MemoryStore<MemoryStoreSchema>) {
+    this.memoryStoreValue = value;
+  }
+  private ytmView: CompanionYtmView | null = null;
+  private storeListener: (() => void) | null = null;
 
-  constructor(private listenPort = 9863) {}
-
-  private lanEnabled() {
-    return this.store.get("integrations.companionServerLANEnabled", false) === true;
+  private listenPort: number;
+  constructor(listenPort = 9863) {
+    this.listenPort = listenPort;
   }
 
-  private createServer(allowLan: boolean) {
-    const corsWildcard = this.store.get("integrations.companionServerCORSWildcardEnabled", false);
+  private lanEnabled() {
+    return this.store.get("integrations.companionServerLANEnabled", false);
+  }
+
+  private createServer(isAllowLan: boolean) {
+    const isCorsWildcard = this.store.get("integrations.companionServerCORSWildcardEnabled", false);
     this.fastifyServer = Fastify().withTypeProvider<TypeBoxTypeProvider>();
     this.fastifyServer.addHook("onRequest", async (request, reply) => {
-      if (!isAllowedHost(request.headers.host, allowLan)) {
+      if (!isAllowedHost(request.headers.host, isAllowLan)) {
         return reply.code(403).send({
-          error: "INVALID_HOST"
+          error: "INVALID_HOST",
         });
       }
     });
     this.fastifyServer.register(cors, {
-      origin: corsWildcard ? "*" : false
+      origin: isCorsWildcard ? "*" : false,
     });
     this.fastifyServer.register(FastifyIO, {
       transports: ["websocket"],
       allowUpgrades: false,
-      // engine.io defaults this to ws's `Server` export, which only exists on
-      // the CommonJS entry point. Bundling resolves ws through its ESM wrapper,
-      // where the same class is exported as WebSocketServer and `Server` comes
-      // out undefined.
+
       wsEngine: WebSocketServer,
       allowRequest: (request, callback) => {
-        callback(null, isAllowedHost(request.headers.host, allowLan) && isAllowedOrigin(request.headers.origin, request.headers.host, corsWildcard));
+        callback(null, isAllowedHost(request.headers.host, isAllowLan) && isAllowedOrigin(request.headers.origin, request.headers.host, isCorsWildcard));
       },
-      // While this is websocket only we still apply cors just in case
+
       cors: {
-        origin: corsWildcard ? "*" : false
-      }
+        origin: isCorsWildcard ? "*" : false,
+      },
     });
     this.fastifyServer.register(CompanionServerAPIv1, {
       prefix: "/api/v1",
@@ -67,11 +91,11 @@ export default class CompanionServer implements IIntegration {
       },
       getMemoryStore: () => {
         return this.memoryStore;
-      }
+      },
     });
-    this.fastifyServer.setErrorHandler((error, request, reply) => {
+    this.fastifyServer.setErrorHandler((error, _request, reply) => {
       if (!isDefinedAPIError(error)) {
-        const statusCode = (error as FastifyError).statusCode;
+        const statusCode = error instanceof Error && "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : undefined;
         if (!statusCode || statusCode >= 500) {
           log.error(error);
           reply.send(new Error("An internal server error occurred"));
@@ -81,19 +105,20 @@ export default class CompanionServer implements IIntegration {
 
       reply.send(error);
     });
-    this.fastifyServer.get("/metadata", (request, reply) => {
+    this.fastifyServer.get("/metadata", (_request, reply) => {
       reply.send({
-        apiVersions: ["v1"]
+        apiVersions: ["v1"],
       });
     });
 
-    // Disconnect connections to the default namespace
-    this.fastifyServer.ready().then(() => {
-      this.fastifyServer.io.on("connection", socket => socket.disconnect());
-    });
+    void Promise.resolve(this.fastifyServer.ready())
+      .then(() => {
+        socketServer(this.fastifyServer).on("connection", (socket) => socket.disconnect());
+      })
+      .catch((error: unknown) => log.warn("createServer failed", error));
   }
 
-  public provide(store: Conf<StoreSchema>, memoryStore: MemoryStore<MemoryStoreSchema>, ytmView: BrowserView): void {
+  public provide(store: Conf<StoreSchema>, memoryStore: MemoryStore<MemoryStoreSchema>, ytmView: CompanionYtmView | null): void {
     this.store = store;
     this.memoryStore = memoryStore;
     this.ytmView = ytmView;
@@ -105,21 +130,21 @@ export default class CompanionServer implements IIntegration {
       return;
     }
 
-    if (!this.fastifyServer || (this.fastifyServer && !this.fastifyServer.server.listening)) {
-      const allowLan = this.lanEnabled();
-      this.createServer(allowLan);
+    if (!this.fastifyServerValue?.server.listening) {
+      const isAllowLan = this.lanEnabled();
+      this.createServer(isAllowLan);
       await this.fastifyServer.listen({
-        host: allowLan ? "0.0.0.0" : "127.0.0.1",
-        port: this.listenPort
+        host: isAllowLan ? "0.0.0.0" : "127.0.0.1",
+        port: this.listenPort,
       });
-      this.storeListener = this.store.onDidChange("integrations.companionServerAuthTokens", async () => {
-        const validTokenIds = getAuthTokens(this.store).map(authToken => authToken.id);
+      const revokeSockets = async () => {
+        const validTokenIds = getAuthTokens(this.store).map((authToken) => authToken.id);
         if (this.fastifyServer.server.listening) {
-          const namespaces = this.fastifyServer.io._nsps.keys();
+          const namespaces = socketServer(this.fastifyServer)._nsps.keys();
           let sockets: RemoteSocket<DefaultEventsMap, { tokenId: string }>[] = [];
 
           for (const namespace of namespaces) {
-            const namespacedSockets = await this.fastifyServer.io.of(namespace).fetchSockets();
+            const namespacedSockets = await socketServer(this.fastifyServer).of(namespace).fetchSockets();
             sockets = sockets.concat(namespacedSockets);
           }
 
@@ -129,12 +154,15 @@ export default class CompanionServer implements IIntegration {
             }
           }
         }
+      };
+      this.storeListener = this.store.onDidChange("integrations.companionServerAuthTokens", () => {
+        void revokeSockets().catch((error: unknown) => log.error("Companion token revocation failed", error));
       });
     }
   }
 
   public async disable() {
-    if (this.fastifyServer) {
+    if (this.fastifyServerValue) {
       await this.fastifyServer.close();
       if (this.storeListener) {
         this.storeListener();

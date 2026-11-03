@@ -1,18 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import MemoryStore from "../src/main/memory-store";
+import { MemoryStore } from "../src/main/memory-store";
 import { AUTH_WINDOW_DURATION_MS, watchCompanionAuthWindow } from "../src/main/integrations/companion-server/auth-window-timer";
 import type { MemoryStoreSchema } from "../src/shared/store/schema";
 
 describe("watchCompanionAuthWindow", () => {
   let memoryStore: MemoryStore<MemoryStoreSchema>;
-  let serverEnabled: boolean;
+  let isServerEnabled: boolean;
   let stop: () => void;
 
   beforeEach(() => {
     vi.useFakeTimers();
     memoryStore = new MemoryStore<MemoryStoreSchema>();
-    serverEnabled = true;
-    stop = watchCompanionAuthWindow(memoryStore, () => serverEnabled);
+    isServerEnabled = true;
+    stop = watchCompanionAuthWindow(memoryStore, () => isServerEnabled);
   });
 
   afterEach(() => {
@@ -52,7 +52,7 @@ describe("watchCompanionAuthWindow", () => {
   });
 
   it("refuses to turn pairing on while the server is off", () => {
-    serverEnabled = false;
+    isServerEnabled = false;
     memoryStore.set("companionServerAuthWindowEnabled", true);
 
     expect(memoryStore.get("companionServerAuthWindowEnabled")).toBe(false);

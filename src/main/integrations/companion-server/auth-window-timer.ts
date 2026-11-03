@@ -1,5 +1,5 @@
-import MemoryStore from "../../memory-store";
-import { MemoryStoreSchema } from "~shared/store/schema";
+import { MemoryStore } from "../../memory-store";
+import { type MemoryStoreSchema } from "~shared/store/schema";
 
 export const AUTH_WINDOW_DURATION_MS = 300 * 1000;
 
@@ -30,12 +30,10 @@ export function watchCompanionAuthWindow(
       return;
     }
 
-    if (!timeout) {
-      timeout = setTimeout(() => {
-        timeout = null;
-        memoryStore.set("companionServerAuthWindowEnabled", false);
-      }, durationMs);
-    }
+    timeout ??= setTimeout(() => {
+      timeout = null;
+      memoryStore.set("companionServerAuthWindowEnabled", false);
+    }, durationMs);
   };
 
   memoryStore.onStateChanged(listener);

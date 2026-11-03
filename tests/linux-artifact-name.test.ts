@@ -1,3 +1,4 @@
+import { requireValue, requireRecord, requireStringArray } from "./helpers/require-value";
 import { mkdtempSync, writeFileSync, existsSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
@@ -8,13 +9,15 @@ import config from "../forge.config";
 
 const postMake = config.hooks?.postMake;
 
-async function runPostMake(result: unknown): Promise<ForgeMakeResult[]> {
-  return (await postMake(null as never, [result] as never)) as ForgeMakeResult[];
+async function runPostMake(result: ForgeMakeResult): Promise<{ artifacts: string[] }[]> {
+  const output: unknown = await Reflect.apply(requireValue(postMake), undefined, [null, [result]]);
+  if (!Array.isArray(output)) throw new TypeError("Expected the make results");
+  return output.map((entry: unknown) => ({ artifacts: requireStringArray(requireRecord(entry).artifacts) }));
 }
 
-function makeResult(artifactNames: string[], arch: string, version: string) {
+function makeResult(artifactNames: string[], arch: ForgeMakeResult["arch"], version: string): ForgeMakeResult {
   const dir = mkdtempSync(path.join(tmpdir(), "ytmd-forge-"));
-  const artifacts = artifactNames.map(name => {
+  const artifacts = artifactNames.map((name) => {
     const file = path.join(dir, name);
     writeFileSync(file, "");
     return file;
@@ -28,8 +31,8 @@ describe("postMake linux artifact rename", () => {
 
     const [renamed] = await runPostMake(result);
 
-    expect(path.basename(renamed.artifacts[0])).toBe("YTMDesktopPlus-2026.820.0-beta-x86_64.flatpak");
-    expect(existsSync(renamed.artifacts[0])).toBe(true);
+    expect(path.basename(requireValue(requireValue(renamed).artifacts[0]))).toBe("YTMDesktopPlus-2026.820.0-beta-x86_64.flatpak");
+    expect(existsSync(requireValue(requireValue(renamed).artifacts[0]))).toBe(true);
   });
 
   it("maps arm64 to aarch64", async () => {
@@ -37,7 +40,7 @@ describe("postMake linux artifact rename", () => {
 
     const [renamed] = await runPostMake(result);
 
-    expect(path.basename(renamed.artifacts[0])).toBe("YTMDesktopPlus-2026.820.0-beta-aarch64.flatpak");
+    expect(path.basename(requireValue(requireValue(renamed).artifacts[0]))).toBe("YTMDesktopPlus-2026.820.0-beta-aarch64.flatpak");
   });
 
   it("maps the AppImage forge arch onto the gnu arch", async () => {
@@ -45,8 +48,8 @@ describe("postMake linux artifact rename", () => {
 
     const [renamed] = await runPostMake(result);
 
-    expect(path.basename(renamed.artifacts[0])).toBe("YTMDesktopPlus-2026.820.0-beta-x86_64.AppImage");
-    expect(existsSync(renamed.artifacts[0])).toBe(true);
+    expect(path.basename(requireValue(requireValue(renamed).artifacts[0]))).toBe("YTMDesktopPlus-2026.820.0-beta-x86_64.AppImage");
+    expect(existsSync(requireValue(requireValue(renamed).artifacts[0]))).toBe(true);
   });
 
   it("maps the arm64 AppImage to aarch64", async () => {
@@ -54,7 +57,7 @@ describe("postMake linux artifact rename", () => {
 
     const [renamed] = await runPostMake(result);
 
-    expect(path.basename(renamed.artifacts[0])).toBe("YTMDesktopPlus-2026.820.0-beta-aarch64.AppImage");
+    expect(path.basename(requireValue(requireValue(renamed).artifacts[0]))).toBe("YTMDesktopPlus-2026.820.0-beta-aarch64.AppImage");
   });
 
   it("leaves every other maker's artifacts alone", async () => {
@@ -63,6 +66,6 @@ describe("postMake linux artifact rename", () => {
 
     const [renamed] = await runPostMake(result);
 
-    expect(renamed.artifacts.map((artifact: string) => path.basename(artifact))).toEqual(names);
+    expect(requireValue(renamed).artifacts.map((artifact: string) => path.basename(artifact))).toEqual(names);
   });
 });

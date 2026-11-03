@@ -13,7 +13,7 @@ function page() {
   const report = vi.fn();
   const context = vm.createContext({ ytmd: { reportContractMiss: report } });
   vm.runInContext("var window = globalThis;", context);
-  const run = (source: string) => vm.runInContext(source, context);
+  const run = (source: string): unknown => vm.runInContext(source, context);
   const install = () => run(`(${installExperimentFlagPins.toString()})(${JSON.stringify(PINNED_EXPERIMENT_FLAGS)})`);
   const flag = (name: string) => run(`${FLAG_READER}(${JSON.stringify(name)})`);
   return { report, run, install, flag };
@@ -62,5 +62,17 @@ describe("experiment flag pins", () => {
 
     expect(flag("music_web_enable_wiz_miniplayer")).toBe(false);
     expect(report).toHaveBeenCalledTimes(1);
+  });
+
+  it("coerces a served value separately for comparison and reporting", () => {
+    const { report, run, install } = page();
+    install();
+    run(YTCFG_INLINE);
+    run(
+      `var conversions = 0; ytcfg.set({ EXPERIMENT_FLAGS: { music_web_enable_wiz_miniplayer: { toString() { conversions += 1; return String(conversions); } } } });`
+    );
+
+    expect(run("conversions")).toBe(2);
+    expect(report).toHaveBeenCalledWith("experiment flag music_web_enable_wiz_miniplayer pinned to false", "2");
   });
 });

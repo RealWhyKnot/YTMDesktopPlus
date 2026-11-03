@@ -1,5 +1,7 @@
+import { requireValue } from "./helpers/require-value";
+import { fakeMessagePort } from "./helpers/fake-message-port";
 import { EventEmitter } from "node:events";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MessagePortMain } from "electron";
 
 import {
@@ -10,7 +12,7 @@ import {
   RELAY_REARM_MS,
   slimState,
   type AudioUplinkDeps,
-  type UplinkProcess
+  type UplinkProcess,
 } from "../src/main/media/audio-uplink";
 import { cleanAudioPackets, createAudioUplinkService, type MediaPort, type UplinkCommand, type UplinkEvent } from "../src/main/services/audio-uplink";
 import type { AudioTransport, AudioTransportHandlers } from "../src/main/integrations/listen-along/audio-publisher";
@@ -20,6 +22,8 @@ import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context"
 
 const CREDS = { roomId: "abcdefgh", hostKey: "f".repeat(32) };
 const PLAYING = slimState(makePlayerState({ videoDetails: makeVideoDetails({ id: "dQw4w9WgXcQ" }), trackState: VideoState.Playing, videoProgress: 10 }));
+
+afterEach(() => vi.restoreAllMocks());
 
 function fakeMediaPort() {
   let listener: ((event: { data: unknown }) => void) | null = null;
@@ -37,7 +41,7 @@ function fakeMediaPort() {
     },
     emit(data: unknown) {
       listener?.({ data });
-    }
+    },
   };
   return port;
 }
@@ -52,7 +56,7 @@ function service() {
       on: (_event, listener) => {
         onCommand = listener;
       },
-      postMessage: event => events.push(event)
+      postMessage: (event) => events.push(event),
     },
     (url, handlers): AudioTransport => {
       const entry = { url, handlers, text: [] as AudioClientFrame[], binary: [] as Uint8Array[], open: false };
@@ -61,15 +65,15 @@ function service() {
         connect: () => {
           entry.open = true;
         },
-        sendText: frame => entry.text.push(frame),
-        sendBinary: data => entry.binary.push(data),
+        sendText: (frame) => entry.text.push(frame),
+        sendBinary: (data) => entry.binary.push(data),
         close: () => {
           entry.open = false;
         },
         get isOpen() {
           return entry.open;
         },
-        bufferedAmount: 0
+        bufferedAmount: 0,
       };
     }
   );
@@ -82,9 +86,9 @@ function service() {
       return transports[transports.length - 1];
     },
     ready(n = 1) {
-      this.relay().handlers.onOpen();
-      this.relay().handlers.onFrame({ t: "ready", n });
-    }
+      requireValue(this.relay()).handlers.onOpen();
+      requireValue(this.relay()).handlers.onFrame({ t: "ready", n });
+    },
   };
 }
 
@@ -93,11 +97,11 @@ describe("audio uplink service", () => {
     const s = service();
 
     s.send({ t: "creds", creds: CREDS });
-    s.relay().handlers.onOpen();
+    requireValue(s.relay()).handlers.onOpen();
 
     expect(s.events).toContainEqual({ t: "capture", on: true });
-    expect(s.relay().url).toBe("wss://ytmdesktopplus.com/audio/abcdefgh");
-    expect(s.relay().text[0]).toEqual({ t: "pub", r: CREDS.roomId, k: CREDS.hostKey });
+    expect(requireValue(s.relay()).url).toBe("wss://ytmdesktopplus.com/audio/abcdefgh");
+    expect(requireValue(s.relay()).text[0]).toEqual({ t: "pub", r: CREDS.roomId, k: CREDS.hostKey });
   });
 
   it("publishes what the media host posts on its port once the relay is ready", () => {
@@ -111,8 +115,8 @@ describe("audio uplink service", () => {
     s.ready(2);
     media.emit({ packets: [{ t: 0, d: new Uint8Array([1, 2, 3]).buffer }] });
 
-    expect(s.relay().text).toContainEqual({ t: "cfg", codec: "opus", sr: 48000, ch: 2, br: 128000 });
-    expect(s.relay().binary).toHaveLength(1);
+    expect(requireValue(s.relay()).text).toContainEqual({ t: "cfg", codec: "opus", sr: 48000, ch: 2, br: 128000 });
+    expect(requireValue(s.relay()).binary).toHaveLength(1);
     expect(s.events).toContainEqual({ t: "update", streaming: true, webListeners: 2 });
   });
 
@@ -124,10 +128,10 @@ describe("audio uplink service", () => {
     s.send({ t: "state", state: PLAYING });
     s.send({ t: "status", status: { muted: true } });
 
-    const types = s.relay().text.map(frame => frame.t);
+    const types = requireValue(s.relay()).text.map((frame) => frame.t);
     expect(types).toContain("meta");
     expect(types).toContain("anchor");
-    expect(s.relay().text.at(-1)).toEqual({ t: "status", s: "muted" });
+    expect(requireValue(s.relay()).text.at(-1)).toEqual({ t: "status", s: "muted" });
   });
 
   it("closes the media port it replaces and reads only the new one", () => {
@@ -143,7 +147,7 @@ describe("audio uplink service", () => {
 
     expect(first.closed).toBe(true);
     expect(second.started).toBe(true);
-    expect(s.relay().binary).toHaveLength(1);
+    expect(requireValue(s.relay()).binary).toHaveLength(1);
   });
 
   it("stops the capture and tells main in text when the relay refuses the room", () => {
@@ -151,7 +155,7 @@ describe("audio uplink service", () => {
     s.send({ t: "creds", creds: CREDS });
     s.ready();
 
-    s.relay().handlers.onFrame({ t: "e", m: "bad key" });
+    requireValue(s.relay()).handlers.onFrame({ t: "e", m: "bad key" });
 
     expect(s.events).toContainEqual({ t: "log", message: "audio publisher refused by the relay", args: ["bad key"] });
     expect(s.events).toContainEqual({ t: "capture", on: false });
@@ -174,17 +178,15 @@ describe("audio uplink service", () => {
   });
 
   it("stamps anchors with the clock main sends and redials on request", () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
     const s = service();
     s.send({ t: "clock", offsetMs: 60_000 });
     s.send({ t: "creds", creds: CREDS });
     s.ready();
-    const before = Date.now();
     s.send({ t: "state", state: PLAYING });
-    const after = Date.now();
 
-    const anchor = s.relay().text.find(frame => frame.t === "anchor") as { a: number };
-    expect(anchor.a).toBeGreaterThanOrEqual(before + 60_000 - 10_000);
-    expect(anchor.a).toBeLessThanOrEqual(after + 60_000 - 10_000);
+    const anchor = requireValue(requireValue(s.relay()).text.find((frame) => frame.t === "anchor"));
+    expect(anchor.a).toBe(1_700_000_050_000);
 
     s.send({ t: "redial" });
     expect(s.transports).toHaveLength(2);
@@ -196,8 +198,8 @@ describe("cleanAudioPackets", () => {
     const good = { t: 12, d: new ArrayBuffer(4) };
     const cleaned = cleanAudioPackets([good, { t: "x", d: new ArrayBuffer(1) }, { t: 1 }, null]);
     expect(cleaned).toHaveLength(1);
-    expect(cleaned[0].timestampUs).toBe(12);
-    expect(cleaned[0].payload).toBeInstanceOf(Uint8Array);
+    expect(requireValue(cleaned[0]).timestampUs).toBe(12);
+    expect(requireValue(cleaned[0]).payload).toBeInstanceOf(Uint8Array);
 
     expect(cleanAudioPackets("nope")).toEqual([]);
     expect(cleanAudioPackets(undefined)).toEqual([]);
@@ -209,14 +211,14 @@ function fakeProcess() {
   const events = new EventEmitter();
   const child = Object.assign(events, {
     postMessage: (message: UplinkCommand, transfer?: MessagePortMain[]) => posted.push({ message, transfer }),
-    kill: vi.fn(() => true)
-  }) as unknown as UplinkProcess;
+    kill: vi.fn(() => true),
+  }) satisfies UplinkProcess;
   return {
     child,
     posted,
     emit: (event: UplinkEvent) => events.emit("message", event),
     exit: (code = 1) => events.emit("exit", code),
-    fail: (type: string) => events.emit("error", type)
+    fail: (type: string) => events.emit("error", type),
   };
 }
 
@@ -224,18 +226,18 @@ function proxy() {
   let nowMs = 0;
   const processes: ReturnType<typeof fakeProcess>[] = [];
   const sinks: ((port: MessagePortMain) => void)[] = [];
-  const deps: AudioUplinkDeps = {
+  const deps = {
     fork: vi.fn(() => {
       const created = fakeProcess();
       processes.push(created);
       return created.child;
     }),
-    connectMediaHost: vi.fn(send => sinks.push(send)),
-    setCapture: vi.fn(),
-    onUpdate: vi.fn(),
-    log: vi.fn(),
-    now: () => nowMs
-  };
+    connectMediaHost: vi.fn((send: Parameters<AudioUplinkDeps["connectMediaHost"]>[0]) => sinks.push(send)),
+    setCapture: vi.fn<AudioUplinkDeps["setCapture"]>(),
+    onUpdate: vi.fn<AudioUplinkDeps["onUpdate"]>(),
+    log: vi.fn<AudioUplinkDeps["log"]>(),
+    now: () => nowMs,
+  } satisfies AudioUplinkDeps;
   return {
     uplink: new AudioUplink(deps),
     deps,
@@ -243,7 +245,7 @@ function proxy() {
     sinks,
     advance(ms: number) {
       nowMs += ms;
-    }
+    },
   };
 }
 
@@ -259,19 +261,19 @@ describe("audio uplink process from main", () => {
     p.uplink.setCredentials({ ...CREDS });
 
     expect(p.deps.fork).toHaveBeenCalledTimes(1);
-    expect(p.processes[0].posted.map(entry => entry.message.t)).toEqual(["state", "status", "creds"]);
-    expect(p.processes[0].posted[1].message).toEqual({ t: "status", status: { muted: true } });
-    expect(p.processes[0].posted[2].message).toEqual({ t: "creds", creds: CREDS });
+    expect(requireValue(p.processes[0]).posted.map((entry) => entry.message.t)).toEqual(["state", "status", "creds"]);
+    expect(requireValue(requireValue(p.processes[0]).posted[1]).message).toEqual({ t: "status", status: { muted: true } });
+    expect(requireValue(requireValue(p.processes[0]).posted[2]).message).toEqual({ t: "creds", creds: CREDS });
   });
 
   it("hands the process its end of every media host pairing", () => {
     const p = proxy();
     p.uplink.setCredentials(CREDS);
-    const port = { name: "uplink end" } as unknown as MessagePortMain;
+    const port = fakeMessagePort();
 
-    p.sinks[0](port);
+    requireValue(p.sinks[0]).call(p.sinks, port);
 
-    expect(p.processes[0].posted.at(-1)).toEqual({ message: { t: "port" }, transfer: [port] });
+    expect(requireValue(p.processes[0]).posted.at(-1)).toEqual({ message: { t: "port" }, transfer: [port] });
   });
 
   it("slims player state down to what the stream uses", () => {
@@ -280,20 +282,21 @@ describe("audio uplink process from main", () => {
 
     p.uplink.updateLocalState(makePlayerState({ videoDetails: makeVideoDetails({ id: "dQw4w9WgXcQ" }), volume: 30, playlistId: "PL1" }));
 
-    const sent = p.processes[0].posted.at(-1)?.message;
+    const sent = requireValue(p.processes[0]).posted.at(-1)?.message;
     expect(sent?.t).toBe("state");
-    const state = (sent as { state: Record<string, unknown> }).state;
+    if (sent?.t !== "state") throw new Error("Expected a player state message");
+    const state = sent.state;
     expect(Object.keys(state).sort()).toEqual(["adPlaying", "hasFullMetadata", "trackState", "videoDetails", "videoProgress"]);
-    expect(Object.keys(state.videoDetails as object).sort()).toEqual(["album", "author", "durationSeconds", "id", "thumbnails", "title"]);
+    expect(Object.keys(requireValue(state.videoDetails)).sort()).toEqual(["album", "author", "durationSeconds", "id", "thumbnails", "title"]);
   });
 
   it("passes capture switches, stream updates and log lines from the process to main", () => {
     const p = proxy();
     p.uplink.setCredentials(CREDS);
 
-    p.processes[0].emit({ t: "capture", on: true });
-    p.processes[0].emit({ t: "update", streaming: true, webListeners: 3 });
-    p.processes[0].emit({ t: "log", message: "audio capture failed", args: ["boom"] });
+    requireValue(p.processes[0]).emit({ t: "capture", on: true });
+    requireValue(p.processes[0]).emit({ t: "update", streaming: true, webListeners: 3 });
+    requireValue(p.processes[0]).emit({ t: "log", message: "audio capture failed", args: ["boom"] });
 
     expect(p.deps.setCapture).toHaveBeenCalledWith(true);
     expect(p.deps.onUpdate).toHaveBeenCalledWith({ streaming: true, webListeners: 3, issue: null });
@@ -305,11 +308,11 @@ describe("audio uplink process from main", () => {
     p.uplink.updateLocalState(makePlayerState({ trackState: VideoState.Playing }));
     p.uplink.setCredentials(CREDS);
 
-    p.processes[0].exit(1);
+    requireValue(p.processes[0]).exit(1);
 
     expect(p.deps.fork).toHaveBeenCalledTimes(2);
     expect(p.deps.connectMediaHost).toHaveBeenCalledTimes(2);
-    expect(p.processes[1].posted.map(entry => entry.message.t)).toEqual(["state", "creds"]);
+    expect(requireValue(p.processes[1]).posted.map((entry) => entry.message.t)).toEqual(["state", "creds"]);
     expect(p.deps.onUpdate).not.toHaveBeenCalled();
   });
 
@@ -317,8 +320,8 @@ describe("audio uplink process from main", () => {
     const p = proxy();
     p.uplink.setCredentials(CREDS);
 
-    expect(() => p.processes[0].fail("FatalError")).not.toThrow();
-    p.processes[0].exit(134);
+    expect(() => requireValue(p.processes[0]).fail("FatalError")).not.toThrow();
+    requireValue(p.processes[0]).exit(134);
 
     expect(p.deps.log).toHaveBeenCalledWith("Audio uplink process failed", "FatalError");
     expect(p.deps.fork).toHaveBeenCalledTimes(2);
@@ -333,18 +336,18 @@ describe("audio uplink process from main", () => {
       vi.advanceTimersByTime(4_000);
       p.uplink.setCredentials(CREDS);
       vi.advanceTimersByTime(2_000);
-      expect(p.processes[0].child.kill).not.toHaveBeenCalled();
+      expect(requireValue(p.processes[0]).child.kill).not.toHaveBeenCalled();
 
       p.uplink.setCredentials(null);
       vi.advanceTimersByTime(5_000);
-      expect(p.processes[0].child.kill).toHaveBeenCalledTimes(1);
+      expect(requireValue(p.processes[0]).child.kill).toHaveBeenCalledTimes(1);
 
-      p.processes[0].exit(0);
+      requireValue(p.processes[0]).exit(0);
       expect(p.deps.fork).toHaveBeenCalledTimes(1);
-      const port = { close: vi.fn() } as unknown as MessagePortMain;
-      p.sinks[0](port);
+      const port = fakeMessagePort();
+      requireValue(p.sinks[0]).call(p.sinks, port);
       expect(port.close).toHaveBeenCalled();
-      expect(p.processes[0].posted.some(entry => entry.message.t === "port")).toBe(false);
+      expect(requireValue(p.processes[0]).posted.some((entry) => entry.message.t === "port")).toBe(false);
 
       p.uplink.setCredentials(CREDS);
       expect(p.deps.fork).toHaveBeenCalledTimes(2);
@@ -358,7 +361,7 @@ describe("audio uplink process from main", () => {
     p.uplink.setCredentials(CREDS);
     p.uplink.setCredentials(null);
 
-    p.processes[0].exit(0);
+    requireValue(p.processes[0]).exit(0);
     expect(p.deps.fork).toHaveBeenCalledTimes(1);
 
     p.uplink.setCredentials(CREDS);
@@ -371,7 +374,7 @@ describe("audio uplink process from main", () => {
 
     for (let i = 0; i < 3; i++) {
       p.advance(5000);
-      p.processes[i].exit(1);
+      requireValue(p.processes[i]).exit(1);
     }
 
     expect(p.deps.fork).toHaveBeenCalledTimes(3);
@@ -394,7 +397,7 @@ describe("audio uplink process from main", () => {
 
     for (let i = 0; i < 4; i++) {
       p.advance(16_000);
-      p.processes[i].exit(1);
+      requireValue(p.processes[i]).exit(1);
     }
 
     expect(p.deps.fork).toHaveBeenCalledTimes(5);
@@ -407,7 +410,7 @@ describe("audio uplink retries from main", () => {
     const p = proxy();
     p.uplink.setCredentials(CREDS);
     const child = p.processes[0];
-    const credsPosts = () => child.posted.filter(entry => entry.message.t === "creds").length;
+    const credsPosts = () => requireValue(child).posted.filter((entry) => entry.message.t === "creds").length;
     const lastUpdate = () => vi.mocked(p.deps.onUpdate).mock.calls.at(-1)?.[0];
     return { ...p, child, credsPosts, lastUpdate };
   }
@@ -417,20 +420,20 @@ describe("audio uplink retries from main", () => {
     try {
       const h = hosting();
 
-      h.child.emit({ t: "fault", fault: "capture" });
+      requireValue(h.child).emit({ t: "fault", fault: "capture" });
       expect(h.lastUpdate()).toEqual({ streaming: false, webListeners: 0, issue: "retrying" });
-      vi.advanceTimersByTime(CAPTURE_RETRY_MS[0] - 1);
+      vi.advanceTimersByTime(requireValue(CAPTURE_RETRY_MS[0]) - 1);
       expect(h.credsPosts()).toBe(1);
       vi.advanceTimersByTime(1);
       expect(h.credsPosts()).toBe(2);
 
-      h.child.emit({ t: "fault", fault: "capture" });
-      vi.advanceTimersByTime(CAPTURE_RETRY_MS[0]);
+      requireValue(h.child).emit({ t: "fault", fault: "capture" });
+      vi.advanceTimersByTime(requireValue(CAPTURE_RETRY_MS[0]));
       expect(h.credsPosts()).toBe(2);
-      vi.advanceTimersByTime(CAPTURE_RETRY_MS[1] - CAPTURE_RETRY_MS[0]);
+      vi.advanceTimersByTime(requireValue(CAPTURE_RETRY_MS[1]) - requireValue(CAPTURE_RETRY_MS[0]));
       expect(h.credsPosts()).toBe(3);
 
-      h.child.emit({ t: "update", streaming: true, webListeners: 1 });
+      requireValue(h.child).emit({ t: "update", streaming: true, webListeners: 1 });
       expect(h.lastUpdate()).toEqual({ streaming: true, webListeners: 1, issue: null });
     } finally {
       vi.useRealTimers();
@@ -442,16 +445,16 @@ describe("audio uplink retries from main", () => {
     try {
       const h = hosting();
       for (let i = 0; i < 3; i++) {
-        h.child.emit({ t: "fault", fault: "capture" });
+        requireValue(h.child).emit({ t: "fault", fault: "capture" });
         vi.advanceTimersByTime(60_000);
       }
       const posted = h.credsPosts();
 
-      h.child.emit({ t: "update", streaming: true, webListeners: 0 });
+      requireValue(h.child).emit({ t: "update", streaming: true, webListeners: 0 });
       h.advance(HEALTHY_STREAM_MS);
-      h.child.emit({ t: "update", streaming: false, webListeners: 0 });
-      h.child.emit({ t: "fault", fault: "capture" });
-      vi.advanceTimersByTime(CAPTURE_RETRY_MS[0]);
+      requireValue(h.child).emit({ t: "update", streaming: false, webListeners: 0 });
+      requireValue(h.child).emit({ t: "fault", fault: "capture" });
+      vi.advanceTimersByTime(requireValue(CAPTURE_RETRY_MS[0]));
 
       expect(h.credsPosts()).toBe(posted + 1);
     } finally {
@@ -464,12 +467,12 @@ describe("audio uplink retries from main", () => {
     try {
       const h = hosting();
       for (let i = 0; i < MAX_CAPTURE_RETRIES; i++) {
-        h.child.emit({ t: "fault", fault: "capture" });
+        requireValue(h.child).emit({ t: "fault", fault: "capture" });
         vi.advanceTimersByTime(60_000);
       }
       const posted = h.credsPosts();
 
-      h.child.emit({ t: "fault", fault: "capture" });
+      requireValue(h.child).emit({ t: "fault", fault: "capture" });
       vi.advanceTimersByTime(10 * 60_000);
 
       expect(h.credsPosts()).toBe(posted);
@@ -483,13 +486,13 @@ describe("audio uplink retries from main", () => {
     vi.useFakeTimers();
     try {
       const h = hosting();
-      h.child.emit({ t: "fault", fault: "relay" });
+      requireValue(h.child).emit({ t: "fault", fault: "relay" });
       vi.advanceTimersByTime(RELAY_REARM_MS - 1);
       expect(h.credsPosts()).toBe(1);
       vi.advanceTimersByTime(1);
       expect(h.credsPosts()).toBe(2);
 
-      h.child.emit({ t: "fault", fault: "refused" });
+      requireValue(h.child).emit({ t: "fault", fault: "refused" });
       h.uplink.rearm();
       expect(h.credsPosts()).toBe(3);
       vi.advanceTimersByTime(RELAY_REARM_MS);
@@ -503,7 +506,7 @@ describe("audio uplink retries from main", () => {
     vi.useFakeTimers();
     try {
       const h = hosting();
-      h.child.emit({ t: "fault", fault: "outdated" });
+      requireValue(h.child).emit({ t: "fault", fault: "outdated" });
       h.uplink.rearm();
       vi.advanceTimersByTime(10 * 60_000);
 
@@ -521,13 +524,17 @@ describe("audio uplink retries from main", () => {
     vi.useFakeTimers();
     try {
       const h = hosting();
-      h.child.emit({ t: "fault", fault: "capture" });
+      requireValue(h.child).emit({ t: "fault", fault: "capture" });
       h.uplink.setCredentials(null);
       vi.advanceTimersByTime(60_000);
 
-      expect(h.child.posted.filter(entry => entry.message.t === "creds").map(entry => entry.message)).toEqual([
+      expect(
+        requireValue(h.child)
+          .posted.filter((entry) => entry.message.t === "creds")
+          .map((entry) => entry.message)
+      ).toEqual([
         { t: "creds", creds: CREDS },
-        { t: "creds", creds: null }
+        { t: "creds", creds: null },
       ]);
     } finally {
       vi.useRealTimers();
@@ -539,9 +546,9 @@ describe("audio uplink retries from main", () => {
     try {
       const h = hosting();
       h.uplink.reconnectNow();
-      expect(h.child.posted.at(-1)?.message).toEqual({ t: "redial" });
+      expect(requireValue(h.child).posted.at(-1)?.message).toEqual({ t: "redial" });
 
-      h.child.emit({ t: "fault", fault: "relay" });
+      requireValue(h.child).emit({ t: "fault", fault: "relay" });
       h.uplink.reconnectNow();
       expect(h.credsPosts()).toBe(2);
       vi.advanceTimersByTime(RELAY_REARM_MS);
@@ -555,10 +562,10 @@ describe("audio uplink retries from main", () => {
     const h = hosting();
     h.uplink.setClockOffset(1500);
     h.uplink.setClockOffset(1500);
-    expect(h.child.posted.filter(entry => entry.message.t === "clock")).toHaveLength(1);
+    expect(requireValue(h.child).posted.filter((entry) => entry.message.t === "clock")).toHaveLength(1);
 
-    h.child.exit(1);
+    requireValue(h.child).exit(1);
 
-    expect(h.processes[1].posted.map(entry => entry.message)).toContainEqual({ t: "clock", offsetMs: 1500 });
+    expect(requireValue(h.processes[1]).posted.map((entry) => entry.message)).toContainEqual({ t: "clock", offsetMs: 1500 });
   });
 });

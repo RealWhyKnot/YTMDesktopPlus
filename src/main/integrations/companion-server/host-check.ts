@@ -34,15 +34,15 @@ export function localInterfaceHosts(): string[] {
   return hosts;
 }
 
-export function isAllowedHost(host: string | undefined, allowLan: boolean, interfaceHosts: () => string[] = localInterfaceHosts): boolean {
+export function isAllowedHost(host: string | undefined, isAllowLan: boolean, interfaceHosts: () => string[] = localInterfaceHosts): boolean {
   const name = hostnameFromHostHeader(host);
   if (!name) return false;
   if (LOOPBACK_HOSTS.includes(name)) return true;
-  return allowLan && interfaceHosts().includes(name);
+  return isAllowLan && interfaceHosts().includes(name);
 }
 
-export function isAllowedOrigin(origin: string | undefined, host: string | undefined, corsWildcard: boolean): boolean {
-  if (origin === undefined || corsWildcard) return true;
+export function isAllowedOrigin(origin: string | undefined, host: string | undefined, isCorsWildcard: boolean): boolean {
+  if (origin === undefined || isCorsWildcard) return true;
 
   let url: URL;
   try {
@@ -52,5 +52,5 @@ export function isAllowedOrigin(origin: string | undefined, host: string | undef
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") return false;
-  return host !== undefined && url.host === host.trim().toLowerCase();
+  return url.host === host?.trim().toLowerCase();
 }

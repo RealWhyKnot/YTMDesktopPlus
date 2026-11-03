@@ -1,10 +1,12 @@
-import { readFileSync } from "node:fs";
+import { requireValue } from "./helpers/require-value";
+import { readPageScript, runPageScript } from "./helpers/page-script";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isRecord } from "../src/shared/unknown";
 
-const enableSource = readFileSync("src/addons/bundled/rooms/scripts/audiocapture-enable.script.js", "utf8").trim();
-const disableSource = readFileSync("src/addons/bundled/rooms/scripts/audiocapture-disable.script.js", "utf8").trim();
-const listeningOnSource = readFileSync("src/addons/bundled/rooms/scripts/audiocapture-listening-on.script.js", "utf8").trim();
-const listeningOffSource = readFileSync("src/addons/bundled/rooms/scripts/audiocapture-listening-off.script.js", "utf8").trim();
+const enableSource = await readPageScript("src/addons/bundled/rooms/scripts/audiocapture-enable.script.ts");
+const disableSource = await readPageScript("src/addons/bundled/rooms/scripts/audiocapture-disable.script.ts");
+const listeningOnSource = await readPageScript("src/addons/bundled/rooms/scripts/audiocapture-listening-on.script.ts");
+const listeningOffSource = await readPageScript("src/addons/bundled/rooms/scripts/audiocapture-listening-off.script.ts");
 
 type CaptureState = {
   node: FakeWorkletNode | null;
@@ -14,43 +16,71 @@ type CaptureState = {
 
 class FakeWorkletNode {
   port = { postMessage: vi.fn() };
-  constructor(
-    readonly context: unknown,
-    readonly name: string,
-    readonly options: Record<string, unknown>
-  ) {
+  readonly context: unknown;
+  readonly name: string;
+  readonly options: Record<string, unknown>;
+  constructor(context: unknown, name: string, options: Record<string, unknown>) {
+    this.context = context;
+    this.name = name;
+    this.options = options;
+
     workletNodes.push(this);
   }
 }
-
-const nativeMessageChannel = globalThis.MessageChannel;
 
 const settle = async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 };
 
 function run(source: string) {
-  return new Function(`return (${source.replace(/;$/, "")})`)()();
+  return runPageScript(source);
 }
 
 function captureState(): CaptureState | undefined {
-  return (globalThis as unknown as { window: { __ytmdAudioStream?: CaptureState } }).window.__ytmdAudioStream;
+  const value = pageWindow().__ytmdAudioStream;
+  if (value === undefined) return undefined;
+  if (
+    !isRecord(value) ||
+    !(value.node === null || value.node instanceof FakeWorkletNode) ||
+    typeof value.stopped !== "boolean" ||
+    !isFakeNode(value.localGain)
+  ) {
+    throw new TypeError("Invalid audio capture state in the page fixture");
+  }
+  return { node: value.node, stopped: value.stopped, localGain: value.localGain };
+}
+
+function pageWindow(): Record<string, unknown> {
+  const value: unknown = Reflect.get(globalThis, "window");
+  if (!isRecord(value)) throw new TypeError("Missing window in the audio capture fixture");
+  return value;
 }
 
 function fakeNode() {
   return {
     connect: vi.fn(),
     disconnect: vi.fn(),
-    gain: { value: 0, setTargetAtTime: vi.fn() }
+    gain: { value: 0, setTargetAtTime: vi.fn() },
   };
 }
 
+function isFakeNode(value: unknown): value is ReturnType<typeof fakeNode> {
+  return (
+    isRecord(value) &&
+    vi.isMockFunction(value.connect) &&
+    vi.isMockFunction(value.disconnect) &&
+    isRecord(value.gain) &&
+    typeof value.gain.value === "number" &&
+    vi.isMockFunction(value.gain.setTargetAtTime)
+  );
+}
+
 let nativeVolume: number;
-let nativeMuted: boolean;
+let isNativeMuted: boolean;
 let video: {
   volume: number;
   muted: boolean;
-  addEventListener: ReturnType<typeof vi.fn>;
+  addEventListener: ReturnType<typeof vi.fn<(name: string, callback: () => void) => void>>;
   removeEventListener: ReturnType<typeof vi.fn>;
   dispatchEvent: ReturnType<typeof vi.fn>;
 };
@@ -62,40 +92,53 @@ let addModule: ReturnType<typeof vi.fn>;
 let workletNodes: FakeWorkletNode[];
 let pagePosts: { data: unknown; ports: unknown[] }[];
 
+function isVideo(value: unknown): value is typeof video {
+  return (
+    isRecord(value) &&
+    typeof value.volume === "number" &&
+    typeof value.muted === "boolean" &&
+    vi.isMockFunction(value.addEventListener) &&
+    vi.isMockFunction(value.removeEventListener) &&
+    vi.isMockFunction(value.dispatchEvent)
+  );
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   nativeVolume = 0.4;
-  nativeMuted = false;
+  isNativeMuted = false;
   workletNodes = [];
   pagePosts = [];
   addModule = vi.fn(() => Promise.resolve());
 
-  class HTMLMediaElement {}
-  Object.defineProperty(HTMLMediaElement.prototype, "volume", {
-    configurable: true,
-    get: () => nativeVolume,
-    set: (value: number) => {
+  class HTMLMediaElement {
+    get volume() {
+      return nativeVolume;
+    }
+    set volume(value: number) {
       nativeVolume = value;
     }
-  });
+    addEventListener = vi.fn<(name: string, callback: () => void) => void>();
+    removeEventListener = vi.fn();
+    dispatchEvent = vi.fn();
+  }
   Object.defineProperty(HTMLMediaElement.prototype, "muted", {
     configurable: true,
-    get: () => nativeMuted,
-    set: (value: boolean) => {
-      nativeMuted = value;
-    }
+    get: () => isNativeMuted,
+    set: (isValue: boolean) => {
+      isNativeMuted = isValue;
+    },
   });
-  video = Object.create(HTMLMediaElement.prototype) as typeof video;
-  video.addEventListener = vi.fn();
-  video.removeEventListener = vi.fn();
-  video.dispatchEvent = vi.fn();
+  const element = new HTMLMediaElement();
+  if (!isVideo(element)) throw new TypeError("Invalid media element in the audio capture fixture");
+  video = element;
 
   graphSource = fakeNode();
   graphOut = fakeNode();
   const sharedContext = {
     currentTime: 0,
     createGain: () => fakeNode(),
-    audioWorklet: { addModule }
+    audioWorklet: { addModule },
   };
 
   class MessageChannel {
@@ -104,32 +147,30 @@ beforeEach(() => {
   }
 
   post = vi.fn();
-  consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  consoleError = vi.spyOn(console, "error").mockImplementation(() => {
+    return undefined;
+  });
 
-  const globals = globalThis as Record<string, unknown>;
-  globals.HTMLMediaElement = HTMLMediaElement;
-  globals.AudioWorkletNode = FakeWorkletNode;
-  globals.MessageChannel = MessageChannel;
-  globals.document = { querySelector: (selector: string) => (selector === "video" ? video : null) };
-  globals.window = {
+  vi.stubGlobal("HTMLMediaElement", HTMLMediaElement);
+  vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+  vi.stubGlobal("MessageChannel", MessageChannel);
+  vi.stubGlobal("document", { querySelector: (selector: string) => (selector === "video" ? video : null) });
+  const page = {
     ytmd: { postAddonMessage: post },
     postMessage: (data: unknown, _origin: string, ports: unknown[]) => pagePosts.push({ data, ports }),
     __ytmdEnsureAudioGraph: () => {
-      const graphWindow = globals.window as { __ytmdAudioGraph?: unknown };
       const graph = { context: sharedContext, source: graphSource, out: graphOut };
-      graphWindow.__ytmdAudioGraph = graph;
+      Reflect.set(page, "__ytmdAudioGraph", graph);
       return graph;
-    }
+    },
   };
+  vi.stubGlobal("window", page);
 });
 
 afterEach(() => {
   consoleError.mockRestore();
   vi.useRealTimers();
-  for (const key of ["window", "document", "HTMLMediaElement", "AudioWorkletNode"]) {
-    delete (globalThis as Record<string, unknown>)[key];
-  }
-  globalThis.MessageChannel = nativeMessageChannel;
+  vi.unstubAllGlobals();
 });
 
 describe("rooms audio capture enable", () => {
@@ -149,9 +190,9 @@ describe("rooms audio capture enable", () => {
     expect(addModule).toHaveBeenCalledWith("ytmd-media://capture/worklet.js");
     expect(workletNodes).toHaveLength(1);
     const [node] = workletNodes;
-    expect(node.name).toBe("ytmd-room-capture");
-    expect(node.options).toMatchObject({ numberOfOutputs: 0, channelCount: 2 });
-    expect(node.port.postMessage).toHaveBeenCalledWith({ port: { name: "worklet end" }, ad: false }, [{ name: "worklet end" }]);
+    expect(requireValue(node).name).toBe("ytmd-room-capture");
+    expect(requireValue(node).options).toMatchObject({ numberOfOutputs: 0, channelCount: 2 });
+    expect(requireValue(node).port.postMessage).toHaveBeenCalledWith({ port: { name: "worklet end" }, ad: false }, [{ name: "worklet end" }]);
     expect(graphSource.connect).toHaveBeenCalledWith(node);
     expect(graphSource.connect).not.toHaveBeenCalledWith(graphOut);
     expect(pagePosts).toEqual([{ data: { type: "ytmd-room-capture-port" }, ports: [{ name: "outgoing end" }] }]);
@@ -187,9 +228,9 @@ describe("rooms audio capture ad gate", () => {
       set(next: unknown) {
         store.player = next;
         for (const listener of store.listeners) listener();
-      }
+      },
     };
-    (globalThis as unknown as { window: Record<string, unknown> }).window.__YTMD_HOOK__ = {
+    pageWindow().__YTMD_HOOK__ = {
       ytmStore: {
         getState: () => {
           if (store.unreadable) throw new Error("store gone");
@@ -198,8 +239,8 @@ describe("rooms audio capture ad gate", () => {
         subscribe: (listener: () => void) => {
           store.listeners.push(listener);
           return store.unsubscribe;
-        }
-      }
+        },
+      },
     };
     return store;
   }
@@ -208,7 +249,7 @@ describe("rooms audio capture ad gate", () => {
     const store = hookStore({ adPlaying: false });
     run(enableSource);
     await settle();
-    const port = workletNodes[0].port;
+    const port = requireValue(workletNodes[0]).port;
     expect(port.postMessage).toHaveBeenLastCalledWith({ port: { name: "worklet end" }, ad: false }, [{ name: "worklet end" }]);
 
     store.set({ adPlaying: true });
@@ -226,7 +267,7 @@ describe("rooms audio capture ad gate", () => {
     run(enableSource);
     await settle();
 
-    expect(workletNodes[0].port.postMessage).toHaveBeenCalledWith({ port: { name: "worklet end" }, ad: true }, [{ name: "worklet end" }]);
+    expect(requireValue(workletNodes[0]).port.postMessage).toHaveBeenCalledWith({ port: { name: "worklet end" }, ad: true }, [{ name: "worklet end" }]);
   });
 
   it("carries an ad that starts while the capture module loads", async () => {
@@ -235,14 +276,14 @@ describe("rooms audio capture ad gate", () => {
     store.set({ adPlaying: true });
     await settle();
 
-    expect(workletNodes[0].port.postMessage).toHaveBeenCalledWith({ port: { name: "worklet end" }, ad: true }, [{ name: "worklet end" }]);
+    expect(requireValue(workletNodes[0]).port.postMessage).toHaveBeenCalledWith({ port: { name: "worklet end" }, ad: true }, [{ name: "worklet end" }]);
   });
 
   it("reads a missing flag as no ad and holds the last state while the store cannot be read", async () => {
     const store = hookStore({ adPlaying: true });
     run(enableSource);
     await settle();
-    const port = workletNodes[0].port;
+    const port = requireValue(workletNodes[0]).port;
 
     store.unreadable = true;
     store.set({ adPlaying: false });
@@ -268,7 +309,7 @@ describe("rooms audio capture teardown", () => {
   it("clears the flag even when stopping the capture node throws", async () => {
     run(enableSource);
     await settle();
-    workletNodes[0].port.postMessage.mockImplementation(() => {
+    requireValue(workletNodes[0]).port.postMessage.mockImplementation(() => {
       throw new Error("port already closed");
     });
 
@@ -283,9 +324,8 @@ describe("rooms audio capture teardown", () => {
 
   it("clears the flag when the graph and the element have already gone", () => {
     run(enableSource);
-    const globals = globalThis as Record<string, unknown>;
-    delete (globals.window as { __ytmdAudioGraph?: unknown }).__ytmdAudioGraph;
-    globals.document = { querySelector: (): typeof video | null => null };
+    Reflect.deleteProperty(pageWindow(), "__ytmdAudioGraph");
+    vi.stubGlobal("document", { querySelector: (): typeof video | null => null });
 
     run(disableSource);
 
@@ -298,7 +338,7 @@ describe("rooms audio capture teardown", () => {
 
     run(disableSource);
 
-    expect(workletNodes[0].port.postMessage).toHaveBeenLastCalledWith({ stop: true });
+    expect(requireValue(workletNodes[0]).port.postMessage).toHaveBeenLastCalledWith({ stop: true });
   });
 
   it("hands the slider back at the volume the user left it on", () => {
@@ -331,15 +371,15 @@ describe("rooms audio capture teardown", () => {
 });
 
 describe("rooms audio capture mute", () => {
-  const earGain = () => captureState()?.localGain.gain.setTargetAtTime.mock.lastCall?.[0];
+  const earGain = (): unknown => captureState()?.localGain.gain.setTargetAtTime.mock.lastCall?.[0];
 
   it("leaves a local mute native while nobody is listening", () => {
     run(enableSource);
     video.muted = true;
     const onVolumeChange = video.addEventListener.mock.calls.find(([name]) => name === "volumechange")?.[1];
-    onVolumeChange();
+    requireValue(onVolumeChange)();
 
-    expect(nativeMuted).toBe(true);
+    expect(isNativeMuted).toBe(true);
     expect(post).toHaveBeenLastCalledWith("rooms", "captureStatus", { muted: true });
   });
 
@@ -349,7 +389,7 @@ describe("rooms audio capture mute", () => {
 
     run(listeningOnSource);
 
-    expect(nativeMuted).toBe(false);
+    expect(isNativeMuted).toBe(false);
     expect(video.muted).toBe(true);
     expect(earGain()).toBe(0);
     expect(post).toHaveBeenLastCalledWith("rooms", "captureStatus", { muted: false });
@@ -361,7 +401,7 @@ describe("rooms audio capture mute", () => {
 
     video.muted = true;
 
-    expect(nativeMuted).toBe(false);
+    expect(isNativeMuted).toBe(false);
     expect(earGain()).toBe(0);
     expect(video.dispatchEvent).toHaveBeenCalled();
 
@@ -376,7 +416,7 @@ describe("rooms audio capture mute", () => {
 
     run(listeningOffSource);
 
-    expect(nativeMuted).toBe(true);
+    expect(isNativeMuted).toBe(true);
     expect(earGain()).toBeCloseTo(0.4, 10);
   });
 
@@ -388,6 +428,6 @@ describe("rooms audio capture mute", () => {
     run(disableSource);
 
     expect(Object.getOwnPropertyDescriptor(video, "muted")).toBeUndefined();
-    expect(nativeMuted).toBe(true);
+    expect(isNativeMuted).toBe(true);
   });
 });

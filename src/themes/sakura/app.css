@@ -1,14 +1,21 @@
+:root {
+  --color-sakura-app-background-1: rgb(201 79 124 / 50%);
+  --color-sakura-app-background-2: rgb(201 79 124 / 35%);
+  --color-sakura-app-background-3: rgb(233 160 189 / 50%);
+  --color-sakura-app-background-4: rgb(201 79 124 / 40%);
+}
+
 body::after {
   content: "";
   position: fixed;
-  inset: -15% 0 0 0;
+  inset: -15% 0 0;
   pointer-events: none;
   z-index: 1;
   background:
-    radial-gradient(6px 8px at 12% 10%, rgba(201, 79, 124, 0.5), transparent 70%),
-    radial-gradient(5px 7px at 38% 4%, rgba(201, 79, 124, 0.35), transparent 70%),
-    radial-gradient(7px 9px at 63% 12%, rgba(233, 160, 189, 0.5), transparent 70%),
-    radial-gradient(5px 7px at 85% 6%, rgba(201, 79, 124, 0.4), transparent 70%);
+    radial-gradient(6px 8px at 12% 10%, var(--color-sakura-app-background-1), transparent 70%),
+    radial-gradient(5px 7px at 38% 4%, var(--color-sakura-app-background-2), transparent 70%),
+    radial-gradient(7px 9px at 63% 12%, var(--color-sakura-app-background-3), transparent 70%),
+    radial-gradient(5px 7px at 85% 6%, var(--color-sakura-app-background-4), transparent 70%);
   animation: petal-fall 5s ease-in-out infinite;
   opacity: 0;
 }
@@ -18,9 +25,11 @@ body::after {
     opacity: 0;
     transform: translateY(-8%) rotate(0deg);
   }
+
   15% {
     opacity: 1;
   }
+
   100% {
     opacity: 0;
     transform: translateY(70%) rotate(10deg);

@@ -4,7 +4,7 @@ I maintain YTMDesktop+ alone. For anything bigger than a small fix, open an issu
 
 ## Setting up
 
-You need Node.js 22.12 or newer and Git. Node 25 and later don't bundle corepack, so install it first with `npm install --global corepack`.
+You need Git and Node.js 22.18 or later. If you're on Node 23, use 23.6 or later. The tools run TypeScript directly with Node's built-in type stripping. Node 25 and later don't bundle corepack, so install it first with `npm install --global corepack`.
 
 ```bash
 git clone https://github.com/RealWhyKnot/YTMDesktopPlus.git
@@ -20,7 +20,7 @@ yarn start
 
 - `yarn lint`, `yarn typecheck` and `yarn prettier` run the static checks.
 - `yarn test` runs the unit tests.
-- `node tools/test-harness/run.mjs boot-hooks` checks the app's hooks against the live YouTube Music page. The other scenarios are in `tools/test-harness/scenarios`.
+- `node tools/test-harness/run.ts boot-hooks` checks the app's hooks against the live YouTube Music page. The other scenarios are in `tools/test-harness/scenarios`.
 
 CI runs the static checks and unit tests on every pull request, then builds the installers.
 

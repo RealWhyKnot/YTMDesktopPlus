@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import type { AppWindow } from "../../app-window";
+declare const window: AppWindow;
+defineOptions({ name: "ApplicationSettings" });
 import { computed, nextTick, provide, ref, type Component } from "vue";
-import { StoreSchema } from "~shared/store/schema";
-import { AuthToken } from "~shared/integrations/companion-server/types";
-import { AddonDescriptor } from "~shared/addons/types";
-import { ThemeDescriptor } from "~shared/themes/sdk";
-import { createStagedSettings, stagedSettingsKey } from "./useStagedSettings";
+import { type MemoryStoreSchema, type StoreSchema } from "~shared/store/schema";
+import { type AuthToken } from "~shared/integrations/companion-server/types";
+import { type AddonDescriptor } from "~shared/addons/sdk";
+import { type ThemeDescriptor } from "~shared/themes/sdk";
+import { createStagedSettings, stagedSettingsKey } from "./use-staged-settings";
 import { settingsShellKey } from "./context";
 import GeneralTab from "./tabs/GeneralTab.vue";
 import AppearanceTab from "./tabs/AppearanceTab.vue";
@@ -14,6 +17,9 @@ import ShortcutsTab from "./tabs/ShortcutsTab.vue";
 import AddonsTab from "./tabs/AddonsTab.vue";
 import ThemesTab from "./tabs/ThemesTab.vue";
 import AboutTab from "./tabs/AboutTab.vue";
+import "./settings-controls.css";
+import { isAuthToken } from "~shared/integrations/companion-server/validate-auth-token";
+import { arrayOf } from "~shared/validation";
 
 declare const YTMD_GIT_COMMIT_HASH: string;
 declare const YTMD_GIT_BRANCH: string;
@@ -34,7 +40,7 @@ const store = window.ytmd.store;
 const memoryStore = window.ytmd.memoryStore;
 const safeStorage = window.ytmd.safeStorage;
 
-const safeStorageAvailable = ref<boolean>(await memoryStore.get("safeStorageAvailable"));
+const safeStorageAvailable = ref<boolean | undefined>(await memoryStore.get("safeStorageAvailable"));
 
 const general: StoreSchema["general"] = await store.get("general");
 const developer: StoreSchema["developer"] = await store.get("developer");
@@ -51,7 +57,6 @@ const addonSettingKeys: string[] = [];
 for (const addon of initialAddons) {
   for (const section of addon.settingsSections) {
     for (const field of section.fields) {
-      // Button fields carry no stored value, so they never join the staged set.
       if (field.type === "button") continue;
       addonSettingKeys.push(`addons.settings.${addon.manifest.id}.${field.key}`);
     }
@@ -60,64 +65,71 @@ for (const addon of initialAddons) {
 
 const staged = createStagedSettings(
   { general, developer, appearance, playback, integrations, shortcuts, lastfm: lastFM, updates, addons: addonsSection },
-  entries => store.setMany(entries),
+  (entries) => store.setMany(entries),
   addonSettingKeys
 );
 provide(stagedSettingsKey, staged);
 const { hasUnsavedChanges, restartNeeded, saveChanges, resetChanges } = staged;
 
-async function decryptAuthTokens(encrypted: string): Promise<AuthToken[]> {
-  if (!safeStorageAvailable.value) return [];
+async function decryptAuthTokens(encrypted: string | null): Promise<AuthToken[]> {
+  if (!safeStorageAvailable.value || encrypted === null) return [];
   try {
-    const tokens = JSON.parse(await safeStorage.decryptString(encrypted));
-    return Array.isArray(tokens) ? tokens : [];
+    const decrypted = await safeStorage.decryptString(encrypted);
+    if (decrypted === null) return [];
+    const tokens: unknown = JSON.parse(decrypted);
+    return arrayOf(isAuthToken)(tokens) ? tokens : [];
   } catch {
     return [];
   }
 }
 
 const companionServerAuthTokens = ref<AuthToken[]>(await decryptAuthTokens(integrations.companionServerAuthTokens));
-const companionServerSavedEnabled = ref<boolean>(integrations.companionServerEnabled === true);
-const lastFMSessionKey = ref<string>(lastFM.sessionKey);
+const companionServerSavedEnabled = ref<boolean>(integrations.companionServerEnabled);
+const lastFMSessionKey = ref<string | null>(lastFM.sessionKey);
 
-store.onDidAnyChange(async newState => {
+async function applyStoreState(newState: StoreSchema) {
   staged.applyExternalState(newState);
-  companionServerSavedEnabled.value = newState.integrations.companionServerEnabled === true;
+  companionServerSavedEnabled.value = newState.integrations.companionServerEnabled;
 
   companionServerAuthTokens.value = await decryptAuthTokens(newState.integrations.companionServerAuthTokens);
   lastFMSessionKey.value = newState.lastfm.sessionKey;
+}
+
+store.onDidAnyChange((newState) => {
+  void applyStoreState(newState).catch((error: unknown) => console.error("Settings could not be refreshed", error));
 });
 
-const discordPresenceConnectionFailed = ref<boolean>(await memoryStore.get("discordPresenceConnectionFailed"));
+const discordPresenceConnectionFailed = ref<boolean | undefined>(await memoryStore.get("discordPresenceConnectionFailed"));
 
 const shortcutRegisterFailed = {
-  playPause: ref<boolean>(await memoryStore.get("shortcutsPlayPauseRegisterFailed")),
-  next: ref<boolean>(await memoryStore.get("shortcutsNextRegisterFailed")),
-  previous: ref<boolean>(await memoryStore.get("shortcutsPreviousRegisterFailed")),
-  thumbsUp: ref<boolean>(await memoryStore.get("shortcutsThumbsUpRegisterFailed")),
-  thumbsDown: ref<boolean>(await memoryStore.get("shortcutsThumbsDownRegisterFailed")),
-  volumeUp: ref<boolean>(await memoryStore.get("shortcutsVolumeUpRegisterFailed")),
-  volumeDown: ref<boolean>(await memoryStore.get("shortcutsVolumeDownRegisterFailed"))
+  playPause: ref<boolean | undefined>(await memoryStore.get("shortcutsPlayPauseRegisterFailed")),
+  next: ref<boolean | undefined>(await memoryStore.get("shortcutsNextRegisterFailed")),
+  previous: ref<boolean | undefined>(await memoryStore.get("shortcutsPreviousRegisterFailed")),
+  thumbsUp: ref<boolean | undefined>(await memoryStore.get("shortcutsThumbsUpRegisterFailed")),
+  thumbsDown: ref<boolean | undefined>(await memoryStore.get("shortcutsThumbsDownRegisterFailed")),
+  volumeUp: ref<boolean | undefined>(await memoryStore.get("shortcutsVolumeUpRegisterFailed")),
+  volumeDown: ref<boolean | undefined>(await memoryStore.get("shortcutsVolumeDownRegisterFailed")),
 };
 
-const companionServerAuthWindowEnabled = ref<boolean>(await memoryStore.get("companionServerAuthWindowEnabled"));
+const companionServerAuthWindowEnabled = ref<boolean | undefined>(await memoryStore.get("companionServerAuthWindowEnabled"));
 
-const autoUpdaterDisabled = ref<boolean>(await memoryStore.get("autoUpdaterDisabled"));
-const updateLatestVersion = ref<string>(await memoryStore.get("appUpdateLatestVersion"));
+const autoUpdaterDisabled = ref<boolean | undefined>(await memoryStore.get("autoUpdaterDisabled"));
+const updateLatestVersion = ref<string | undefined>(await memoryStore.get("appUpdateLatestVersion"));
 
-const addonsSupported = window.ytmd.addons !== undefined;
+const hasAddonsSupport = window.ytmd.addons !== undefined;
 const addons = ref<AddonDescriptor[]>(initialAddons);
-const addonRestartPending = computed(() => addons.value.some(addon => addon.restartRequired));
+const addonRestartPending = computed(() => addons.value.some((addon) => addon.restartRequired));
 
-function setAddonEnabled(id: string, enabled: boolean) {
-  window.ytmd.addons?.setEnabled(id, enabled);
+function setAddonEnabled(id: string, isEnabled: boolean) {
+  const update = window.ytmd.addons?.setEnabled(id, isEnabled);
+  if (update !== undefined) void update.catch((error: unknown) => console.error("Addon setting could not be saved", error));
 }
 
 function openAddonsFolder() {
   window.ytmd.addons?.openFolder();
 }
 
-const themesSupported = window.ytmd.themes !== undefined;
+const hasThemesSupport = window.ytmd.themes !== undefined;
 const themes = ref<ThemeDescriptor[]>(window.ytmd.themes ? await window.ytmd.themes.getAll() : []);
 const themeError = ref<string | null>(null);
 
@@ -128,11 +140,17 @@ async function runThemeAction(action: () => Promise<{ ok: boolean; reason?: stri
 }
 
 async function setActiveTheme(id: string | null) {
-  await runThemeAction(() => window.ytmd.themes!.setActive(id));
+  await runThemeAction(() => themeBridge().setActive(id));
+}
+
+function themeBridge() {
+  const bridge = window.ytmd.themes;
+  if (bridge === undefined) throw new Error("Themes are unavailable");
+  return bridge;
 }
 
 async function createTheme() {
-  await runThemeAction(() => window.ytmd.themes!.create());
+  await runThemeAction(() => themeBridge().create());
 }
 
 async function rescanThemes() {
@@ -140,22 +158,22 @@ async function rescanThemes() {
 }
 
 async function duplicateTheme(id: string) {
-  await runThemeAction(() => window.ytmd.themes!.duplicate(id));
+  await runThemeAction(() => themeBridge().duplicate(id));
 }
 
 async function exportTheme(id: string) {
-  await runThemeAction(() => window.ytmd.themes!.exportTheme(id));
+  await runThemeAction(() => themeBridge().exportTheme(id));
 }
 
 async function installThemeFromFile() {
-  await runThemeAction(() => window.ytmd.themes!.installFromFile());
+  await runThemeAction(() => themeBridge().installFromFile());
 }
 
 function openThemesFolder() {
   window.ytmd.themes?.openFolder();
 }
 
-memoryStore.onStateChanged(async newState => {
+async function applyMemoryState(newState: Partial<MemoryStoreSchema>) {
   discordPresenceConnectionFailed.value = newState.discordPresenceConnectionFailed;
 
   shortcutRegisterFailed.playPause.value = newState.shortcutsPlayPauseRegisterFailed;
@@ -180,8 +198,6 @@ memoryStore.onStateChanged(async newState => {
   if (newState.addonsRuntime) {
     addons.value = newState.addonsRuntime;
 
-    // An addon can register its settings UI after this window opened; those
-    // keys join the staged set so their fields bind instead of crashing.
     const missing: string[] = [];
     for (const addon of newState.addonsRuntime) {
       for (const section of addon.settingsSections) {
@@ -196,19 +212,23 @@ memoryStore.onStateChanged(async newState => {
       staged.addKeys(missing, { addons: await store.get("addons") });
     }
   }
+}
+
+memoryStore.onStateChanged((newState) => {
+  void applyMemoryState(newState).catch((error: unknown) => console.error("Settings status could not be refreshed", error));
 });
 
-async function memorySettingsChanged() {
+function memorySettingsChanged() {
   memoryStore.set("companionServerAuthWindowEnabled", companionServerAuthWindowEnabled.value);
 }
 
-async function restartDiscordPresence() {
+function restartDiscordPresence() {
   store.set("integrations.discordPresenceEnabled", false);
   store.set("integrations.discordPresenceEnabled", true);
 }
 
 async function deleteCompanionAuthToken(appId: string) {
-  const index = companionServerAuthTokens.value.findIndex(token => token.appId === appId);
+  const index = companionServerAuthTokens.value.findIndex((token) => token.appId === appId);
   if (index > -1) {
     companionServerAuthTokens.value.splice(index, 1);
   }
@@ -307,7 +327,7 @@ provide(settingsShellKey, {
   restartDiscordPresence,
   deleteCompanionAuthToken,
   logoutLastFM,
-  connectLastFM
+  connectLastFM,
 });
 
 type TabDefinition = { id: string; icon: string; label: string; component: Component; bottom?: boolean };
@@ -317,14 +337,19 @@ const tabs: TabDefinition[] = [
   { id: "playback", icon: "music_note", label: "Playback", component: PlaybackTab },
   { id: "integrations", icon: "wifi_tethering", label: "Integrations", component: IntegrationsTab },
   { id: "shortcuts", icon: "keyboard", label: "Shortcuts", component: ShortcutsTab },
-  ...(themesSupported ? [{ id: "themes", icon: "palette", label: "Themes", component: ThemesTab }] : []),
-  ...(addonsSupported ? [{ id: "addons", icon: "extension", label: "Addons", component: AddonsTab }] : []),
-  { id: "about", icon: "info", label: "About", component: AboutTab, bottom: true }
+  ...(hasThemesSupport ? [{ id: "themes", icon: "palette", label: "Themes", component: ThemesTab }] : []),
+  ...(hasAddonsSupport ? [{ id: "addons", icon: "extension", label: "Addons", component: AddonsTab }] : []),
+  { id: "about", icon: "info", label: "About", component: AboutTab, bottom: true },
 ];
 const currentTab = ref("general");
-const activeTab = computed(() => tabs.find(tab => tab.id === currentTab.value));
+const activeTab = computed(() => {
+  const tab = tabs.find((candidate) => candidate.id === currentTab.value);
+  if (tab === undefined) throw new Error("Selected settings tab is unavailable");
+  return tab;
+});
 function selectTab(index: number) {
   const tab = tabs[(index + tabs.length) % tabs.length];
+  if (tab === undefined) return;
   currentTab.value = tab.id;
   document.getElementById(`settings-tab-${tab.id}`)?.focus();
 }
@@ -354,7 +379,7 @@ function tabKeyDown(event: KeyboardEvent, index: number) {
 const showCloseConfirm = ref(false);
 const closeIntent = ref<"close" | "update">("close");
 const closeConfirmDialog = ref<HTMLElement | null>(null);
-let allowClose = false;
+let canClose = false;
 let focusBeforeConfirm: HTMLElement | null = null;
 
 function openCloseConfirm(intent: "close" | "update") {
@@ -364,7 +389,9 @@ function openCloseConfirm(intent: "close" | "update") {
     focusBeforeConfirm?.blur();
   }
   showCloseConfirm.value = true;
-  nextTick(() => closeConfirmDialog.value?.querySelector<HTMLElement>(".save-button")?.focus());
+  void nextTick(() => closeConfirmDialog.value?.querySelector<HTMLElement>(".save-button")?.focus()).catch((error: unknown) =>
+    console.error("Save button could not receive focus", error)
+  );
 }
 
 function closeConfirmKeyDown(event: KeyboardEvent) {
@@ -378,21 +405,22 @@ function closeConfirmKeyDown(event: KeyboardEvent) {
   if (buttons.length === 0) return;
   const first = buttons[0];
   const last = buttons[buttons.length - 1];
+  if (first === undefined || last === undefined) return;
   if (event.shiftKey && document.activeElement === first) {
     event.preventDefault();
     last.focus();
   } else if (!event.shiftKey && document.activeElement === last) {
     event.preventDefault();
     first.focus();
-  } else if (!buttons.includes(document.activeElement as HTMLElement)) {
+  } else if (!buttons.some((button) => button === document.activeElement)) {
     event.preventDefault();
     first.focus();
   }
 }
 
 window.onbeforeunload = (event: BeforeUnloadEvent) => {
-  if (hasUnsavedChanges.value && !allowClose) {
-    event.returnValue = false;
+  if (hasUnsavedChanges.value && !canClose) {
+    event.preventDefault();
     openCloseConfirm("close");
   }
 };
@@ -411,7 +439,7 @@ function discardAndClose() {
     window.ytmd.restartApplicationForUpdate();
     return;
   }
-  allowClose = true;
+  canClose = true;
   window.ytmd.closeWindow();
 }
 
@@ -422,7 +450,7 @@ function saveAndClose() {
     window.ytmd.restartApplicationForUpdate();
     return;
   }
-  allowClose = true;
+  canClose = true;
   window.ytmd.closeWindow();
 }
 </script>
@@ -438,7 +466,6 @@ function saveAndClose() {
             type="button"
             role="tab"
             class="tab"
-            :class="{ active: currentTab === tab.id }"
             :title="tab.label"
             :aria-selected="currentTab === tab.id"
             :aria-controls="`settings-panel-${tab.id}`"
@@ -493,261 +520,4 @@ function saveAndClose() {
   </div>
 </template>
 
-<style>
-/* Shared look for the plain controls and rows the tab components render.
-   Deliberately unscoped so it reaches them; kept under .settings-container. */
-.settings-container button {
-  margin: 3px 3px 3px 4px;
-  border-radius: 4px;
-  padding: 8px;
-  display: flex;
-  align-items: center;
-  background-color: var(--bg-control);
-  cursor: pointer;
-  border: none;
-}
-
-.settings-container button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.settings-container .setting {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.settings-container .setting.indented {
-  margin-left: 12px;
-  padding-left: 12px;
-  border-left: 1px solid var(--border);
-}
-
-.settings-container .setting.disabled {
-  color: var(--text-muted);
-}
-
-.settings-container .name-with-description .name {
-  margin-bottom: unset;
-}
-
-.settings-container .name-with-description .description {
-  margin-top: 4px;
-  color: var(--text-faint);
-}
-</style>
-
-<style scoped>
-.settings-container {
-  user-select: none;
-}
-
-.content-container {
-  display: flex;
-  height: 100%;
-}
-
-.content {
-  display: flex;
-  flex-direction: column;
-  flex-grow: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-
-/* The panels scroll; the save bar and restart banner sit below as fixed
-   footers so they stay visible on long tabs */
-.tab-panels {
-  flex: 1 1 auto;
-  overflow: auto;
-  padding: 4px 16px;
-}
-
-.tab-panels::-webkit-scrollbar {
-  width: 12px;
-}
-
-.tab-panels::-webkit-scrollbar-track {
-  background: var(--bg-control);
-}
-
-.tab-panels::-webkit-scrollbar-thumb {
-  background-color: var(--scrollbar-thumb);
-}
-
-.sidebar {
-  flex: 0 0 190px;
-  list-style-type: none;
-  margin: unset;
-  padding: unset;
-  height: 100%;
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-}
-
-.sidebar .tab {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  margin: 0;
-  border: none;
-  border-radius: 0;
-  background-color: transparent;
-  padding: 16px;
-  cursor: pointer;
-  color: var(--text-muted);
-  font: inherit;
-  text-align: left;
-}
-
-.sidebar .tab:focus-visible {
-  outline-offset: -2px;
-}
-
-.sidebar .tab .label {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-@media (max-width: 660px) {
-  .sidebar {
-    flex-basis: 56px;
-  }
-
-  .sidebar .tab {
-    justify-content: center;
-    padding: 16px 0;
-  }
-
-  .sidebar .tab .label {
-    display: none;
-  }
-
-  .sidebar .tab .material-symbols-outlined {
-    margin-right: 0;
-  }
-}
-
-.sidebar .tab .material-symbols-outlined {
-  font-size: 28px;
-  font-variation-settings:
-    "FILL" 0,
-    "wght" 100,
-    "GRAD" 0,
-    "opsz" 28;
-}
-
-.sidebar .tab:hover {
-  background-color: var(--bg-raised);
-}
-
-.sidebar .tab.active {
-  background-color: var(--bg-control);
-  color: var(--text);
-}
-
-.sidebar .tab .material-symbols-outlined {
-  margin-right: 8px;
-}
-
-.sidebar .push {
-  flex-grow: 1;
-}
-
-.restart-banner {
-  background-color: var(--accent);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-  padding: 8px;
-}
-
-.save-bar {
-  background-color: var(--bg-control);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-  padding: 8px;
-}
-
-.save-bar .message {
-  display: flex;
-  align-items: center;
-}
-
-.save-bar .message .material-symbols-outlined {
-  margin: 0 8px;
-}
-
-.save-bar .actions {
-  display: flex;
-  align-items: center;
-}
-
-.save-bar .reset-button {
-  margin: 0 4px;
-  background-color: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  padding: 8px 16px;
-  cursor: pointer;
-}
-
-.save-bar .save-button,
-.close-confirm .save-button {
-  margin: 0 8px 0 4px;
-  background-color: var(--accent);
-  border: none;
-  border-radius: 4px;
-  padding: 8px 16px;
-  cursor: pointer;
-}
-
-.close-confirm-overlay {
-  position: fixed;
-  inset: 0;
-  background-color: var(--overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-}
-
-.close-confirm {
-  background-color: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px;
-  max-width: 420px;
-}
-
-.close-confirm .title {
-  margin: 0 0 8px 0;
-  font-weight: 600;
-}
-
-.close-confirm .body {
-  margin: 0 0 16px 0;
-  color: var(--text-muted);
-}
-
-.close-confirm .actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.close-confirm .keep-button,
-.close-confirm .discard-button {
-  background-color: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  padding: 8px 16px;
-  cursor: pointer;
-}
-</style>
+<style scoped src="./settings-layout.css"></style>

@@ -1,3 +1,4 @@
+import { socketText } from "~shared/socket-text";
 import WebSocket from "ws";
 
 import { VideoState, type PlayerState, type Thumbnail, type VideoDetails } from "~shared/addons/sdk";
@@ -12,21 +13,16 @@ import {
   type AudioClientFrame,
   type AudioServerFrame,
   type AudioStatus,
-  type BatchPacket
+  type BatchPacket,
 } from "~shared/audio-protocol";
 import { ClockOffsetEstimator, anchorFrameFrom, isMeaningfulChange, type RoomStateFrame } from "~shared/room-protocol";
 import { LIVENESS_TIMEOUT_MS, describeClose, openSocket, watchLiveness, type LiveSocket, type SocketFactory } from "./relay-client";
 
-// Publishes the host's captured audio to the relay's /audio channel while a
-// room is being hosted. Track metadata and anchors ride the same socket so a
-// browser listener needs nothing else; the desktop room protocol on /relay is
-// untouched by any of this.
-
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000, 30000];
 const MAX_CONNECTION_ATTEMPTS = 30;
-// Batches stop after a pause outlives a scrub; silence is not worth upload.
+
 const PAUSE_GATE_MS = 5000;
-// A socket this far behind drops batches rather than queueing them forever.
+
 export const MAX_BUFFERED_BYTES = 32_768;
 export const HEALTHY_CONNECTION_MS = 30_000;
 export const TEXT_FRAMES_PER_SECOND = 10;
@@ -53,24 +49,27 @@ export type AudioTransportHandlers = {
   onClose(detail?: string): void;
 };
 
-export interface AudioTransport {
+export type AudioTransport = {
   connect(): void;
   sendText(frame: AudioClientFrame): void;
   sendBinary(data: Uint8Array): void;
   close(): void;
   readonly isOpen: boolean;
   readonly bufferedAmount: number;
-}
+};
 
 export class AudioRelayClient implements AudioTransport {
   private socket: LiveSocket | null = null;
   private stopWatch: (() => void) | null = null;
 
-  constructor(
-    private readonly url: string,
-    private readonly handlers: AudioTransportHandlers,
-    private readonly createSocket: SocketFactory = openSocket
-  ) {}
+  private readonly url: string;
+  private readonly handlers: AudioTransportHandlers;
+  private readonly createSocket: SocketFactory;
+  constructor(url: string, handlers: AudioTransportHandlers, createSocket: SocketFactory = openSocket) {
+    this.url = url;
+    this.handlers = handlers;
+    this.createSocket = createSocket;
+  }
 
   get isOpen(): boolean {
     return this.socket?.readyState === WebSocket.OPEN;
@@ -88,7 +87,7 @@ export class AudioRelayClient implements AudioTransport {
     socket.on("open", () => this.handlers.onOpen());
     socket.on("message", (data, isBinary) => {
       if (isBinary) return;
-      const frame = parseAudioServerFrame(typeof data === "string" ? data : data.toString("utf8"));
+      const frame = parseAudioServerFrame(socketText(data));
       if (frame) this.handlers.onFrame(frame);
     });
     let failure = "";
@@ -96,7 +95,7 @@ export class AudioRelayClient implements AudioTransport {
       if (this.socket === socket) this.socket = null;
       this.handlers.onClose(describeClose(code, reason, failure));
     });
-    socket.on("error", error => {
+    socket.on("error", (error) => {
       failure = error.message;
     });
     this.stopWatch = watchLiveness(socket, () => {
@@ -120,7 +119,9 @@ export class AudioRelayClient implements AudioTransport {
     if (!socket) return;
     this.socket = null;
     socket.removeAllListeners();
-    socket.on("error", () => {});
+    socket.on("error", () => {
+      return undefined;
+    });
     socket.close();
   }
 }
@@ -152,18 +153,18 @@ export class AudioPublisher {
   private reconnectTimer: NodeJS.Timeout | null = null;
 
   private seq = 0;
-  private pendingDiscontinuity = false;
+  private isPendingDiscontinuity = false;
   private cfg: AudioCaptureStatus["cfg"] | null = null;
-  private muted = false;
-  private adPlaying = false;
+  private isMuted = false;
+  private isAdPlaying = false;
   private sentStatus: AudioStatus | null = null;
   private pausedSince: number | null = null;
   private lastState: UplinkState | null = null;
   private metaVideoId: string | null = null;
-  private metaHadFullMetadata = false;
+  private isMetaHadFullMetadata = false;
   private lastSentAnchor: RoomStateFrame | null = null;
   private webListeners = 0;
-  private streaming = false;
+  private isStreaming = false;
   private fault: AudioFault | null = null;
   private readyAt: number | null = null;
   private pubSentAt: number | null = null;
@@ -176,18 +177,17 @@ export class AudioPublisher {
   private readonly queuedText = new Map<AudioClientFrame["t"], AudioClientFrame>();
   private textTimer: NodeJS.Timeout | null = null;
 
-  constructor(private readonly deps: AudioPublisherDeps) {}
+  private readonly deps: AudioPublisherDeps;
+  constructor(deps: AudioPublisherDeps) {
+    this.deps = deps;
+  }
 
-  /**
-   * Follows the hosting state: credentials while a room is hosted with
-   * streaming enabled, null otherwise. Safe to call on every snapshot.
-   */
   setCredentials(creds: AudioCredentials | null) {
     if (creds === null) {
       if (this.creds !== null) this.stop();
       return;
     }
-    if (this.creds && this.creds.roomId === creds.roomId && this.creds.hostKey === creds.hostKey) {
+    if (this.creds?.roomId === creds.roomId && this.creds.hostKey === creds.hostKey) {
       if (this.phase === "failed" && this.fault !== "outdated") this.start(this.creds);
       return;
     }
@@ -228,20 +228,20 @@ export class AudioPublisher {
     if (packets.length === 0) return;
     if (this.phase !== "ready" || !this.transport?.isOpen) return;
 
-    const paused = this.pausedSince !== null && this.deps.now() - this.pausedSince > PAUSE_GATE_MS;
-    if (paused || this.transport.bufferedAmount > MAX_BUFFERED_BYTES) {
-      this.pendingDiscontinuity = true;
+    const isPaused = this.pausedSince !== null && this.deps.now() - this.pausedSince > PAUSE_GATE_MS;
+    if (isPaused || this.transport.bufferedAmount > MAX_BUFFERED_BYTES) {
+      this.isPendingDiscontinuity = true;
       return;
     }
 
     let batch: Uint8Array;
     try {
-      batch = encodeBatch(packets, this.seq++, { discontinuity: this.pendingDiscontinuity });
+      batch = encodeBatch(packets, this.seq++, { discontinuity: this.isPendingDiscontinuity });
     } catch (error) {
       this.deps.log("audio publisher dropped an unencodable batch", error);
       return;
     }
-    this.pendingDiscontinuity = false;
+    this.isPendingDiscontinuity = false;
     this.transport.sendBinary(batch);
   }
 
@@ -256,7 +256,7 @@ export class AudioPublisher {
       this.sendCfg();
     }
     if (status.muted !== undefined) {
-      this.muted = status.muted;
+      this.isMuted = status.muted;
       this.sendStatus();
     }
   }
@@ -265,9 +265,9 @@ export class AudioPublisher {
     this.lastState = state;
     if (state.trackState !== VideoState.Paused && state.trackState !== VideoState.Unknown) this.pausedSince = null;
     else this.pausedSince ??= this.deps.now();
-    if (this.adPlaying !== state.adPlaying) {
-      this.adPlaying = state.adPlaying;
-      if (!state.adPlaying) this.pendingDiscontinuity = true;
+    if (this.isAdPlaying !== state.adPlaying) {
+      this.isAdPlaying = state.adPlaying;
+      if (!state.adPlaying) this.isPendingDiscontinuity = true;
       this.sendStatus();
     }
     if (this.phase !== "ready") return;
@@ -290,10 +290,10 @@ export class AudioPublisher {
     this.serverVersion = null;
     this.audioClock.reset();
     this.seq = 0;
-    this.pendingDiscontinuity = false;
+    this.isPendingDiscontinuity = false;
     this.sentStatus = null;
     this.metaVideoId = null;
-    this.metaHadFullMetadata = false;
+    this.isMetaHadFullMetadata = false;
     this.lastSentAnchor = null;
     this.publishUpdate(false, 0);
   }
@@ -323,8 +323,8 @@ export class AudioPublisher {
         this.pubSentAt = this.deps.now();
         this.sendText({ t: "pub", r: this.creds.roomId, k: this.creds.hostKey });
       },
-      onFrame: frame => this.onFrame(frame),
-      onClose: detail => this.onClose(detail)
+      onFrame: (frame) => this.onFrame(frame),
+      onClose: (detail) => this.onClose(detail),
     });
     this.transport.connect();
   }
@@ -337,7 +337,7 @@ export class AudioPublisher {
         if (frame.v !== undefined) this.serverVersion = frame.v;
         this.readyAt = now;
         this.phase = "ready";
-        this.pendingDiscontinuity = true;
+        this.isPendingDiscontinuity = true;
         this.sendCfg();
         this.sentStatus = null;
         this.metaVideoId = null;
@@ -351,7 +351,7 @@ export class AudioPublisher {
         return;
       }
       case "n": {
-        this.publishUpdate(this.streaming, frame.n);
+        this.publishUpdate(this.isStreaming, frame.n);
         return;
       }
       case "e": {
@@ -388,7 +388,7 @@ export class AudioPublisher {
 
   private sendStatus() {
     if (this.phase !== "ready") return;
-    const status: AudioStatus = this.adPlaying ? "ad" : this.muted ? "muted" : "live";
+    const status: AudioStatus = this.isAdPlaying ? "ad" : this.isMuted ? "muted" : "live";
     if (status === this.sentStatus) return;
     this.sentStatus = status;
     this.sendText({ t: "status", s: status });
@@ -397,10 +397,10 @@ export class AudioPublisher {
   private sendMetaIfChanged(state: UplinkState) {
     const details = state.videoDetails;
     if (!details?.id || state.adPlaying) return;
-    const changed = details.id !== this.metaVideoId;
-    const metadataLanded = state.hasFullMetadata && !this.metaHadFullMetadata;
-    this.metaHadFullMetadata = state.hasFullMetadata;
-    if (!changed && !metadataLanded) return;
+    const isChanged = details.id !== this.metaVideoId;
+    const isMetadataLanded = state.hasFullMetadata && !this.isMetaHadFullMetadata;
+    this.isMetaHadFullMetadata = state.hasFullMetadata;
+    if (!isChanged && !isMetadataLanded) return;
     this.metaVideoId = details.id;
 
     this.sendText({
@@ -410,19 +410,18 @@ export class AudioPublisher {
       artist: sanitizeMetaText(details.author),
       album: sanitizeMetaText(details.album),
       coverUrl: highestResThumbnail(details.thumbnails),
-      durS: Number.isFinite(details.durationSeconds) ? details.durationSeconds : undefined
+      durS: Number.isFinite(details.durationSeconds) ? details.durationSeconds : undefined,
     });
   }
 
-  // Same rule the room anchor uses: only when a listener would notice.
   private sendAnchorIfChanged(state: UplinkState) {
     const videoId = state.videoDetails?.id;
     if (!videoId || state.adPlaying) return;
-    const playing = state.trackState === VideoState.Playing;
-    const paused = state.trackState === VideoState.Paused;
-    if (!playing && !paused) return;
+    const isPlaying = state.trackState === VideoState.Playing;
+    const isPaused = state.trackState === VideoState.Paused;
+    if (!isPlaying && !isPaused) return;
 
-    const frame = anchorFrameFrom(videoId, state.videoProgress, playing, this.deps.now() + this.serverClockOffsetMs());
+    const frame = anchorFrameFrom(videoId, state.videoProgress, isPlaying, this.deps.now() + this.serverClockOffsetMs());
     if (!isMeaningfulChange(this.lastSentAnchor, frame)) return;
     this.lastSentAnchor = frame;
     this.sendText({ t: "anchor", a: frame.a, p: frame.p });
@@ -470,10 +469,10 @@ export class AudioPublisher {
     return this.audioClock.offsetMs ?? this.relayClockOffsetMs ?? 0;
   }
 
-  private publishUpdate(streaming: boolean, webListeners: number) {
-    if (this.streaming === streaming && this.webListeners === webListeners) return;
-    this.streaming = streaming;
+  private publishUpdate(isStreaming: boolean, webListeners: number) {
+    if (this.isStreaming === isStreaming && this.webListeners === webListeners) return;
+    this.isStreaming = isStreaming;
     this.webListeners = webListeners;
-    this.deps.onUpdate({ streaming, webListeners });
+    this.deps.onUpdate({ streaming: isStreaming, webListeners });
   }
 }

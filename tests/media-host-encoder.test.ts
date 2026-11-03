@@ -1,3 +1,4 @@
+import { requireValue } from "./helpers/require-value";
 import { describe, expect, it, vi } from "vitest";
 import {
   BITRATE,
@@ -6,30 +7,42 @@ import {
   createUplink,
   OPUS_SAMPLE_RATE,
   type CaptureStatus,
-  type EncodedPacket
+  type EncodedPacket,
 } from "../src/renderer/windows/media-host/encoder";
 
-type Init = { output(chunk: { byteLength: number; timestamp: number; copyTo(target: ArrayBuffer): void }): void; error(error: unknown): void };
+type Init = AudioEncoderInit;
 
 function harness(options: { failEncode?: boolean } = {}) {
   const encoders: FakeEncoder[] = [];
-  const frames: { timestamp: number; sampleRate: number; numberOfFrames: number; data: Float32Array; closed: boolean }[] = [];
+  const frames: { timestamp: number; sampleRate: number; numberOfFrames: number; data: Float32Array; isClosed: boolean }[] = [];
   const packets: EncodedPacket[][] = [];
   const statuses: CaptureStatus[] = [];
 
   class FakeEncoder {
-    state = "unconfigured";
-    config: Record<string, unknown> | null = null;
-    constructor(readonly init: Init) {
+    state: CodecState = "unconfigured";
+    config: AudioEncoderConfig | null = null;
+    readonly init: Init;
+    constructor(init: Init) {
+      this.init = init;
+
       encoders.push(this);
     }
-    configure(config: Record<string, unknown>) {
+    configure(config: AudioEncoderConfig) {
       this.config = config;
       this.state = "configured";
     }
     encode(frame: { timestamp: number }) {
       if (options.failEncode) throw new Error("encoder closed");
-      this.init.output({ byteLength: 3, timestamp: frame.timestamp, copyTo: target => new Uint8Array(target).set([1, 2, 3]) });
+      this.init.output({
+        type: "key",
+        duration: null,
+        byteLength: 3,
+        timestamp: frame.timestamp,
+        copyTo: (target) => {
+          const bytes = ArrayBuffer.isView(target) ? new Uint8Array(target.buffer, target.byteOffset, target.byteLength) : new Uint8Array(target);
+          bytes.set([1, 2, 3]);
+        },
+      });
     }
     close() {
       this.state = "closed";
@@ -37,19 +50,41 @@ function harness(options: { failEncode?: boolean } = {}) {
   }
 
   class FakeAudioData {
-    closed = false;
-    constructor(init: { timestamp: number; sampleRate: number; numberOfFrames: number; data: Float32Array }) {
-      frames.push(Object.assign(this, init));
+    isClosed = false;
+    readonly timestamp: number;
+    readonly sampleRate: number;
+    readonly numberOfFrames: number;
+    readonly numberOfChannels: number;
+    readonly format: AudioSampleFormat;
+    readonly duration: number;
+    constructor(init: AudioDataInit) {
+      this.timestamp = init.timestamp;
+      this.sampleRate = init.sampleRate;
+      this.numberOfFrames = init.numberOfFrames;
+      this.numberOfChannels = init.numberOfChannels;
+      this.format = init.format;
+      this.duration = (init.numberOfFrames / init.sampleRate) * 1e6;
+      if (!(init.data instanceof Float32Array)) throw new TypeError("Expected planar float samples");
+      frames.push(Object.assign(this, { data: init.data }));
+    }
+    allocationSize(): number {
+      throw new Error("Unexpected audio allocation");
+    }
+    clone(): AudioData {
+      throw new Error("Unexpected audio clone");
+    }
+    copyTo(): void {
+      throw new Error("Unexpected audio copy");
     }
     close() {
-      this.closed = true;
+      this.isClosed = true;
     }
   }
 
   const encoder = createCaptureEncoder({
-    api: { AudioEncoder: FakeEncoder as never, AudioData: FakeAudioData as never },
-    sendPackets: batch => packets.push(batch),
-    sendStatus: status => statuses.push(status)
+    api: { AudioEncoder: FakeEncoder, AudioData: FakeAudioData },
+    sendPackets: (batch) => packets.push(batch),
+    sendStatus: (status) => statuses.push(status),
   });
   return { encoder, encoders, frames, packets, statuses };
 }
@@ -57,7 +92,7 @@ function harness(options: { failEncode?: boolean } = {}) {
 const chunk = (sampleRate = 48000, frames = 1024) => ({
   sampleRate,
   left: new Float32Array(frames).fill(0.25),
-  right: new Float32Array(frames).fill(-0.5)
+  right: new Float32Array(frames).fill(-0.5),
 });
 
 describe("media host capture encoder", () => {
@@ -66,7 +101,7 @@ describe("media host capture encoder", () => {
 
     encoder.push(chunk(44100));
 
-    expect(encoders[0].config).toEqual({ codec: "opus", sampleRate: 44100, numberOfChannels: CHANNELS, bitrate: BITRATE });
+    expect(requireValue(encoders[0]).config).toEqual({ codec: "opus", sampleRate: 44100, numberOfChannels: CHANNELS, bitrate: BITRATE });
     expect(statuses).toEqual([{ cfg: { sr: OPUS_SAMPLE_RATE, ch: 2, br: BITRATE } }]);
   });
 
@@ -77,9 +112,9 @@ describe("media host capture encoder", () => {
     encoder.push(chunk());
     encoder.push(chunk());
 
-    expect(frames.map(frame => frame.timestamp)).toEqual([0, 21333, 42667]);
-    expect(frames[0].data.slice(1022, 1026)).toEqual(new Float32Array([0.25, 0.25, -0.5, -0.5]));
-    expect(frames.every(frame => frame.closed)).toBe(true);
+    expect(frames.map((frame) => frame.timestamp)).toEqual([0, 21333, 42667]);
+    expect(requireValue(frames[0]).data.slice(1022, 1026)).toEqual(new Float32Array([0.25, 0.25, -0.5, -0.5]));
+    expect(frames.every((frame) => frame.isClosed)).toBe(true);
   });
 
   it("starts a fresh encoder when the sample rate changes, without restarting the timeline", () => {
@@ -89,8 +124,8 @@ describe("media host capture encoder", () => {
     encoder.push(chunk(44100));
 
     expect(encoders).toHaveLength(2);
-    expect(encoders[0].state).toBe("closed");
-    expect(frames[1].timestamp).toBe(21333);
+    expect(requireValue(encoders[0]).state).toBe("closed");
+    expect(requireValue(frames[1]).timestamp).toBe(21333);
   });
 
   it("hands over everything encoded since the last flush, and nothing when idle", () => {
@@ -103,8 +138,8 @@ describe("media host capture encoder", () => {
     encoder.flush();
 
     expect(packets).toHaveLength(1);
-    expect(packets[0].map(packet => packet.t)).toEqual([0, 21333]);
-    expect(Array.from(new Uint8Array(packets[0][0].d))).toEqual([1, 2, 3]);
+    expect(requireValue(packets[0]).map((packet) => packet.t)).toEqual([0, 21333]);
+    expect(Array.from(new Uint8Array(requireValue(requireValue(packets[0])[0]).d))).toEqual([1, 2, 3]);
   });
 
   it("reports a failure once and stops encoding", () => {
@@ -113,7 +148,7 @@ describe("media host capture encoder", () => {
     encoder.push(chunk());
     encoder.push(chunk());
 
-    expect(statuses.filter(status => status.error)).toEqual([{ error: "Error: encoder closed" }]);
+    expect(statuses.filter((status) => status.error)).toEqual([{ error: "Error: encoder closed" }]);
     expect(frames).toHaveLength(1);
   });
 });

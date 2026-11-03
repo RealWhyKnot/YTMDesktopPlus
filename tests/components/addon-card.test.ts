@@ -1,16 +1,24 @@
+import { requireElement } from "../helpers/require-element";
+import { requireValue } from "../helpers/require-value";
 import { describe, expect, it } from "vitest";
 import { mount } from "@vue/test-utils";
 import AddonCard from "../../src/renderer/windows/settings/AddonCard.vue";
-import { createStagedSettings, stagedSettingsKey } from "../../src/renderer/windows/settings/useStagedSettings";
-import type { AddonDescriptor, AddonSettingsField } from "~shared/addons/types";
+import { createStagedSettings, stagedSettingsKey } from "../../src/renderer/windows/settings/use-staged-settings";
+import type { AddonDescriptor, AddonSettingsField } from "~shared/addons/sdk";
 import { addonDescriptor, LONG_WORD, settingsState, WINDOWS_PATH_ERROR } from "./fixtures";
 
 function mountCard(addon: AddonDescriptor, addonSettings: Record<string, unknown> = {}) {
-  const keys = addon.settingsSections.flatMap(section =>
-    section.fields.filter(field => field.type !== "button").map(field => `addons.settings.${addon.manifest.id}.${field.key}`)
+  const keys = addon.settingsSections.flatMap((section) =>
+    section.fields.filter((field) => field.type !== "button").map((field) => `addons.settings.${addon.manifest.id}.${field.key}`)
   );
   const state = settingsState({ addons: { settings: { [addon.manifest.id]: addonSettings } } });
-  const staged = createStagedSettings(state, () => {}, keys);
+  const staged = createStagedSettings(
+    state,
+    () => {
+      return undefined;
+    },
+    keys
+  );
   const wrapper = mount(AddonCard, { props: { addon }, global: { provide: { [stagedSettingsKey as symbol]: staged } } });
   return { wrapper, staged };
 }
@@ -27,7 +35,7 @@ describe("AddonCard", () => {
     expect(failed.find(".status .status-text").text()).toBe(WINDOWS_PATH_ERROR);
 
     const { wrapper: active } = mountCard(addonDescriptor({ lastError: WINDOWS_PATH_ERROR, warnings: [LONG_WORD] }));
-    const texts = active.findAll(".status.runtime .status-text").map(node => node.text());
+    const texts = active.findAll(".status.runtime .status-text").map((node) => node.text());
     expect(texts).toEqual([`Recent error: ${WINDOWS_PATH_ERROR}`, LONG_WORD]);
   });
 
@@ -52,11 +60,11 @@ describe("AddonCard", () => {
 
     await input.setValue("50");
     await input.trigger("change");
-    expect(staged.refs["addons.settings.sample.count"].value).toBe(10);
+    expect(requireValue(staged.refs["addons.settings.sample.count"]).value).toBe(10);
 
     await input.setValue("-3");
     await input.trigger("change");
-    expect(staged.refs["addons.settings.sample.count"].value).toBe(1);
+    expect(requireValue(staged.refs["addons.settings.sample.count"]).value).toBe(1);
   });
 
   it("treats a cleared number field as unchanged instead of zero", async () => {
@@ -66,7 +74,7 @@ describe("AddonCard", () => {
 
     await input.setValue("");
     await input.trigger("change");
-    expect(staged.refs["addons.settings.sample.count"].value).toBe(5);
+    expect(requireValue(staged.refs["addons.settings.sample.count"]).value).toBe(5);
     expect(staged.hasUnsavedChanges.value).toBe(false);
   });
 
@@ -76,12 +84,12 @@ describe("AddonCard", () => {
     await openSettings(wrapper);
 
     const input = wrapper.find("input[type='text']");
-    (input.element as HTMLInputElement).value = "typed";
+    requireElement(input.element, HTMLInputElement).value = "typed";
     await input.trigger("input");
     expect(staged.dirtyKeys.value).toEqual(["addons.settings.sample.label"]);
     expect(staged.hasUnsavedChanges.value).toBe(true);
 
-    (input.element as HTMLInputElement).value = "";
+    requireElement(input.element, HTMLInputElement).value = "";
     await input.trigger("input");
     expect(staged.hasUnsavedChanges.value).toBe(false);
   });
@@ -89,7 +97,9 @@ describe("AddonCard", () => {
   it("shows fields whose keys arrive after the card rendered", async () => {
     const lateField: AddonSettingsField = { key: "late", type: "toggle", label: "Late toggle" };
     const addon = addonDescriptor({}, [lateField]);
-    const staged = createStagedSettings(settingsState(), () => {});
+    const staged = createStagedSettings(settingsState(), () => {
+      return undefined;
+    });
     const wrapper = mount(AddonCard, { props: { addon }, global: { provide: { [stagedSettingsKey as symbol]: staged } } });
     await openSettings(wrapper);
     expect(wrapper.text()).not.toContain("Late toggle");

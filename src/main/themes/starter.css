@@ -1,0 +1,12 @@
+:root {
+  --bg: #000;
+  --bg-raised: #111;
+  --bg-control: #212121;
+  --bg-control-hover: #323232;
+  --border: #212121;
+  --text: #eee;
+  --text-muted: #bbb;
+  --text-faint: #969696;
+  --accent: #f44336;
+  --on-accent: #fff;
+}

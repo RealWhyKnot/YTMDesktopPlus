@@ -1,29 +1,53 @@
+import { requireValue } from "./helpers/require-value";
 import { describe, expect, it } from "vitest";
 import type { NativeImage } from "electron";
 import { createTaskbarUpdater, progressBarFrame, type TaskbarIcons, type TaskbarWindow } from "../src/main/taskbar";
 import { VideoState } from "../src/shared/addons/sdk";
 import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
 
-const icon = (name: string) => ({ name }) as unknown as NativeImage;
-const ICONS: TaskbarIcons = { previous: icon("previous"), play: icon("play"), pause: icon("pause"), next: icon("next") };
+function icon(): NativeImage {
+  const unused = () => {
+    throw new Error("Unexpected image operation");
+  };
+  const image = {
+    addRepresentation: unused,
+    crop: unused,
+    getAspectRatio: unused,
+    getBitmap: unused,
+    getNativeHandle: unused,
+    getScaleFactors: unused,
+    getSize: unused,
+    isEmpty: unused,
+    isTemplateImage: unused,
+    resize: unused,
+    setTemplateImage: unused,
+    toBitmap: unused,
+    toDataURL: unused,
+    toJPEG: unused,
+    toPNG: unused,
+    isMacTemplateImage: false,
+  };
+  return image;
+}
+const ICONS: TaskbarIcons = { previous: icon(), play: icon(), pause: icon(), next: icon() };
 
-function fakeWindow(visible = true) {
+function fakeWindow(isVisible = true) {
   const buttons: Electron.ThumbarButton[][] = [];
   const progress: [number, string | undefined][] = [];
   const showListeners: (() => void)[] = [];
   const window: TaskbarWindow & { visible: boolean } = {
-    visible,
+    visible: isVisible,
     isVisible: () => window.visible,
-    setThumbarButtons: next => {
+    setThumbarButtons: (next) => {
       buttons.push(next);
       return true;
     },
     setProgressBar: (value, options) => {
       progress.push([value, options?.mode]);
     },
-    on: (_event, listener) => showListeners.push(listener)
+    on: (_event, listener) => showListeners.push(listener),
   };
-  return { window, buttons, progress, show: () => showListeners.forEach(listener => listener()) };
+  return { window, buttons, progress, show: () => showListeners.forEach((listener) => listener()) };
 }
 
 const playing = (seconds: number, durationSeconds = 200) =>
@@ -37,8 +61,8 @@ describe("taskbar updater", () => {
     for (let tick = 0; tick < 40; tick++) updater.update(window, playing(tick * 0.25));
 
     expect(buttons).toHaveLength(1);
-    expect(buttons[0].map(button => (button.icon as unknown as { name: string }).name)).toEqual(["previous", "pause", "next"]);
-    expect(buttons[0].every(button => (button.flags ?? []).length === 0)).toBe(true);
+    expect(requireValue(buttons[0]).map((button) => button.icon)).toEqual([ICONS.previous, ICONS.pause, ICONS.next]);
+    expect(requireValue(buttons[0]).every((button) => (button.flags ?? []).length === 0)).toBe(true);
   });
 
   it("rebuilds the buttons when playback pauses and when the track goes away", () => {
@@ -50,8 +74,8 @@ describe("taskbar updater", () => {
     updater.update(window, makePlayerState());
 
     expect(buttons).toHaveLength(3);
-    expect((buttons[1][1].icon as unknown as { name: string }).name).toBe("play");
-    expect(buttons[2].every(button => button.flags?.includes("disabled"))).toBe(true);
+    expect(requireValue(requireValue(buttons[1])[1]).icon).toBe(ICONS.play);
+    expect(requireValue(buttons[2]).every((button) => button.flags?.includes("disabled"))).toBe(true);
   });
 
   it("leaves a hidden window alone and restores its buttons when it is shown again", () => {
@@ -69,10 +93,10 @@ describe("taskbar updater", () => {
   it("buttons send their remote command", () => {
     const { window, buttons } = fakeWindow();
     const sent: string[] = [];
-    const updater = createTaskbarUpdater({ icons: ICONS, sendRemoteCommand: command => sent.push(command), progressEnabled: () => false });
+    const updater = createTaskbarUpdater({ icons: ICONS, sendRemoteCommand: (command) => sent.push(command), progressEnabled: () => false });
 
     updater.update(window, playing(1));
-    for (const button of buttons[0]) button.click();
+    for (const button of requireValue(buttons[0])) button.click();
 
     expect(sent).toEqual(["previous", "playPause", "next"]);
   });
@@ -97,19 +121,19 @@ describe("taskbar updater", () => {
       [0.005, "normal"],
       [0.01, "normal"],
       [0.015, "normal"],
-      [0.02, "normal"]
+      [0.02, "normal"],
     ]);
   });
 
   it("does not touch the progress bar while the setting is off, and clears it on request", () => {
     const { window, progress } = fakeWindow();
-    let enabled = false;
-    const updater = createTaskbarUpdater({ icons: null, sendRemoteCommand: () => undefined, progressEnabled: () => enabled });
+    let isEnabled = false;
+    const updater = createTaskbarUpdater({ icons: null, sendRemoteCommand: () => undefined, progressEnabled: () => isEnabled });
 
     updater.update(window, playing(50));
     expect(progress).toEqual([]);
 
-    enabled = true;
+    isEnabled = true;
     updater.update(window, playing(50));
     updater.clearProgress();
     updater.update(window, playing(50));
@@ -117,7 +141,7 @@ describe("taskbar updater", () => {
     expect(progress).toEqual([
       [0.25, "normal"],
       [-1, undefined],
-      [0.25, "normal"]
+      [0.25, "normal"],
     ]);
   });
 
@@ -146,7 +170,7 @@ describe("progressBarFrame", () => {
       progressBarFrame(makePlayerState({ videoDetails: makeVideoDetails({ durationSeconds: 100 }), trackState: VideoState.Paused, videoProgress: 50 }))
     ).toEqual({
       value: 0.5,
-      mode: "paused"
+      mode: "paused",
     });
   });
 });

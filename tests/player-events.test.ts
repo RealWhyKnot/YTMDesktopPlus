@@ -1,16 +1,17 @@
+import { requireValue } from "./helpers/require-value";
 import { describe, expect, it } from "vitest";
 import { createPlayerEventDeriver, SEEK_JUMP_SECONDS } from "../src/main/player-state-store/derived-events";
 import { LikeStatus, RepeatMode, VideoState, type PlayerQueue, type PlayerQueueItem } from "../src/shared/addons/sdk";
 import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
-import playerStateStore, { playerEvents } from "../src/main/player-state-store";
+import { playerStateStore, playerEvents } from "../src/main/player-state-store";
 
 function harness() {
   const events: { event: string; payload: unknown }[] = [];
   const deriver = createPlayerEventDeriver((event, payload) => events.push({ event, payload }));
-  return { events, deriver, names: () => events.map(entry => entry.event) };
+  return { events, deriver, names: () => events.map((entry) => entry.event) };
 }
 
-function makeQueue(videoIds: string[], repeatMode = RepeatMode.None, selectedItemIndex = 0): PlayerQueue {
+function makeQueue(videoIds: string[], repeatMode: RepeatMode = RepeatMode.None, selectedItemIndex = 0): PlayerQueue {
   return {
     automixItems: [],
     autoplay: false,
@@ -23,10 +24,10 @@ function makeQueue(videoIds: string[], repeatMode = RepeatMode.None, selectedIte
       duration: "1:00",
       selected: false,
       videoId: id,
-      counterparts: null
+      counterparts: null,
     })),
     repeatMode,
-    selectedItemIndex
+    selectedItemIndex,
   };
 }
 
@@ -67,7 +68,7 @@ describe("createPlayerEventDeriver", () => {
 
     expect(events).toEqual([
       { event: "seeked", payload: { fromSeconds: 11, toSeconds: 11 + SEEK_JUMP_SECONDS + 1 } },
-      { event: "seeked", payload: { fromSeconds: 11 + SEEK_JUMP_SECONDS + 1, toSeconds: 4 } }
+      { event: "seeked", payload: { fromSeconds: 11 + SEEK_JUMP_SECONDS + 1, toSeconds: 4 } },
     ]);
   });
 
@@ -79,7 +80,7 @@ describe("createPlayerEventDeriver", () => {
 
     expect(events).toEqual([
       { event: "volumeChanged", payload: { volume: 70, muted: false } },
-      { event: "volumeChanged", payload: { volume: 70, muted: true } }
+      { event: "volumeChanged", payload: { volume: 70, muted: true } },
     ]);
   });
 
@@ -94,7 +95,7 @@ describe("createPlayerEventDeriver", () => {
   it("compares queues by content, not identity", () => {
     const { deriver, names } = harness();
     deriver.next(makePlayerState({ queue: makeQueue(["a", "b"]) }));
-    // A rebuilt but identical queue object is not a change.
+
     deriver.next(makePlayerState({ queue: makeQueue(["a", "b"]) }));
     expect(names()).toEqual([]);
 
@@ -118,7 +119,6 @@ describe("createPlayerEventDeriver", () => {
     deriver.next(makePlayerState({ videoDetails: makeVideoDetails({ id: "one", likeStatus: LikeStatus.Like }) }));
     expect(names()).toEqual(["likeChanged"]);
 
-    // A new track's initial like status belongs to trackChanged.
     deriver.next(makePlayerState({ videoDetails: makeVideoDetails({ id: "two", likeStatus: LikeStatus.Dislike }) }));
     expect(names()).toEqual(["likeChanged", "trackChanged"]);
   });
@@ -126,7 +126,7 @@ describe("createPlayerEventDeriver", () => {
   it("emits repeatModeChanged only between two known modes", () => {
     const { deriver, names } = harness();
     deriver.next(makePlayerState());
-    // The queue appearing is a queue change, not a repeat change.
+
     deriver.next(makePlayerState({ queue: makeQueue(["a"], RepeatMode.None) }));
     expect(names()).toEqual(["queueChanged"]);
 
@@ -150,7 +150,7 @@ describe("derived events from the real player state store", () => {
         title: "Track",
         videoId: "liked1",
         isLive: false,
-        musicVideoType: "MUSIC_VIDEO_TYPE_ATV"
+        musicVideoType: "MUSIC_VIDEO_TYPE_ATV",
       };
       playerStateStore.updateVideoDetails(details, "PL1", null, "INDIFFERENT", true);
       const before = playerStateStore.getState();
@@ -161,9 +161,9 @@ describe("derived events from the real player state store", () => {
 
       expect(likes).toEqual([
         { likeStatus: LikeStatus.Like, videoId: "liked1" },
-        { likeStatus: LikeStatus.Dislike, videoId: "liked1" }
+        { likeStatus: LikeStatus.Dislike, videoId: "liked1" },
       ]);
-      expect(before.videoDetails.likeStatus).toBe(LikeStatus.Indifferent);
+      expect(requireValue(before.videoDetails).likeStatus).toBe(LikeStatus.Indifferent);
     } finally {
       playerEvents.off("likeChanged", listener);
     }

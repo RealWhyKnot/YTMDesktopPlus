@@ -1,3 +1,4 @@
+import { requireValue } from "./helpers/require-value";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LIVENESS_TIMEOUT_MS, RelayClient, describeClose, type LiveSocket } from "../src/main/integrations/listen-along/relay-client";
@@ -13,15 +14,14 @@ describe("describeClose", () => {
 
 function fakeSocket() {
   const emitter = new EventEmitter();
-  const socket = Object.assign(emitter, {
-    readyState: 0,
-    bufferedAmount: 0,
+  const state: { readyState: LiveSocket["readyState"]; bufferedAmount: number } = { readyState: 0, bufferedAmount: 0 };
+  const socket = Object.assign(emitter, state, {
     send: vi.fn(),
     close: vi.fn(),
     terminate: vi.fn(() => {
       socket.readyState = 3;
       emitter.emit("close", 1006, Buffer.alloc(0));
-    })
+    }),
   });
   return socket;
 }
@@ -36,7 +36,7 @@ describe("socket liveness", () => {
     const client = new RelayClient({ onOpen: vi.fn(), onFrame: vi.fn(), onClose }, "wss://relay.test/relay", () => {
       const socket = fakeSocket();
       sockets.push(socket);
-      return socket as unknown as LiveSocket;
+      return socket;
     });
     return { client, sockets, onClose };
   }
@@ -44,27 +44,27 @@ describe("socket liveness", () => {
   it("terminates a relay socket that goes quiet for 45s and reports why", () => {
     const r = relay();
     r.client.connect();
-    r.sockets[0].emit("open");
+    requireValue(r.sockets[0]).emit("open");
 
     vi.advanceTimersByTime(LIVENESS_TIMEOUT_MS - 1);
-    expect(r.sockets[0].terminate).not.toHaveBeenCalled();
+    expect(requireValue(r.sockets[0]).terminate).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
 
-    expect(r.sockets[0].terminate).toHaveBeenCalledTimes(1);
+    expect(requireValue(r.sockets[0]).terminate).toHaveBeenCalledTimes(1);
     expect(r.onClose).toHaveBeenCalledWith("1006 (no traffic for 45s)");
   });
 
   it("stays connected while the server keeps pinging", () => {
     const r = relay();
     r.client.connect();
-    r.sockets[0].emit("open");
+    requireValue(r.sockets[0]).emit("open");
 
     for (let i = 0; i < 10; i++) {
       vi.advanceTimersByTime(30_000);
-      r.sockets[0].emit("ping");
+      requireValue(r.sockets[0]).emit("ping");
     }
 
-    expect(r.sockets[0].terminate).not.toHaveBeenCalled();
+    expect(requireValue(r.sockets[0]).terminate).not.toHaveBeenCalled();
   });
 
   it("gives up on a dial that never opens", () => {
@@ -73,7 +73,7 @@ describe("socket liveness", () => {
 
     vi.advanceTimersByTime(LIVENESS_TIMEOUT_MS);
 
-    expect(r.sockets[0].terminate).toHaveBeenCalledTimes(1);
+    expect(requireValue(r.sockets[0]).terminate).toHaveBeenCalledTimes(1);
   });
 
   it("stops watching a socket the client closed itself", () => {
@@ -83,7 +83,7 @@ describe("socket liveness", () => {
 
     vi.advanceTimersByTime(LIVENESS_TIMEOUT_MS * 2);
 
-    expect(r.sockets[0].terminate).not.toHaveBeenCalled();
+    expect(requireValue(r.sockets[0]).terminate).not.toHaveBeenCalled();
     expect(r.onClose).not.toHaveBeenCalled();
   });
 
@@ -93,14 +93,14 @@ describe("socket liveness", () => {
     const client = new AudioRelayClient("wss://relay.test/audio/abcdefgh", { onOpen: vi.fn(), onFrame: vi.fn(), onClose }, () => {
       const socket = fakeSocket();
       sockets.push(socket);
-      return socket as unknown as LiveSocket;
+      return socket;
     });
     client.connect();
-    sockets[0].emit("open");
+    requireValue(sockets[0]).emit("open");
     vi.advanceTimersByTime(20_000);
-    sockets[0].emit("message", Buffer.from("{}"), false);
+    requireValue(sockets[0]).emit("message", Buffer.from("{}"), false);
     vi.advanceTimersByTime(LIVENESS_TIMEOUT_MS - 1);
-    expect(sockets[0].terminate).not.toHaveBeenCalled();
+    expect(requireValue(sockets[0]).terminate).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(1);
 

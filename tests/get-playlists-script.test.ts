@@ -1,29 +1,35 @@
-import { readFileSync } from "node:fs";
+import { requireValue } from "./helpers/require-value";
+import { readPageScript, runPageScript } from "./helpers/page-script";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const source = readFileSync("src/renderer/ytmview/scripts/getplaylists.script.js", "utf8").trim();
+const source = (await readPageScript("src/renderer/ytmview/scripts/getplaylists.script.ts")).trim();
 
 const PLAYLISTS = [{ playlistAddToOptionRenderer: { playlistId: "PL1", title: { runs: [{ text: "Mine" }] } } }];
 
 let playerResponse: unknown;
-let dispatched: CustomEvent[];
+let serviceFailure: Error | undefined;
+let dispatched: CustomEvent<{ args: unknown[]; returnValue: unknown[] }>[];
 
 function run(): Promise<unknown> {
-  return new Function(`return (${source.replace(/;$/, "")})`)()();
+  return Promise.resolve(runPageScript(source));
 }
 
 beforeEach(() => {
   playerResponse = { videoDetails: { videoId: "abc" } };
+  serviceFailure = undefined;
   dispatched = [];
 
   const playerBar = {
     playerApi: { getPlayerResponse: () => playerResponse },
-    dispatchEvent: (event: CustomEvent) => {
+    dispatchEvent: (event: CustomEvent<{ args: unknown[]; returnValue: unknown[] }>) => {
       dispatched.push(event);
       event.detail.returnValue.push({
-        ajaxPromise: Promise.resolve({ data: { contents: [{ addToPlaylistRenderer: { playlists: PLAYLISTS } }] } })
+        ajaxPromise:
+          serviceFailure === undefined
+            ? Promise.resolve({ data: { contents: [{ addToPlaylistRenderer: { playlists: PLAYLISTS } }] } })
+            : Promise.reject(serviceFailure),
       });
-    }
+    },
   };
 
   vi.stubGlobal("document", { querySelector: () => playerBar });
@@ -34,10 +40,14 @@ afterEach(() => {
 });
 
 describe("getplaylists", () => {
+  it("reports a playlist failure with the original page error as its cause", async () => {
+    serviceFailure = new Error("Page service failed");
+    await expect(run()).rejects.toMatchObject({ message: "Could not load playlists", cause: serviceFailure });
+  });
   it("requests the add-to-playlist list for the loaded track", async () => {
     await expect(run()).resolves.toBe(PLAYLISTS);
     expect(dispatched).toHaveLength(1);
-    expect(dispatched[0].detail.args[1]).toEqual({ addToPlaylistEndpoint: { videoId: "abc" } });
+    expect(requireValue(dispatched[0]).detail.args[1]).toEqual({ addToPlaylistEndpoint: { videoId: "abc" } });
   });
 
   it("rejects without a request while a preroll ad nulls the player response", async () => {

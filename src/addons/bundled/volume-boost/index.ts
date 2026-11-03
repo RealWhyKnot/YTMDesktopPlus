@@ -1,34 +1,19 @@
-import type { BundledAddonDefinition } from "../../../main/addons/manager";
+import type { BundledAddonDefinition } from "../../../main/addons/managed-addon";
 
 import boostScript from "./scripts/boost.script?raw";
 
-// The boosted part of the volume bar is drawn by recolouring the fill YouTube
-// Music already renders. The fill is one element scaled horizontally, so the
-// gradient stop is expressed in its own box and the script sets it per change.
-const BOOST_CSS = `
-  ytmusic-player-bar #volume-slider.ytmd-boosted #sliderBar #primaryProgress {
-    background: linear-gradient(
-      to right,
-      var(--ytmd-accent) 0 var(--ytmd-boost-split, 100%),
-      var(--ytmd-danger) var(--ytmd-boost-split, 100%) 100%
-    ) !important;
-  }
-
-  ytmusic-player-bar #volume-slider.ytmd-boosted .slider-knob-inner {
-    background-color: var(--ytmd-danger) !important;
-  }
-`;
+import boostCss from "./boost.user.css?raw";
 
 const CEILINGS = [150, 200, 300, 500];
 
-const volumeBoostAddon: BundledAddonDefinition = {
+const volumeBoostAddon = {
   manifest: {
     id: "volume-boost",
     name: "Volume boost",
     version: "1.0.0",
     author: "WhyKnot",
     description: "Takes the volume slider past 100%. The boosted part of the bar changes colour, and a limiter keeps loud tracks from clipping.",
-    defaultEnabled: false
+    defaultEnabled: false,
   },
 
   activate(ctx) {
@@ -40,32 +25,32 @@ const volumeBoostAddon: BundledAddonDefinition = {
             key: "ceiling",
             type: "select",
             label: "Maximum volume",
-            options: CEILINGS.map(value => ({ label: `${value}%`, value }))
+            options: CEILINGS.map((value) => ({ label: `${value}%`, value })),
           },
           {
             key: "limiter",
             type: "toggle",
             label: "Limiter",
-            description: "Holds boosted peaks down instead of letting them clip. Turning this off is louder and rougher."
-          }
-        ]
-      }
+            description: "Holds boosted peaks down instead of letting them clip. Turning this off is louder and rougher.",
+          },
+        ],
+      },
     ]);
 
     ctx.ytmview.registerScript("boost", boostScript);
 
     const apply = async () => {
-      const ceiling = ctx.settings.get<number>("ceiling") ?? 200;
-      const limiter = ctx.settings.get<boolean>("limiter") ?? true;
+      const ceiling = ctx.settings.get("ceiling") ?? 200;
+      const isLimiter = ctx.settings.get("limiter") ?? true;
       try {
-        const applied = await ctx.ytmview.invokeScript("boost", { ceiling, limiter });
+        const applied = await ctx.ytmview.invokeScript("boost", { ceiling, limiter: isLimiter });
         if (applied !== true) ctx.log.info("Volume boost could not attach yet; the page has no audio graph");
       } catch (error) {
         ctx.log.warn("Volume boost failed to apply", error);
       }
     };
 
-    const css = ctx.ytmview.insertCSS(BOOST_CSS);
+    const css = ctx.ytmview.insertCSS(boostCss);
     const unsubscribeCeiling = ctx.settings.onDidChange("ceiling", apply);
     const unsubscribeLimiter = ctx.settings.onDidChange("limiter", apply);
     const unsubscribeLoaded = ctx.ytmview.onLoaded(apply);
@@ -75,10 +60,10 @@ const volumeBoostAddon: BundledAddonDefinition = {
         unsubscribeCeiling();
         unsubscribeLimiter();
         unsubscribeLoaded();
-        css.remove();
-      }
+        void css.remove().catch((error: unknown) => console.warn("destroy failed", error));
+      },
     };
-  }
-};
+  },
+} satisfies BundledAddonDefinition;
 
-export default volumeBoostAddon;
+export { volumeBoostAddon };

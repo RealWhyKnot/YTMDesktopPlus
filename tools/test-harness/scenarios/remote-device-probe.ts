@@ -1,0 +1,226 @@
+import { stringValue, array, record } from "../values.ts";
+import { parseJson } from "../validation.ts";
+import type { HarnessContext } from "../run.ts";
+import { hooksReadyStep, playbackFixture } from "./lib.ts";
+
+export const fixture = {
+  playback: playbackFixture(),
+
+  integrations: {
+    companionServerEnabled: false,
+    discordPresenceEnabled: false,
+    lastFMEnabled: false,
+  },
+};
+
+const SLICE_PATTERN = "device|session|remote|lounge|mdx|cast|transfer";
+
+const POLL_INTERVAL_MS = 20000;
+const POLL_DURATION_MS = 10 * 60 * 1000;
+
+const FETCH_HISTORY = `(() => new Promise((resolve, reject) => {
+  const bar = document.querySelector("ytmusic-app-layout>ytmusic-player-bar");
+  if (!bar) { reject(new Error("no player bar")); return; }
+  const returnValue = [];
+  bar.dispatchEvent(new CustomEvent("yt-action", {
+    bubbles: true,
+    cancelable: false,
+    composed: true,
+    detail: {
+      actionName: "yt-service-request",
+      args: [bar, { browseEndpoint: { browseId: "FEmusic_history" } }],
+      optionalAction: false,
+      returnValue
+    }
+  }));
+  if (!returnValue[0] || !returnValue[0].ajaxPromise) { reject(new Error("no ajaxPromise on returnValue")); return; }
+  returnValue[0].ajaxPromise.then(
+    response => {
+      const data = response.data ?? {};
+      const shelves = [];
+      const items = [];
+      const runsText = runs => (runs ?? []).map(r => r.text).join("");
+      const visit = (node, shelf) => {
+        if (!node || typeof node !== "object" || items.length >= 50) return;
+        if (Array.isArray(node)) { for (const n of node) visit(n, shelf); return; }
+        if (node.musicShelfRenderer) {
+          const title = runsText(node.musicShelfRenderer.title?.runs);
+          shelves.push(title);
+          visit(node.musicShelfRenderer.contents, title);
+          return;
+        }
+        if (node.musicResponsiveListItemRenderer) {
+          const r = node.musicResponsiveListItemRenderer;
+          items.push({
+            shelf: shelf ?? null,
+            videoId: r.playlistItemData?.videoId ?? null,
+            columns: (r.flexColumns ?? []).map(c => runsText(c.musicResponsiveListItemFlexColumnRenderer?.text?.runs)),
+            thumbnailUrl: r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.[0]?.url ?? null
+          });
+          return;
+        }
+        for (const value of Object.values(node)) visit(value, shelf);
+      };
+      visit(data, null);
+      resolve(JSON.stringify({
+        topKeys: Object.keys(data),
+        shelves,
+        head: items.slice(0, 5),
+        total: items.length,
+        rawSample: items.length === 0 ? JSON.stringify(data).slice(0, 4000) : undefined
+      }));
+    },
+    error => reject(new Error("history request failed: " + (error?.errorMessage ?? String(error))))
+  );
+}))()`;
+
+const DUMP_SLICES = `(() => {
+  const state = window.__YTMD_HOOK__.ytmStore.getState() ?? {};
+  const pattern = new RegExp("${SLICE_PATTERN}", "i");
+  const found = {};
+  for (const [key, value] of Object.entries(state)) {
+    if (pattern.test(key)) {
+      found[key] = value;
+      continue;
+    }
+    if (value && typeof value === "object") {
+      for (const inner of Object.keys(value)) {
+        if (pattern.test(inner)) {
+          found[key] = found[key] ?? {};
+          found[key][inner] = value[inner];
+        }
+      }
+    }
+  }
+  try {
+    return JSON.stringify(found);
+  } catch {
+    return JSON.stringify(Object.keys(found));
+  }
+})()`;
+
+async function remoteDeviceProbe(ctx: HarnessContext) {
+  await hooksReadyStep(ctx);
+
+  await ctx.step("store slices enumerated", async () => {
+    const keys = await ctx.evalYtm(`JSON.stringify(Object.keys(window.__YTMD_HOOK__.ytmStore.getState() ?? {}))`);
+    ctx.emit("probe", { topLevelKeys: parseJson(keys) });
+  });
+
+  await ctx.step("candidate slices dumped", async () => {
+    const dump = await ctx.evalYtm(DUMP_SLICES);
+    ctx.emit("probe", { candidateSlices: parseJson(dump) });
+  });
+
+  if (process.env.YTMD_PROBE_MANUAL !== "1") return;
+
+  ctx.emit("probe-instructions", {
+    message:
+      "Manual probe: sign in inside the app window (up to 10 minutes). Once signed in, start a track on the phone and note the wall-clock time. The probe then polls the account history every 20s for 10 minutes.",
+  });
+
+  await ctx.step(
+    "signed in",
+    () => ctx.waitYtm("!!(window.yt && window.yt.config_ && window.yt.config_.LOGGED_IN)", (loggedIn) => loggedIn === true, 600000),
+    605000
+  );
+
+  await ctx.step("recorders installed", () =>
+    ctx.evalYtm(`(() => {
+      if (window.__probePopups) return true;
+      window.__probePopups = [];
+      document.addEventListener("yt-popup-opened", event => {
+        window.__probePopups.push({ t: Date.now(), nodeName: event.detail?.nodeName ?? null });
+      });
+      // Server-pushed events surface as actions on the same bus the app's
+      // integrations already use; record every action name that flows by.
+      window.__probeActions = [];
+      document.addEventListener("yt-action", event => {
+        const name = event.detail?.actionName;
+        if (name) window.__probeActions.push({ t: Date.now(), name });
+      });
+      // Passive network tap: anything the page requests after this point, plus
+      // the resource log for what it requested before. Finds any realtime
+      // channel (signaler, push, heartbeat) without touching its traffic.
+      window.__probeNet = [];
+      const seen = new Set();
+      const note = url => {
+        const u = String(url).slice(0, 200);
+        if (seen.has(u)) return;
+        seen.add(u);
+        window.__probeNet.push({ t: Date.now(), u });
+      };
+      for (const entry of performance.getEntriesByType("resource")) note(entry.name);
+      const originalFetch = window.fetch;
+      window.fetch = function (...args) {
+        try { note(args[0]?.url ?? args[0]); } catch { /* recording only */ }
+        return originalFetch.apply(this, args);
+      };
+      const originalOpen = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+        try { note(url); } catch { /* recording only */ }
+        return originalOpen.call(this, method, url, ...rest);
+      };
+      window.WebSocket = new Proxy(window.WebSocket, {
+        construct(target, args) {
+          try { note("ws:" + args[0]); } catch { /* recording only */ }
+          return new target(...args);
+        }
+      });
+      return true;
+    })()`)
+  );
+
+  await ctx.step(
+    "history polled",
+    async () => {
+      const deadline = Date.now() + POLL_DURATION_MS;
+      let lastHeadIds = "";
+      let lastSlices = "";
+      let lastPopupCount = 0;
+      let poll = 0;
+      while (Date.now() < deadline) {
+        poll++;
+        try {
+          const history = parseJson(await ctx.evalYtm(FETCH_HISTORY));
+          const headIds = JSON.stringify(array(record(history).head).map((item) => record(item).videoId));
+          if (headIds !== lastHeadIds || poll === 1) {
+            lastHeadIds = headIds;
+            ctx.emit("probe", { poll, history });
+          } else {
+            ctx.emit("probe", { poll, headUnchanged: true });
+          }
+        } catch (error) {
+          ctx.emit("probe", { poll, historyError: String(error) });
+        }
+        try {
+          const slices = await ctx.evalYtm(DUMP_SLICES);
+          if (slices !== lastSlices) {
+            lastSlices = stringValue(slices);
+            ctx.emit("probe", { poll, candidateSlices: parseJson(slices) });
+          }
+          const popups = parseJson(await ctx.evalYtm("JSON.stringify(window.__probePopups ?? [])"));
+          if (array(popups).length !== lastPopupCount) {
+            lastPopupCount = array(popups).length;
+            ctx.emit("probe", { poll, popups });
+          }
+        } catch (error) {
+          ctx.emit("probe", { poll, sliceError: String(error) });
+        }
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      }
+    },
+    POLL_DURATION_MS + 60000
+  );
+
+  if (process.env.YTMD_PROBE_CAST === "1") {
+    await ctx.step("cast slice re-enabled and dumped", async () => {
+      await ctx.evalYtm(`window.__YTMD_HOOK__.ytmStore.dispatch({ type: "SET_CAST_AVAILABLE", payload: true })`);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      const dump = await ctx.evalYtm(`JSON.stringify(window.__YTMD_HOOK__.ytmStore.getState()?.castStatus ?? null)`);
+      ctx.emit("probe", { castStatusAfterReenable: parseJson(dump) });
+    });
+  }
+}
+
+export { remoteDeviceProbe as runScenario };

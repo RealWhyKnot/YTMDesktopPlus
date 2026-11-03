@@ -1,13 +1,13 @@
-interface Window {
+type Window = {
   __fs?: unknown;
   __YTMD_HOOK__?: { ytmStore?: unknown };
   __ytmdAdPrune?: { enabled?: boolean; count?: number };
   __ytmdAdSkip?: unknown;
   __ytmdAudioGraph?: unknown;
   __ytmdNonStop?: unknown;
-}
+};
 
-interface Element {
+type Element = {
   __ytmdPlayerApiVia?: string;
   click?: () => void;
   currentTime?: number;
@@ -19,12 +19,12 @@ interface Element {
   playerApi?: Element;
   readyState?: number;
   resolvePlayerApi?: () => unknown;
-}
+};
 
-interface HTMLMediaElement {
+type HTMLMediaElement = {
   __fsId?: number;
-}
+};
 
-interface Event {
+type Event = {
   playertype?: string;
-}
+};

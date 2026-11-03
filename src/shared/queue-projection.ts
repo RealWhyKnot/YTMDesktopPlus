@@ -23,30 +23,30 @@ export function installQueueProjection(): void {
     playlistPanelVideoRenderer?: Renderer;
     playlistPanelVideoWrapperRenderer?: {
       primaryRenderer?: { playlistPanelVideoRenderer?: Renderer };
-      counterpart?: { counterpartRenderer?: { playlistPanelVideoRenderer?: Renderer } }[];
+      counterpart?: ({ counterpartRenderer?: { playlistPanelVideoRenderer?: Renderer } } | null | undefined)[];
     };
   };
   type Queue = { items?: Entry[]; automixItems?: Entry[]; autoplay?: boolean; isGenerating?: boolean; isInfinite?: boolean; repeatMode?: string };
 
-  const text = (value: Runs) => (value?.runs ?? []).map(run => run.text ?? "").join("");
+  const text = (value: Runs) => (value?.runs ?? []).map((run) => run.text ?? "").join("");
 
   const project = (renderer: Renderer, counterparts: PlayerQueueItem[] | null): PlayerQueueItem => ({
-    thumbnails: (renderer.thumbnail?.thumbnails ?? []).map(thumbnail => ({ url: thumbnail.url, width: thumbnail.width, height: thumbnail.height })),
+    thumbnails: (renderer.thumbnail?.thumbnails ?? []).map((thumbnail) => ({ url: thumbnail.url, width: thumbnail.width, height: thumbnail.height })),
     title: text(renderer.title),
     author: text(renderer.shortBylineText),
     duration: text(renderer.lengthText),
     selected: renderer.selected === true,
     videoId: renderer.videoId ?? "",
-    counterparts
+    counterparts,
   });
 
-  const projectEntry = (entry: Entry): PlayerQueueItem | null => {
+  const projectEntry = (entry: Entry | null | undefined): PlayerQueueItem | null => {
     if (entry?.playlistPanelVideoRenderer) return project(entry.playlistPanelVideoRenderer, null);
     const wrapper = entry?.playlistPanelVideoWrapperRenderer;
     const primary = wrapper?.primaryRenderer?.playlistPanelVideoRenderer;
     if (!primary) return null;
     const counterparts = wrapper.counterpart
-      ? wrapper.counterpart.flatMap(counterpart => {
+      ? wrapper.counterpart.flatMap((counterpart) => {
           const renderer = counterpart?.counterpartRenderer?.playlistPanelVideoRenderer;
           return renderer ? [project(renderer, null)] : [];
         })
@@ -54,7 +54,7 @@ export function installQueueProjection(): void {
     return project(primary, counterparts);
   };
 
-  (window as typeof window & { __ytmdProjectQueue?: (queue: Queue | null | undefined) => unknown }).__ytmdProjectQueue = queue =>
+  (window as typeof window & { __ytmdProjectQueue?: (queue: Queue | null | undefined) => unknown }).__ytmdProjectQueue = (queue) =>
     queue
       ? {
           items: (queue.items ?? []).map(projectEntry),
@@ -62,7 +62,7 @@ export function installQueueProjection(): void {
           autoplay: queue.autoplay === true,
           isGenerating: queue.isGenerating === true,
           isInfinite: queue.isInfinite === true,
-          repeatMode: String(queue.repeatMode ?? "")
+          repeatMode: queue.repeatMode ?? "",
         }
       : null;
 }

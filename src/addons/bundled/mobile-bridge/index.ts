@@ -1,66 +1,19 @@
-import type { BundledAddonDefinition } from "../../../main/addons/manager";
+import type { BundledAddonDefinition } from "../../../main/addons/managed-addon";
 import { VideoState } from "~shared/addons/sdk";
 import { MirrorEngine, type Mirror } from "./mirror-engine";
 import { extractDurationSeconds, extractHistoryHead } from "./history-parse";
 import bannerScript from "./scripts/banner.script?raw";
 
-const BANNER_CSS = `
-#ytmd-phone-banner {
-  position: fixed;
-  right: 16px;
-  bottom: 88px;
-  z-index: 999;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px 8px 8px;
-  background: var(--ytmd-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  font-family: var(--ytmd-font, inherit);
-  color: var(--ytmd-text);
-}
-#ytmd-phone-banner .ytmd-phone-banner-art {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius);
-}
-#ytmd-phone-banner .ytmd-phone-banner-title {
-  font-size: 13px;
-  font-weight: 500;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-#ytmd-phone-banner .ytmd-phone-banner-subtitle {
-  font-size: 11px;
-  color: var(--ytmd-text-muted);
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-#ytmd-phone-banner .ytmd-phone-banner-caption {
-  font-size: 10px;
-  color: var(--text-faint);
-  margin-top: 2px;
-}
-`;
+import bannerCss from "./banner.css?raw";
 
-// Surfaces what is playing on another device on the same account (usually a
-// phone) while nothing plays here: a strip by the player bar, a title bar
-// badge, and optionally the Discord presence. Detection polls the account's
-// listening history through the YTM page; playback is never touched, so the
-// phone is never interrupted. Anything playing locally always wins.
-const mobileBridgeAddon: BundledAddonDefinition = {
+const mobileBridgeAddon = {
   manifest: {
     id: "mobile-bridge",
     name: "Phone playback",
     version: "1.0.0",
     author: "WhyKnot",
     description: "While nothing plays here, shows what your phone is playing by the player bar and on your Discord presence.",
-    defaultEnabled: false
+    defaultEnabled: false,
   },
 
   activate(ctx) {
@@ -72,19 +25,19 @@ const mobileBridgeAddon: BundledAddonDefinition = {
             key: "discordMirrorEnabled",
             type: "toggle",
             label: "Show on Discord presence",
-            description: "While nothing plays here, your presence shows the track your phone is playing. The badge and player bar strip always show"
-          }
-        ]
-      }
+            description: "While nothing plays here, your presence shows the track your phone is playing. The badge and player bar strip always show",
+          },
+        ],
+      },
     ]);
 
     ctx.ytmview.registerScript("banner", bannerScript);
-    ctx.ytmview.insertCSS(BANNER_CSS);
+    ctx.ytmview.insertCSS(bannerCss);
 
     let mirror: Mirror | null = null;
 
     const pushSurfaces = () => {
-      ctx.ytmview.invokeScript("banner", mirror ? { action: "show", track: mirror.track } : { action: "hide" }).catch(error => {
+      ctx.ytmview.invokeScript("banner", mirror ? { action: "show", track: mirror.track } : { action: "hide" }).catch((error: unknown) => {
         ctx.log.debug("Banner update skipped", String(error));
       });
       ctx.titlebar.setBadge(
@@ -92,7 +45,7 @@ const mobileBridgeAddon: BundledAddonDefinition = {
           ? {
               icon: "smartphone",
               tooltip: `Playing on your phone: ${mirror.track.title}`,
-              active: true
+              active: true,
             }
           : null
       );
@@ -100,24 +53,21 @@ const mobileBridgeAddon: BundledAddonDefinition = {
     };
 
     ctx.discord.registerRemoteActivityProvider(() => {
-      if (!mirror || !ctx.settings.get<boolean>("discordMirrorEnabled")) return undefined;
+      if (!mirror || !ctx.settings.get("discordMirrorEnabled")) return undefined;
       return {
         title: mirror.track.title,
         author: mirror.track.author,
         thumbnailUrl: mirror.track.thumbnailUrl ?? undefined,
         videoId: mirror.track.videoId,
         startedAtEpochMs: mirror.firstSeenMs,
-        smallText: "Playing on your phone"
+        smallText: "Playing on your phone",
       };
     });
 
     const engine = new MirrorEngine({
-      // A track playing on any device on the account reaches the history head
-      // within seconds of starting (measured 2026-08-11). Read-only: it never
-      // joins, claims or controls a session.
       fetchHead: async () => extractHistoryHead(await ctx.innertube.request("browse", { browseId: "FEmusic_history" })),
-      fetchDuration: async videoId => extractDurationSeconds(await ctx.innertube.request("player", { videoId })),
-      onChange: next => {
+      fetchDuration: async (videoId) => extractDurationSeconds(await ctx.innertube.request("player", { videoId })),
+      onChange: (next) => {
         mirror = next;
         if (next) ctx.log.info(`Mirroring phone playback: ${next.track.title}`);
         else ctx.log.info("Phone playback mirror cleared");
@@ -125,26 +75,24 @@ const mobileBridgeAddon: BundledAddonDefinition = {
       },
       now: () => Date.now(),
       setTimer: (fn, ms) => setTimeout(fn, ms),
-      clearTimer: handle => clearTimeout(handle as NodeJS.Timeout),
-      onPollError: error => ctx.log.debug("History poll failed", String(error))
+      clearTimer: (handle) => clearTimeout(handle),
+      onPollError: (error) => ctx.log.debug("History poll failed", String(error)),
     });
 
     const noteLocalState = (state: ReturnType<typeof ctx.player.getState>) => {
       engine.noteLocalState({
         playing: state.trackState === VideoState.Playing,
         videoId: state.videoDetails?.id ?? null,
-        hasFullMetadata: state.hasFullMetadata
+        hasFullMetadata: state.hasFullMetadata,
       });
     };
     ctx.player.onStateChanged(noteLocalState);
     noteLocalState(ctx.player.getState());
 
-    // Polling can only work once the page is up, so the engine starts on the
-    // first loaded signal; later reloads wipe injected DOM, so re-push instead.
-    let engineStarted = false;
+    let isEngineStarted = false;
     ctx.ytmview.onLoaded(() => {
-      if (!engineStarted) {
-        engineStarted = true;
+      if (!isEngineStarted) {
+        isEngineStarted = true;
         engine.start();
       } else {
         pushSurfaces();
@@ -158,9 +106,9 @@ const mobileBridgeAddon: BundledAddonDefinition = {
         engine.stop();
         mirror = null;
         pushSurfaces();
-      }
+      },
     };
-  }
-};
+  },
+} satisfies BundledAddonDefinition;
 
-export default mobileBridgeAddon;
+export { mobileBridgeAddon };

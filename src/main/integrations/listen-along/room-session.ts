@@ -1,6 +1,5 @@
 import { VideoState, type PlayerState } from "../../player-state-store";
-import type { CueResult } from "../../playback/cue-track";
-import type { RemoteCommandName } from "~shared/addons/sdk";
+import type { CueResult, RemoteCommandName } from "~shared/addons/sdk";
 import {
   ClockOffsetEstimator,
   RELAY_PROTOCOL_VERSION,
@@ -18,14 +17,10 @@ import {
   type RoomRole,
   type RoomServerFrame,
   type RoomSnapshot,
-  type RoomStateFrame
+  type RoomStateFrame,
 } from "~shared/room-protocol";
 import { FollowerEngine, type FollowerPhaseEvent } from "./follower-engine";
 import type { RelayHandlers } from "./relay-client";
-
-// One relay room, hosted or joined. The host publishes anchors and applies
-// controller intents against its own player; a listener feeds relayed anchors
-// into the follower engine and otherwise behaves exactly like the LAN follow.
 
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000, 30000];
 const MAX_CONNECTION_ATTEMPTS = 30;
@@ -36,14 +31,14 @@ export const OUTDATED_APP_ERROR = "This room needs a newer version of the app";
 
 export type { RoomPhase, RoomMemberView, RoomSnapshot };
 
-export interface RelayTransport {
+export type RelayTransport = {
   connect(): void;
   send(frame: RoomClientFrame): void;
   close(): void;
   readonly isOpen: boolean;
-}
+};
 
-export interface RoomSessionDeps {
+export type RoomSessionDeps = {
   createClient(handlers: RelayHandlers, roomId: string | null): RelayTransport;
   cueTrack(request: { videoId: string; anchor: { kind: "anchor"; epochMs: number } | null }): Promise<CueResult>;
   sendCommand(command: RemoteCommandName, value?: unknown): void;
@@ -52,7 +47,7 @@ export interface RoomSessionDeps {
   now(): number;
   log(message: string): void;
   cancelCue?(): void;
-}
+};
 
 export class RoomSession {
   private mode: "idle" | "host" | "listen" = "idle";
@@ -72,34 +67,37 @@ export class RoomSession {
 
   private lastLocal: PlayerState | null = null;
   private lastSentAnchor: RoomStateFrame | null = null;
-  private audioStreaming = false;
+  private isAudioStreaming = false;
   private webListenerCount = 0;
   private audioIssue: AudioIssue | null = null;
   private clockOffsetMs = 0;
-  private clockKnown = false;
+  private isClockKnown = false;
   private readonly clock = new ClockOffsetEstimator();
   private helloSentAt: number | null = null;
   private serverVersion: number | null = null;
   private anchorRefresh: NodeJS.Timeout | null = null;
-  private joinedOnce = false;
+  private isJoinedOnce = false;
   private roomLostAt: number | null = null;
   private attempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
-  private intentionalClose = false;
+  private isIntentionalClose = false;
   private loggedPhase: RoomPhase = "idle";
   private loggedError: string | null = null;
   private droppedAt: number | null = null;
-  private pinReleased = false;
+  private isPinReleased = false;
 
   private engine: FollowerEngine;
 
-  constructor(private readonly deps: RoomSessionDeps) {
+  private readonly deps: RoomSessionDeps;
+  constructor(deps: RoomSessionDeps) {
+    this.deps = deps;
+
     this.engine = new FollowerEngine({
-      cueTrack: request => deps.cueTrack(request),
+      cueTrack: (request) => deps.cueTrack(request),
       sendCommand: (command, value) => deps.sendCommand(command, value),
-      onPhase: event => this.onEnginePhase(event),
+      onPhase: (event) => this.onEnginePhase(event),
       now: () => deps.now(),
-      cancelCue: () => deps.cancelCue?.()
+      cancelCue: () => deps.cancelCue?.(),
     });
   }
 
@@ -117,25 +115,24 @@ export class RoomSession {
       error: this.error,
       syncStatus: this.syncStatus,
       syncDetail: this.syncDetail,
-      audioStreaming: this.audioStreaming,
+      audioStreaming: this.isAudioStreaming,
       webListenerCount: this.webListenerCount,
-      audioIssue: this.audioIssue
+      audioIssue: this.audioIssue,
     };
   }
 
-  /** Present only while hosting an established room. */
   get hostCredentials(): { roomId: string; hostKey: string } | null {
     if (this.mode !== "host" || !this.roomId || !this.hostKey) return null;
     return { roomId: this.roomId, hostKey: this.hostKey };
   }
 
   get serverClockOffsetMs(): number | null {
-    return this.clockKnown ? this.clockOffsetMs : null;
+    return this.isClockKnown ? this.clockOffsetMs : null;
   }
 
-  setAudioStreamState(streaming: boolean, webListeners: number, issue: AudioIssue | null = null) {
-    if (this.audioStreaming === streaming && this.webListenerCount === webListeners && this.audioIssue === issue) return;
-    this.audioStreaming = streaming;
+  setAudioStreamState(isStreaming: boolean, webListeners: number, issue: AudioIssue | null = null) {
+    if (this.isAudioStreaming === isStreaming && this.webListenerCount === webListeners && this.audioIssue === issue) return;
+    this.isAudioStreaming = isStreaming;
     this.webListenerCount = webListeners;
     this.audioIssue = issue;
     this.publish();
@@ -152,7 +149,6 @@ export class RoomSession {
     this.dial();
   }
 
-  // A null display name hosts anonymously; the wire simply omits it.
   host(displayName: string | null) {
     this.stopSession();
     this.mode = "host";
@@ -174,12 +170,12 @@ export class RoomSession {
   }
 
   leave() {
-    this.intentionalClose = true;
+    this.isIntentionalClose = true;
     try {
       this.client?.send({ t: "x" });
     } finally {
       this.stopSession();
-      this.intentionalClose = false;
+      this.isIntentionalClose = false;
     }
     this.publish();
   }
@@ -235,8 +231,8 @@ export class RoomSession {
     this.client = this.deps.createClient(
       {
         onOpen: () => this.onOpen(),
-        onFrame: frame => this.onFrame(frame),
-        onClose: detail => this.onClose(detail)
+        onFrame: (frame) => this.onFrame(frame),
+        onClose: (detail) => this.onClose(detail),
       },
       this.reconnectPin()
     );
@@ -266,14 +262,14 @@ export class RoomSession {
           this.clearRoom();
         }
         this.droppedAt = null;
-        this.pinReleased = false;
+        this.isPinReleased = false;
         this.roomLostAt = null;
         this.attempts = 0;
         this.memberId = frame.u;
         const now = this.deps.now();
         this.clock.add(frame.c, this.helloSentAt ?? now, now);
         this.clockOffsetMs = this.clock.offsetMs ?? frame.c - now;
-        this.clockKnown = true;
+        this.isClockKnown = true;
         this.serverVersion = frame.v ?? null;
         this.roomId = frame.r;
         this.listenerCount = frame.n;
@@ -285,11 +281,10 @@ export class RoomSession {
           this.publishAnchor(true);
           this.startAnchorRefresh();
         } else {
-          this.joinedOnce = true;
+          this.isJoinedOnce = true;
           this.role = frame.role;
           this.phase = "listening";
-          // The player may be idle with no state events flowing, so the engine
-          // gets seeded with a local sample it can decide against.
+
           this.updateLocalState(this.deps.getPlayerState());
         }
         this.publish();
@@ -306,12 +301,12 @@ export class RoomSession {
           trackState: frame.p === 1 ? VideoState.Playing : VideoState.Paused,
           adPlaying: false,
           asOfMs: now,
-          anchored: true
+          anchored: true,
         });
         return;
       }
       case "m": {
-        this.members = frame.members.map(member => ({ id: member.u, name: member.d ?? null, role: member.r }));
+        this.members = frame.members.map((member) => ({ id: member.u, name: member.d ?? null, role: member.r }));
         if (frame.h !== undefined) this.hostName = frame.h;
         this.publish();
         return;
@@ -356,24 +351,22 @@ export class RoomSession {
         if (frame.m !== undefined) this.deps.sendCommand("seekTo", frame.m);
         return;
       case "track":
-        if (frame.v) void this.deps.cueTrack({ videoId: frame.v, anchor: null });
+        if (frame.v) void this.deps.cueTrack({ videoId: frame.v, anchor: null }).catch((error: unknown) => console.warn("applyIntent failed", error));
         return;
     }
   }
 
-  // Publishes only when a listener would notice: track change, pause flip, or
-  // a seek. A steady-playing track sends nothing at all.
-  private publishAnchor(force = false) {
+  private publishAnchor(isForce = false) {
     const state = this.lastLocal;
     const videoId = state?.videoDetails?.id;
     if (!state || !videoId || state.adPlaying) return;
 
-    const playing = state.trackState === VideoState.Playing;
-    const paused = state.trackState === VideoState.Paused;
-    if (!playing && !paused) return;
+    const isPlaying = state.trackState === VideoState.Playing;
+    const isPaused = state.trackState === VideoState.Paused;
+    if (!isPlaying && !isPaused) return;
 
-    const frame = anchorFrameFrom(videoId, state.videoProgress, playing, this.deps.now() + this.clockOffsetMs);
-    if (force || isMeaningfulChange(this.lastSentAnchor, frame)) {
+    const frame = anchorFrameFrom(videoId, state.videoProgress, isPlaying, this.deps.now() + this.clockOffsetMs);
+    if (isForce || isMeaningfulChange(this.lastSentAnchor, frame)) {
       this.client?.send(frame);
       this.lastSentAnchor = frame;
     }
@@ -392,7 +385,7 @@ export class RoomSession {
   }
 
   private onRelayError(message: string) {
-    if (message === "no such room" && this.mode === "listen" && this.joinedOnce) {
+    if (message === "no such room" && this.mode === "listen" && this.isJoinedOnce) {
       const now = this.deps.now();
       this.roomLostAt ??= now;
       if (now - this.roomLostAt < ROOM_RETURN_GRACE_MS) {
@@ -413,7 +406,6 @@ export class RoomSession {
       return;
     }
     if (isFatalRelayError(message)) {
-      // The relay closes the socket after these; nothing to reconnect to.
       this.phase = "failed";
       this.error = message;
       this.stopClient();
@@ -426,7 +418,7 @@ export class RoomSession {
   }
 
   private onClose(detail?: string) {
-    if (this.intentionalClose || this.mode === "idle" || this.phase === "failed") return;
+    if (this.isIntentionalClose || this.mode === "idle" || this.phase === "failed") return;
     this.deps.log(`Room connection closed: ${detail ?? "unknown"}`);
     this.stopAnchorRefresh();
     this.droppedAt ??= this.deps.now();
@@ -438,8 +430,8 @@ export class RoomSession {
   private reconnectPin(): string | null {
     if (this.mode !== "host" || !this.hostKey || !this.roomId) return null;
     if (this.droppedAt === null || this.deps.now() - this.droppedAt < ROOM_PIN_GRACE_MS) return this.roomId;
-    if (!this.pinReleased) {
-      this.pinReleased = true;
+    if (!this.isPinReleased) {
+      this.isPinReleased = true;
       this.deps.log("Room's server unreachable for 30s, reconnecting through any node");
     }
     return null;
@@ -473,11 +465,11 @@ export class RoomSession {
     this.members = [];
     this.listenerCount = 0;
     this.lastSentAnchor = null;
-    this.audioStreaming = false;
+    this.isAudioStreaming = false;
     this.webListenerCount = 0;
     this.audioIssue = null;
     this.droppedAt = null;
-    this.pinReleased = false;
+    this.isPinReleased = false;
   }
 
   private stopSession() {
@@ -492,7 +484,7 @@ export class RoomSession {
     this.syncStatus = null;
     this.syncDetail = null;
     this.attempts = 0;
-    this.joinedOnce = false;
+    this.isJoinedOnce = false;
     this.roomLostAt = null;
     this.serverVersion = null;
   }

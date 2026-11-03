@@ -1,22 +1,21 @@
 import type { BrowserWindow, WebContents } from "electron";
 import type { IpcRegistrar } from "./registrar";
 
-export interface WindowControlIpcDeps {
+export type WindowControlIpcDeps = {
   getMainWindow(): BrowserWindow | null;
   getSettingsWindow(): BrowserWindow | null;
   isMainWindowSender(sender: WebContents): boolean;
   isSettingsSender(sender: WebContents): boolean;
-  // store.get("general").hideToTrayOnClose || isDarwin at close time
+
   hideMainWindowOnClose(): boolean;
   quitApp(): void;
   relaunchApp(): void;
   sendMainWindowState(): void;
   openSettingsWindow(): void;
-}
+};
 
 export function registerWindowControlIpc(ipc: IpcRegistrar, deps: WindowControlIpcDeps): void {
-  // Handle main window ipc
-  ipc.on("mainWindow:minimize", event => {
+  ipc.on("mainWindow:minimize", (event) => {
     const mainWindow = deps.getMainWindow();
     if (mainWindow !== null) {
       if (!deps.isMainWindowSender(event.sender)) return;
@@ -25,7 +24,7 @@ export function registerWindowControlIpc(ipc: IpcRegistrar, deps: WindowControlI
     }
   });
 
-  ipc.on("mainWindow:maximize", event => {
+  ipc.on("mainWindow:maximize", (event) => {
     const mainWindow = deps.getMainWindow();
     if (mainWindow !== null) {
       if (!deps.isMainWindowSender(event.sender)) return;
@@ -34,7 +33,7 @@ export function registerWindowControlIpc(ipc: IpcRegistrar, deps: WindowControlI
     }
   });
 
-  ipc.on("mainWindow:restore", event => {
+  ipc.on("mainWindow:restore", (event) => {
     const mainWindow = deps.getMainWindow();
     if (mainWindow !== null) {
       if (!deps.isMainWindowSender(event.sender)) return;
@@ -43,7 +42,7 @@ export function registerWindowControlIpc(ipc: IpcRegistrar, deps: WindowControlI
     }
   });
 
-  ipc.on("mainWindow:close", event => {
+  ipc.on("mainWindow:close", (event) => {
     const mainWindow = deps.getMainWindow();
     if (mainWindow !== null) {
       if (!deps.isMainWindowSender(event.sender)) return;
@@ -56,20 +55,19 @@ export function registerWindowControlIpc(ipc: IpcRegistrar, deps: WindowControlI
     }
   });
 
-  ipc.on("mainWindow:requestWindowState", event => {
+  ipc.on("mainWindow:requestWindowState", (event) => {
     if (!deps.isMainWindowSender(event.sender)) return;
 
     deps.sendMainWindowState();
   });
 
-  // Handle settings window ipc
-  ipc.on("settingsWindow:open", event => {
+  ipc.on("settingsWindow:open", (event) => {
     if (!deps.isMainWindowSender(event.sender)) return;
 
     deps.openSettingsWindow();
   });
 
-  ipc.on("settingsWindow:minimize", event => {
+  ipc.on("settingsWindow:minimize", (event) => {
     const settingsWindow = deps.getSettingsWindow();
     if (settingsWindow !== null) {
       if (!deps.isSettingsSender(event.sender)) return;
@@ -78,7 +76,7 @@ export function registerWindowControlIpc(ipc: IpcRegistrar, deps: WindowControlI
     }
   });
 
-  ipc.on("settingsWindow:maximize", event => {
+  ipc.on("settingsWindow:maximize", (event) => {
     const settingsWindow = deps.getSettingsWindow();
     if (settingsWindow !== null) {
       if (!deps.isSettingsSender(event.sender)) return;
@@ -87,7 +85,7 @@ export function registerWindowControlIpc(ipc: IpcRegistrar, deps: WindowControlI
     }
   });
 
-  ipc.on("settingsWindow:restore", event => {
+  ipc.on("settingsWindow:restore", (event) => {
     const settingsWindow = deps.getSettingsWindow();
     if (settingsWindow !== null) {
       if (!deps.isSettingsSender(event.sender)) return;
@@ -96,7 +94,7 @@ export function registerWindowControlIpc(ipc: IpcRegistrar, deps: WindowControlI
     }
   });
 
-  ipc.on("settingsWindow:close", event => {
+  ipc.on("settingsWindow:close", (event) => {
     const settingsWindow = deps.getSettingsWindow();
     if (settingsWindow !== null) {
       if (!deps.isSettingsSender(event.sender)) return;
@@ -105,7 +103,7 @@ export function registerWindowControlIpc(ipc: IpcRegistrar, deps: WindowControlI
     }
   });
 
-  ipc.on("settingsWindow:restartapplication", event => {
+  ipc.on("settingsWindow:restartapplication", (event) => {
     if (!deps.isSettingsSender(event.sender)) return;
 
     deps.relaunchApp();

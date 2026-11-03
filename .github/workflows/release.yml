@@ -517,6 +517,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
+      - uses: ./.github/actions/setup-node-deps
       - name: Script self-tests
         shell: pwsh
         run: |

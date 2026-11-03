@@ -1,9 +1,14 @@
+:root {
+  --color-pitch-app-background-1: #4cc9f0;
+  --color-pitch-app-box-shadow-2: rgb(76 201 240 / 55%);
+}
+
 .sidebar li {
   position: relative;
   transition: background-color var(--motion-fast) var(--ease);
 }
 
-.sidebar li.active::after {
+.sidebar li[aria-selected="true"]::after {
   content: "";
   position: absolute;
   right: 10px;
@@ -12,8 +17,8 @@
   height: 6px;
   margin-top: -3px;
   border-radius: 50%;
-  background: #4cc9f0;
-  box-shadow: 0 0 8px 1px rgba(76, 201, 240, 0.55);
+  background: var(--color-pitch-app-background-1);
+  box-shadow: 0 0 8px 1px var(--color-pitch-app-box-shadow-2);
   animation: pitch-breathe 3s ease-in-out infinite;
 }
 
@@ -22,13 +27,14 @@
   100% {
     opacity: 0.35;
   }
+
   50% {
     opacity: 1;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sidebar li.active::after {
+  .sidebar li[aria-selected="true"]::after {
     animation: none;
   }
 }

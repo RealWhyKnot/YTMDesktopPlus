@@ -1,11 +1,16 @@
-.titlebar {
-  background: rgba(27, 32, 40, 0.85) !important;
+:root {
+  --color-vitrine-app-background-1: rgb(27 32 40 / 85%);
+  --color-vitrine-app-background-2: rgb(35 42 53 / 85%);
+}
+
+:root .app-root .titlebar {
+  background: var(--color-vitrine-app-background-1);
   backdrop-filter: blur(12px);
 }
 
 .save-bar,
 .close-confirm {
-  background: rgba(35, 42, 53, 0.85);
+  background: var(--color-vitrine-app-background-2);
   backdrop-filter: blur(12px);
 }
 

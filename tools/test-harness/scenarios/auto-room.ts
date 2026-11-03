@@ -1,0 +1,92 @@
+import { socketText } from "../../../src/shared/socket-text.ts";
+import { record, stringValue } from "../values.ts";
+import { parseJson } from "../validation.ts";
+import type { HarnessContext } from "../run.ts";
+import WebSocket from "ws";
+import { hooksReadyStep, playbackFixture, roomIntegrationsFixture } from "./lib.ts";
+
+export const fixture = {
+  playback: playbackFixture(),
+  integrations: roomIntegrationsFixture({ discordPresenceEnabled: true }),
+  addons: {
+    states: { rooms: { enabled: true } },
+    settings: { rooms: { displayName: null, audioStreamEnabled: true, autoRoomEnabled: true } },
+  },
+};
+
+const SETTINGS_WINDOW = /windows\/settings\//;
+const ROOM_WINDOW = /windows\/room\//;
+
+async function autoRoom(ctx: HarnessContext) {
+  await hooksReadyStep(ctx);
+
+  await ctx.step(
+    "the title bar indicator appears and opens the room",
+    async () => {
+      await ctx.waitMain("!!document.querySelector('.badge-button')", (present) => present === true, 45000);
+      const label = await ctx.evalMain("document.querySelector('.badge-button').title");
+      if (!/Room is open|listening along/.test(stringValue(label))) throw new Error(`unexpected indicator title: ${String(label)}`);
+      await ctx.evalMain("document.querySelector('.badge-button').click()");
+      await ctx.waitTarget(ROOM_WINDOW, 15000);
+    },
+    60000
+  );
+
+  await ctx.step(
+    "room window opens from settings",
+    async () => {
+      await ctx.evalMain("window.ytmd.openSettingsWindow()");
+      await ctx.waitTarget(SETTINGS_WINDOW, 15000);
+      await ctx.waitOnTarget(SETTINGS_WINDOW, "typeof window.ytmd?.openRoomWindow", (kind) => kind === "function", 15000);
+      await ctx.evalOnTarget(SETTINGS_WINDOW, "window.ytmd.openRoomWindow()");
+      await ctx.waitTarget(ROOM_WINDOW, 15000);
+    },
+    40000
+  );
+
+  let roomId: string | null = null;
+  await ctx.step(
+    "a room exists without being started",
+    async () => {
+      await ctx.waitOnTarget(
+        ROOM_WINDOW,
+        "document.querySelector('.room-code')?.textContent ?? null",
+        (code) => typeof code === "string" && /^[abcdefghjkmnpqrstuvwxyz23456789]{8}$/.test(code.trim()),
+        45000
+      );
+      roomId = stringValue(await ctx.evalOnTarget(ROOM_WINDOW, "document.querySelector('.room-code').textContent")).trim();
+      const hosting = await ctx.evalOnTarget(ROOM_WINDOW, "document.body.innerText.includes('You are hosting')");
+      if (hosting !== true) throw new Error("room window does not show hosting");
+      ctx.emit("probe", { roomId });
+    },
+    60000
+  );
+
+  await ctx.step(
+    "a browser bot can subscribe to the room's audio channel",
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const socket = new WebSocket(`wss://ytmdesktopplus.com/audio/${roomId}`);
+        const timer = setTimeout(() => reject(new Error("no ready frame")), 15000);
+        socket.on("message", (data, isBinary) => {
+          if (isBinary) return;
+          const frame = parseJson(socketText(data));
+          if (record(frame).t === "ready") {
+            clearTimeout(timer);
+            socket.close();
+            resolve();
+          }
+          if (record(frame).t === "e") {
+            clearTimeout(timer);
+            socket.close();
+            reject(new Error(`relay refused: ${String(record(frame).m)}`));
+          }
+        });
+        socket.on("open", () => socket.send(JSON.stringify({ t: "sub", r: roomId })));
+        socket.on("error", reject);
+      }),
+    20000
+  );
+}
+
+export { autoRoom as runScenario };

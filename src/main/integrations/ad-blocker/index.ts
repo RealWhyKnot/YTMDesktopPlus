@@ -1,11 +1,11 @@
-import type { BrowserView, Session } from "electron";
+import type { WebContentsView, Session } from "electron";
 import log from "electron-log";
 import fs from "fs/promises";
 import path from "path";
 
 import { ElectronBlocker, adsAndTrackingLists } from "@ghostery/adblocker-electron";
 
-import IIntegration from "../integration";
+import type { Integration } from "../integration";
 import { ENGINE_CONFIG, isCacheStale, LEGACY_CACHE_FILES } from "./cache";
 
 import enableScript from "./script/enable.script?raw";
@@ -13,16 +13,16 @@ import disableScript from "./script/disable.script?raw";
 
 export const ENGINE_RETRY_MS = 30 * 60 * 1000;
 
-export default class AdBlocker implements IIntegration {
+export class AdBlocker implements Integration {
   private session: Session | null = null;
   private cachePath: string | null = null;
   private blocker: ElectronBlocker | null = null;
   private loading: Promise<ElectronBlocker | null> | null = null;
   private isEnabled = false;
   private blockedRequests = 0;
-  private ytmView: BrowserView | null = null;
+  private ytmView: WebContentsView | null = null;
   private hasInjected = false;
-  private waitForYTMView = true;
+  private isWaitForYTMView = true;
   private needsRefresh = false;
   private retryTimer: NodeJS.Timeout | null = null;
   private refreshing: Promise<ElectronBlocker | null> | null = null;
@@ -31,25 +31,25 @@ export default class AdBlocker implements IIntegration {
     this.session = session;
     this.cachePath = cachePath;
 
-    // Caches written before cosmetic filtering was dropped are several megabytes
-    // and will never be read again.
     for (const stale of LEGACY_CACHE_FILES) {
-      fs.rm(path.join(path.dirname(cachePath), stale), { force: true }).catch((): void => undefined);
+      fs.rm(path.join(path.dirname(cachePath), stale), { force: true }).catch((error: unknown) => {
+        log.warn("index: operation failed", error);
+        return undefined;
+      });
     }
   }
 
-  public provideView(ytmView: BrowserView): void {
+  public provideView(ytmView: WebContentsView): void {
     if (ytmView !== this.ytmView) {
       this.hasInjected = false;
-      this.waitForYTMView = true;
+      this.isWaitForYTMView = true;
     }
     this.ytmView = ytmView;
   }
 
   public ytmViewLoaded(): void {
-    this.waitForYTMView = false;
-    // Every document the view loads is a fresh main world, so whatever was
-    // injected into the last one is gone. Signing in navigates away and back.
+    this.isWaitForYTMView = false;
+
     this.hasInjected = false;
     if (this.isEnabled) this.injectAdSkip();
   }
@@ -57,7 +57,7 @@ export default class AdBlocker implements IIntegration {
   public getYTMScripts(): { name: string; script: string }[] {
     return [
       { name: "enable", script: enableScript },
-      { name: "disable", script: disableScript }
+      { name: "disable", script: disableScript },
     ];
   }
 
@@ -72,14 +72,13 @@ export default class AdBlocker implements IIntegration {
       return;
     }
 
-    if (this.loading === null) this.loading = this.loadEngine();
+    this.loading ??= this.loadEngine();
     this.loading
-      .then(blocker => {
-        // The setting can be turned back off while the lists are downloading.
+      .then((blocker) => {
         if (blocker === null || !this.isEnabled || this.session === null) return;
         this.startBlocking(blocker);
       })
-      .catch(error => log.error("Ad blocker failed to start", error));
+      .catch((error: unknown) => log.error("Ad blocker failed to start", error));
   }
 
   public disable(): void {
@@ -99,14 +98,12 @@ export default class AdBlocker implements IIntegration {
   }
 
   private injectAdSkip(): void {
-    if (this.hasInjected || this.waitForYTMView || this.ytmView === null) return;
+    if (this.hasInjected || this.isWaitForYTMView || this.ytmView === null) return;
 
     this.sendToView("enable");
     this.hasInjected = true;
   }
 
-  // A destroyed window leaves webContents undefined rather than destroyed, so
-  // reading through it without the optional chain throws.
   private sendToView(script: string): void {
     if (!this.ytmView?.webContents || this.ytmView.webContents.isDestroyed()) return;
 
@@ -114,6 +111,7 @@ export default class AdBlocker implements IIntegration {
   }
 
   private startBlocking(blocker: ElectronBlocker): void {
+    if (this.session === null) throw new Error("Ad blocker session has not been provided");
     if (blocker.isBlockingEnabled(this.session)) return;
 
     blocker.enableBlockingInSession(this.session);
@@ -128,20 +126,19 @@ export default class AdBlocker implements IIntegration {
       const refresh = this.refreshEngine();
       this.refreshing = refresh;
       if (this.blocker === null) this.loading = refresh;
-      refresh
-        .then(blocker => {
+      void refresh
+        .then((blocker) => {
           if (blocker !== null && this.isEnabled && this.session !== null) this.startBlocking(blocker);
         })
-        .catch(error => log.error("Ad blocker failed to refresh", error))
+        .catch((error: unknown) => log.error("Ad blocker failed to refresh", error))
         .finally(() => {
           this.refreshing = null;
-        });
+        })
+        .catch((error: unknown) => log.warn("scheduleRetry failed", error));
     }, ENGINE_RETRY_MS);
   }
 
   private adopt(blocker: ElectronBlocker, source: string): ElectronBlocker {
-    // Counting is cheap; logging every request is not, and debug logging is
-    // on by default for beta builds.
     blocker.on("request-blocked", () => {
       this.blockedRequests++;
     });
@@ -159,6 +156,7 @@ export default class AdBlocker implements IIntegration {
     try {
       const blocker = await ElectronBlocker.fromLists(fetch, adsAndTrackingLists, ENGINE_CONFIG);
       try {
+        if (this.cachePath === null) throw new Error("Ad blocker cache path has not been provided");
         await fs.writeFile(this.cachePath, blocker.serialize());
       } catch (error) {
         log.warn("Ad blocker filter cache could not be saved", error);
@@ -183,28 +181,22 @@ export default class AdBlocker implements IIntegration {
 
   private async loadEngine(): Promise<ElectronBlocker | null> {
     const cachePath = this.cachePath;
-    let cache: "fresh" | "stale" | "none" = "none";
+    if (cachePath === null) throw new Error("Ad blocker cache path has not been provided");
+    let cache: "fresh" | "stale" | "none";
 
     try {
       const stats = await fs.stat(cachePath);
       cache = isCacheStale(stats.mtimeMs, Date.now()) ? "stale" : "fresh";
     } catch {
-      // No cache yet, which is the normal first run.
+      cache = "none";
     }
 
     if (cache === "fresh") {
       try {
-        // Network filters only. Cosmetic filtering costs a content script in every
-        // frame, a MutationObserver over the whole document and an IPC round trip
-        // per batch of new classes, and it buys nothing here: every cosmetic rule
-        // the lists carry for this domain targets ytd-* elements from the youtube.com
-        // watch page, while YouTube Music renders ytmusic-* ones. It also broke the
-        // song context menu, whose service item rows overflowed the stack while
-        // Polymer stamped them and rendered as blank gaps.
         const blocker = await ElectronBlocker.fromLists(fetch, adsAndTrackingLists, ENGINE_CONFIG, {
           path: cachePath,
           read: fs.readFile,
-          write: fs.writeFile
+          write: fs.writeFile,
         });
         return this.adopt(blocker, "cached");
       } catch (error) {
@@ -226,7 +218,6 @@ export default class AdBlocker implements IIntegration {
       }
     }
 
-    // Offline launches land here. Blocking stays off and the app carries on.
     this.loading = null;
     return null;
   }

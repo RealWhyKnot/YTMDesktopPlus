@@ -14,10 +14,9 @@ const errorCodes = [
   "AUTHORIZATION_DENIED",
   "AUTHORIZATION_TOO_MANY",
   "YOUTUBE_MUSIC_UNVAILABLE",
-  "YOUTUBE_MUSIC_TIME_OUT"
+  "YOUTUBE_MUSIC_TIME_OUT",
 ];
 
-// When adding an error make sure to include its code in the errorCodes array above so the API can return it to the client
 export const InvalidVolumeError = createError<[number]>("INVALID_VOLUME", "Volume '%s' is invalid", 400);
 export const InvalidRepeatModeError = createError<[RepeatMode]>("INVALID_REPEAT_MODE", "Repeat mode '%s' cannot be set", 400);
 export const InvalidPositionError = createError<[number]>("INVALID_SEEK_POSITION", "Seek position '%s' is invalid", 400);
@@ -33,6 +32,5 @@ export const YouTubeMusicUnavailableError = createError<[]>("YOUTUBE_MUSIC_UNVAI
 export const YouTubeMusicTimeOutError = createError<[]>("YOUTUBE_MUSIC_TIME_OUT", "Response from YouTube Music took too long", 504);
 
 export function isDefinedAPIError(error: unknown): error is FastifyError {
-  if (errorCodes.includes((error as FastifyError).code)) return true;
-  return false;
+  return error instanceof Error && "code" in error && typeof error.code === "string" && errorCodes.includes(error.code);
 }

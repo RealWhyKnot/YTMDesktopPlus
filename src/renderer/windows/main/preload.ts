@@ -1,13 +1,11 @@
-// See the Electron documentation for details on how to use preload scripts:
-// https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
-
+import { memoryGuards } from "~shared/store/validate-memory";
 import { contextBridge, ipcRenderer } from "electron";
 import { createThemeBridge } from "../theme-bridge";
-import { WindowsEventArguments } from "~shared/types";
-import { MemoryStoreSchema } from "~shared/store/schema";
-import MemoryStore from "../../store-ipc/memory-store";
+import { type WindowsEventArguments } from "~shared/types";
+import { type MemoryStoreSchema } from "~shared/store/schema";
+import { MemoryStore } from "../../store-ipc/memory-store";
 
-const memoryStore = new MemoryStore<MemoryStoreSchema>();
+const memoryStore = new MemoryStore<MemoryStoreSchema>(memoryGuards);
 
 contextBridge.exposeInMainWorld("ytmd", {
   theme: createThemeBridge(),
@@ -27,7 +25,7 @@ contextBridge.exposeInMainWorld("ytmd", {
   memoryStore: {
     set: (key: string, value: unknown) => memoryStore.set(key, value),
     get: async (key: keyof MemoryStoreSchema) => await memoryStore.get(key),
-    onStateChanged: (callback: (newState: MemoryStoreSchema, oldState: MemoryStoreSchema) => void) => memoryStore.onStateChanged(callback)
+    onStateChanged: (callback: (newState: Partial<MemoryStoreSchema>, oldState: Partial<MemoryStoreSchema>) => void) => memoryStore.onStateChanged(callback),
   },
-  restartApplicationForUpdate: () => ipcRenderer.send("app:restartApplicationForUpdate")
+  restartApplicationForUpdate: () => ipcRenderer.send("app:restartApplicationForUpdate"),
 });

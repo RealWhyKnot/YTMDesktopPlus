@@ -1,10 +1,18 @@
-.titlebar {
-  background: linear-gradient(to right, #000080 0%, #1084d0 100%) !important;
-  border-bottom: 1px solid #808080;
+:root {
+  --color-millennium-app-background-1: #000080;
+  --color-millennium-app-background-2: #1084d0;
+  --color-millennium-app-border-bottom-3: #808080;
+  --color-millennium-app-color-4: #fff;
+  --color-millennium-app-border-color-5: #404040;
+}
+
+:root .app-root .titlebar {
+  background: linear-gradient(to right, var(--color-millennium-app-background-1) 0%, var(--color-millennium-app-background-2) 100%);
+  border-bottom: 1px solid var(--color-millennium-app-border-bottom-3);
 }
 
 .title-text {
-  color: #ffffff;
+  color: var(--color-millennium-app-color-4);
   letter-spacing: 0.04em;
 }
 
@@ -12,18 +20,21 @@ button,
 .ytmd-button {
   border-style: outset;
   border-width: 2px;
-  border-color: #ffffff #404040 #404040 #ffffff;
+  border-color: var(--color-millennium-app-color-4) var(--color-millennium-app-border-color-5) var(--color-millennium-app-border-color-5)
+    var(--color-millennium-app-color-4);
   background-color: var(--bg-raised);
 }
 
 button:active {
   border-style: inset;
-  border-color: #404040 #ffffff #ffffff #404040;
+  border-color: var(--color-millennium-app-border-color-5) var(--color-millennium-app-color-4) var(--color-millennium-app-color-4)
+    var(--color-millennium-app-border-color-5);
 }
 
 .window-content,
 .card {
   border-style: inset;
   border-width: 2px;
-  border-color: #808080 #ffffff #ffffff #808080;
+  border-color: var(--color-millennium-app-border-bottom-3) var(--color-millennium-app-color-4) var(--color-millennium-app-color-4)
+    var(--color-millennium-app-border-bottom-3);
 }

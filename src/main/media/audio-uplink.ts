@@ -43,12 +43,12 @@ export function slimState(state: PlayerState): UplinkState {
       author: details.author,
       album: details.album,
       thumbnails: details.thumbnails,
-      durationSeconds: details.durationSeconds
+      durationSeconds: details.durationSeconds,
     },
     trackState: state.trackState,
     videoProgress: state.videoProgress,
     adPlaying: state.adPlaying,
-    hasFullMetadata: state.hasFullMetadata
+    hasFullMetadata: state.hasFullMetadata,
   };
 }
 
@@ -61,17 +61,20 @@ export class AudioUplink {
   private child: UplinkProcess | null = null;
   private creds: AudioCredentials | null = null;
   private state: UplinkState | null = null;
-  private muted: boolean | undefined;
+  private isMuted: boolean | undefined;
   private clockOffsetMs: number | null = null;
   private exits: number[] = [];
-  private streaming = false;
+  private isStreaming = false;
   private webListeners = 0;
   private issue: AudioIssue | null = null;
   private liveSince: number | null = null;
   private captureFailures = 0;
   private retryTimer: NodeJS.Timeout | null = null;
 
-  constructor(private readonly deps: AudioUplinkDeps) {}
+  private readonly deps: AudioUplinkDeps;
+  constructor(deps: AudioUplinkDeps) {
+    this.deps = deps;
+  }
 
   setCredentials(creds: AudioCredentials | null) {
     if (sameCreds(this.creds, creds)) return;
@@ -115,20 +118,21 @@ export class AudioUplink {
   }
 
   handleCaptureStatus(status: AudioCaptureStatus) {
-    if (status.muted !== undefined) this.muted = status.muted;
+    if (status.muted !== undefined) this.isMuted = status.muted;
     this.child?.postMessage({ t: "status", status });
   }
 
   private spawn() {
     const child = this.deps.fork();
     this.child = child;
-    child.on("message", event => this.onEvent(event));
-    child.on("exit", code => this.onExit(child, code));
-    child.on("error", type => this.deps.log("Audio uplink process failed", type));
+    child.on("message", (event) => this.onEvent(event));
+    child.on("exit", (code) => this.onExit(child, code));
+    child.on("error", (type) => this.deps.log("Audio uplink process failed", type));
     if (this.state) child.postMessage({ t: "state", state: this.state });
-    if (this.muted !== undefined) child.postMessage({ t: "status", status: { muted: this.muted } });
+    if (this.isMuted !== undefined) child.postMessage({ t: "status", status: { muted: this.isMuted } });
     if (this.clockOffsetMs !== null) child.postMessage({ t: "clock", offsetMs: this.clockOffsetMs });
-    this.deps.connectMediaHost(port => (this.child === child ? child.postMessage({ t: "port" }, [port]) : port.close()));
+    this.deps.connectMediaHost((port) => (this.child === child ? child.postMessage({ t: "port" }, [port]) : port.close()));
+    return this.child;
   }
 
   private onEvent(event: UplinkEvent) {
@@ -147,16 +151,16 @@ export class AudioUplink {
     }
   }
 
-  private onStreamUpdate(streaming: boolean, webListeners: number) {
+  private onStreamUpdate(isStreaming: boolean, webListeners: number) {
     const now = this.deps.now();
-    if (streaming) this.liveSince ??= now;
+    if (isStreaming) this.liveSince ??= now;
     else {
       if (this.liveSince !== null && now - this.liveSince >= HEALTHY_STREAM_MS) this.captureFailures = 0;
       this.liveSince = null;
     }
-    this.streaming = streaming;
+    this.isStreaming = isStreaming;
     this.webListeners = webListeners;
-    if (streaming && this.issue === "retrying") this.issue = null;
+    if (isStreaming && this.issue === "retrying") this.issue = null;
     this.emit();
   }
 
@@ -175,7 +179,9 @@ export class AudioUplink {
         this.setIssue("stopped");
         return;
       }
-      delay = CAPTURE_RETRY_MS[Math.min(this.captureFailures - 1, CAPTURE_RETRY_MS.length - 1)];
+      const captureDelay = CAPTURE_RETRY_MS[Math.min(this.captureFailures - 1, CAPTURE_RETRY_MS.length - 1)];
+      if (captureDelay === undefined) throw new Error("Audio retry delay is unavailable");
+      delay = captureDelay;
     }
     this.deps.log(`Room audio stopped (${fault}), trying again in ${delay / 1000}s`);
     this.retryTimer = setTimeout(() => {
@@ -202,7 +208,7 @@ export class AudioUplink {
   }
 
   private emit() {
-    this.deps.onUpdate({ streaming: this.streaming, webListeners: this.webListeners, issue: this.issue });
+    this.deps.onUpdate({ streaming: this.isStreaming, webListeners: this.webListeners, issue: this.issue });
   }
 
   private onExit(child: UplinkProcess, code: number) {
@@ -211,12 +217,12 @@ export class AudioUplink {
     if (!this.creds) return;
 
     const now = this.deps.now();
-    this.exits = [...this.exits.filter(at => now - at < EXIT_WINDOW_MS), now];
+    this.exits = [...this.exits.filter((at) => now - at < EXIT_WINDOW_MS), now];
     if (this.exits.length >= MAX_EXITS) {
       this.deps.log(`Audio uplink exited ${MAX_EXITS} times within ${EXIT_WINDOW_MS / 1000}s, room audio stopped`, code);
       this.cancelRetry();
       this.deps.setCapture(false);
-      this.streaming = false;
+      this.isStreaming = false;
       this.webListeners = 0;
       this.liveSince = null;
       this.issue = "stopped";
@@ -224,7 +230,7 @@ export class AudioUplink {
       return;
     }
     this.deps.log("Audio uplink exited, restarting it", code);
-    this.spawn();
-    this.child?.postMessage({ t: "creds", creds: this.creds });
+    const replacement = this.spawn();
+    replacement.postMessage({ t: "creds", creds: this.creds });
   }
 }

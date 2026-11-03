@@ -6,7 +6,7 @@ import { stallTasks } from "../stall-watch";
 export const TITLE_BAR_OVERLAY = {
   color: "#000000",
   symbolColor: "#BBBBBB",
-  height: 36
+  height: 36,
 };
 
 type TitleBarOverlay = { color: string; symbolColor: string; height: number };
@@ -39,7 +39,6 @@ export function isDevServerUrl(url: string): boolean {
 }
 
 type AppWindowOptions = BrowserWindowConstructorOptions & {
-  // window.open targets opened in the system browser; everything else is denied.
   openExternalUrls?: string[];
 };
 
@@ -55,20 +54,20 @@ export function createAppWindow(options: AppWindowOptions): BrowserWindow {
         webPreferences: {
           sandbox: true,
           contextIsolation: true,
-          ...webPreferences
+          ...webPreferences,
         },
-        ...rest
+        ...rest,
       })
   );
 
-  window.webContents.setWindowOpenHandler(details => {
+  window.webContents.setWindowOpenHandler((details) => {
     if (openExternalUrls?.includes(details.url)) {
-      shell.openExternal(details.url);
+      void shell.openExternal(details.url).catch((error: unknown) => log.warn("createAppWindow failed", error));
     }
     return { action: "deny" };
   });
 
-  window.webContents.on("will-navigate", event => {
+  window.webContents.on("will-navigate", (event) => {
     if (process.env.NODE_ENV === "development" && isDevServerUrl(event.url)) return;
 
     event.preventDefault();
@@ -78,6 +77,7 @@ export function createAppWindow(options: AppWindowOptions): BrowserWindow {
 }
 
 export function loadWindowEntry(window: BrowserWindow, entry: string, devServerUrl: string | undefined): void {
-  if (devServerUrl) window.loadURL(`${devServerUrl}/windows/${entry}/index.html`);
-  else window.loadFile(path.join(__dirname, `../renderer/windows/${entry}/index.html`));
+  if (devServerUrl) void window.loadURL(`${devServerUrl}/windows/${entry}/index.html`).catch((error: unknown) => log.warn("loadWindowEntry failed", error));
+  else
+    void window.loadFile(path.join(__dirname, `../renderer/windows/${entry}/index.html`)).catch((error: unknown) => log.warn("loadWindowEntry failed", error));
 }

@@ -4,18 +4,15 @@ import { registerStoreBridgeIpc, type StoreBridgeIpcDeps } from "../src/main/ipc
 import { registerThemeIpc, type ThemeIpcDeps } from "../src/main/ipc/themes";
 import type { IpcRegistrar } from "../src/main/ipc/registrar";
 
-// Renderer preloads hardcode these channel names; a rename here must be a
-// deliberate, cross-process change, never a refactor side effect.
-
 function capture(register: (ipc: IpcRegistrar) => void): string[] {
   const channels: string[] = [];
   const ipc: IpcRegistrar = {
-    on: channel => {
+    on: (channel) => {
       channels.push(channel);
     },
-    handle: channel => {
+    handle: (channel) => {
       channels.push(channel);
-    }
+    },
   };
   register(ipc);
   return channels.sort();
@@ -29,13 +26,21 @@ describe("ipc channel names", () => {
       isMainWindowSender: () => false,
       isSettingsSender: () => false,
       hideMainWindowOnClose: () => false,
-      quitApp: () => {},
-      relaunchApp: () => {},
-      sendMainWindowState: () => {},
-      openSettingsWindow: () => {}
+      quitApp: () => {
+        return undefined;
+      },
+      relaunchApp: () => {
+        return undefined;
+      },
+      sendMainWindowState: () => {
+        return undefined;
+      },
+      openSettingsWindow: () => {
+        return undefined;
+      },
     };
 
-    expect(capture(ipc => registerWindowControlIpc(ipc, deps))).toEqual([
+    expect(capture((ipc) => registerWindowControlIpc(ipc, deps))).toEqual([
       "mainWindow:close",
       "mainWindow:maximize",
       "mainWindow:minimize",
@@ -46,22 +51,36 @@ describe("ipc channel names", () => {
       "settingsWindow:minimize",
       "settingsWindow:open",
       "settingsWindow:restartapplication",
-      "settingsWindow:restore"
+      "settingsWindow:restore",
     ]);
   });
 
   it("store bridge channels stay stable", () => {
     const deps: StoreBridgeIpcDeps = {
-      store: { set: () => {}, get: (): unknown => undefined, reset: () => {} } as unknown as StoreBridgeIpcDeps["store"],
-      memoryStore: { set: () => {}, get: (): unknown => undefined } as unknown as StoreBridgeIpcDeps["memoryStore"],
+      store: {
+        set: () => {
+          return undefined;
+        },
+        get: (): unknown => undefined,
+        reset: () => {
+          return undefined;
+        },
+      },
+      memoryStore: {
+        getState: (): unknown => undefined,
+        set: () => {
+          return undefined;
+        },
+        get: (): unknown => undefined,
+      },
       isMemoryStoreSender: () => false,
       isSettingsSender: () => false,
       isSettingsReader: () => false,
       decryptString: () => "",
-      encryptString: () => ""
+      encryptString: () => "",
     };
 
-    expect(capture(ipc => registerStoreBridgeIpc(ipc, deps))).toEqual([
+    expect(capture((ipc) => registerStoreBridgeIpc(ipc, deps))).toEqual([
       "memoryStore:get",
       "memoryStore:set",
       "memoryStore:subscribe",
@@ -70,7 +89,7 @@ describe("ipc channel names", () => {
       "settings:get",
       "settings:reset",
       "settings:set",
-      "settings:setMany"
+      "settings:setMany",
     ]);
   });
 
@@ -78,20 +97,26 @@ describe("ipc channel names", () => {
     const deps: ThemeIpcDeps = {
       descriptors: () => [],
       getCss: () => ({ app: "", ytm: "", addonWindow: "" }),
-      rescan: () => {},
+      rescan: () => {
+        return undefined;
+      },
       setActive: () => ({ ok: true }),
       create: () => ({ ok: true, id: "x", dir: "" }),
       duplicate: () => ({ ok: true, id: "x", dir: "" }),
       exportTo: () => ({ ok: true }),
       install: () => ({ ok: true, id: "x" }),
-      openThemesFolder: () => {},
-      revealPath: () => {},
-      pickArchive: async () => null,
-      pickExportDestination: async () => null,
-      isSettingsSender: () => false
+      openThemesFolder: () => {
+        return undefined;
+      },
+      revealPath: () => {
+        return undefined;
+      },
+      pickArchive: () => Promise.resolve(null),
+      pickExportDestination: () => Promise.resolve(null),
+      isSettingsSender: () => false,
     };
 
-    expect(capture(ipc => registerThemeIpc(ipc, deps))).toEqual([
+    expect(capture((ipc) => registerThemeIpc(ipc, deps))).toEqual([
       "themes:create",
       "themes:duplicate",
       "themes:export",
@@ -100,7 +125,7 @@ describe("ipc channel names", () => {
       "themes:installFromFile",
       "themes:openFolder",
       "themes:rescan",
-      "themes:setActive"
+      "themes:setActive",
     ]);
   });
 });

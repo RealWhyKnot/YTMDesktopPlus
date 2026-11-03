@@ -1,22 +1,32 @@
-import { readFileSync } from "node:fs";
+import { readPageScript, runPageScript } from "./helpers/page-script";
+import { requireValue } from "./helpers/require-value";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-const source = readFileSync("src/renderer/ytmview/scripts/playerbarcontrols.script.js", "utf8").trim();
+const source = await readPageScript("src/renderer/ytmview/scripts/playerbarcontrols.script.ts");
 
 function element() {
   const classes = new Set<string>();
+  const attributes = new Map<string, string>();
   return {
     classList: {
       add: (name: string) => classes.add(name),
       remove: (name: string) => classes.delete(name),
-      contains: (name: string) => classes.has(name)
+      contains: (name: string) => classes.has(name),
     },
     setters: { data: vi.fn(), iconName: vi.fn() },
-    insertAdjacentElement: () => {},
+    insertAdjacentElement: () => {
+      return undefined;
+    },
     querySelector: () => element(),
-    appendChild: () => {},
-    setAttribute: () => {},
-    set: () => {}
+    appendChild: () => {
+      return undefined;
+    },
+    setAttribute: (name: string, value: string) => attributes.set(name, value),
+    hasAttribute: (name: string) => attributes.has(name),
+    removeAttribute: (name: string) => attributes.delete(name),
+    set: () => {
+      return undefined;
+    },
   };
 }
 
@@ -26,10 +36,10 @@ const libraryMenu = {
       toggleMenuServiceItemRenderer: {
         defaultIcon: { iconType: "BOOKMARK_BORDER" },
         defaultServiceEndpoint: { feedbackEndpoint: { feedbackToken: "save" } },
-        toggledServiceEndpoint: { feedbackEndpoint: { feedbackToken: "unsave" } }
-      }
-    }
-  ]
+        toggledServiceEndpoint: { feedbackEndpoint: { feedbackToken: "unsave" } },
+      },
+    },
+  ],
 };
 
 let subscribers: (() => void)[];
@@ -39,7 +49,7 @@ let getMenuRenderer: Mock;
 let documentQueries: number;
 let misses: unknown[][];
 
-const dispatch = () => subscribers.forEach(subscriber => subscriber());
+const dispatch = () => subscribers.forEach((subscriber) => subscriber());
 
 beforeEach(() => {
   subscribers = [];
@@ -48,7 +58,16 @@ beforeEach(() => {
   misses = [];
   getMenuRenderer = vi.fn(() => libraryMenu);
   state = { queue: { items: [] }, toggleStates: { feedbackToggleStates: {} }, player: { volume: 50 } };
-  const playerBar = { ...element(), getMenuRenderer, playerApi: { addEventListener: () => {}, getPlayerResponse: (): unknown => null } };
+  const playerBar = {
+    ...element(),
+    getMenuRenderer,
+    playerApi: {
+      addEventListener: () => {
+        return undefined;
+      },
+      getPlayerResponse: (): unknown => null,
+    },
+  };
 
   vi.stubGlobal("document", {
     querySelector: () => {
@@ -59,15 +78,25 @@ beforeEach(() => {
       const node = element();
       created.push(node);
       return node;
-    }
+    },
   });
   vi.stubGlobal("window", {
-    __YTMD_HOOK__: { ytmStore: { getState: () => state, subscribe: (subscriber: () => void) => subscribers.push(subscriber), dispatch: () => {} } },
-    addEventListener: () => {},
-    ytmd: { reportContractMiss: (...args: unknown[]) => misses.push(args) }
+    __YTMD_HOOK__: {
+      ytmStore: {
+        getState: () => state,
+        subscribe: (subscriber: () => void) => subscribers.push(subscriber),
+        dispatch: () => {
+          return undefined;
+        },
+      },
+    },
+    addEventListener: () => {
+      return undefined;
+    },
+    ytmd: { reportContractMiss: (...args: unknown[]) => misses.push(args) },
   });
 
-  new Function(`return (${source.replace(/;$/, "")})`)()();
+  runPageScript(source);
 });
 
 afterEach(() => {
@@ -95,16 +124,16 @@ describe("playerbarcontrols script", () => {
     const libraryButton = created[0];
 
     dispatch();
-    expect(libraryButton.setters.iconName).toHaveBeenLastCalledWith("yt-sys-icons:library_add");
+    expect(requireValue(libraryButton).setters.iconName).toHaveBeenLastCalledWith("yt-sys-icons:library_add");
 
     state = { ...state, toggleStates: { feedbackToggleStates: { save: true } } };
     dispatch();
-    expect(libraryButton.setters.iconName).toHaveBeenLastCalledWith("yt-sys-icons:library_saved");
+    expect(requireValue(libraryButton).setters.iconName).toHaveBeenLastCalledWith("yt-sys-icons:library_saved");
   });
 
   it("survives menu and store shapes it does not recognise without throwing into YTM's dispatch", () => {
     getMenuRenderer.mockReturnValue({
-      items: [null, { toggleMenuServiceItemRenderer: {} }, { toggleMenuServiceItemRenderer: { defaultIcon: { iconType: "BOOKMARK" } } }]
+      items: [null, { toggleMenuServiceItemRenderer: {} }, { toggleMenuServiceItemRenderer: { defaultIcon: { iconType: "BOOKMARK" } } }],
     });
     state = { queue: { items: [{}] } };
     expect(() => dispatch()).not.toThrow();

@@ -1,11 +1,4 @@
-// Client half of the Listen Along relay protocol.
-//
-// The relay speaks small JSON frames with single-character keys over a plain
-// WebSocket. The host publishes an anchor rather than a position: while
-// playing, `a` is the wall clock at which the track was at 0:00, so listeners
-// derive their own position locally and a steady-playing track costs nothing
-// on the wire. While paused, `a` is the frozen position in milliseconds and
-// `p` says which reading applies.
+import { isArray, isRecord } from "./unknown";
 
 export const RELAY_URL = "wss://ytmdesktopplus.com/relay";
 export const SHARE_URL_BASE = "https://ytmdesktopplus.com/r/";
@@ -19,9 +12,12 @@ export type RoomRole = typeof ROLE_LISTENER | typeof ROLE_CONTROLLER;
 export const CONTROL_ACTIONS = ["next", "prev", "play", "pause", "seek", "track"] as const;
 export type ControlAction = (typeof CONTROL_ACTIONS)[number];
 
+export function isControlAction(value: unknown): value is ControlAction {
+  return CONTROL_ACTIONS.some((action) => action === value);
+}
+
 export const MAX_DISPLAY_NAME_LENGTH = 24;
 
-// No i, l, o, 0 or 1: room codes get read aloud and retyped.
 export const ROOM_ID_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 const ROOM_ID_PATTERN = new RegExp(`^[${ROOM_ID_ALPHABET}]{8}$`);
 const MEMBER_ID_PATTERN = new RegExp(`^[${ROOM_ID_ALPHABET}]{6}$`);
@@ -36,15 +32,12 @@ export function isRoomId(value: unknown): value is string {
 
 export function sanitizeDisplayName(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
-  const cleaned = [...value]
-    .filter(ch => {
-      const code = ch.codePointAt(0) ?? 0;
-      return code > 31 && code !== 127;
-    })
-    .join("")
-    .trim()
-    .slice(0, MAX_DISPLAY_NAME_LENGTH)
-    .trim();
+  let filtered = "";
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code > 31 && code !== 127) filtered += character;
+  }
+  const cleaned = filtered.trim().slice(0, MAX_DISPLAY_NAME_LENGTH).trim();
   return cleaned.length > 0 ? cleaned : undefined;
 }
 
@@ -80,35 +73,31 @@ function isRole(value: unknown): value is RoomRole {
   return value === ROLE_LISTENER || value === ROLE_CONTROLLER;
 }
 
-// The relay is not trusted blindly: frames are validated the same way the
-// relay validates ours.
 export function parseServerFrame(raw: string): RoomServerFrame | null {
   if (raw.length > MAX_SERVER_FRAME_BYTES) return null;
 
-  let value: unknown;
+  let frame: unknown;
   try {
-    value = JSON.parse(raw);
+    frame = JSON.parse(raw);
   } catch {
     return null;
   }
-  if (typeof value !== "object" || value === null) return null;
-
-  const frame = value as Record<string, unknown>;
+  if (!isRecord(frame)) return null;
   switch (frame.t) {
     case "r": {
       if (!isRoomId(frame.r)) return null;
-      if (frame.k !== undefined && !HOST_KEY_PATTERN.test(String(frame.k))) return null;
+      if (frame.k !== undefined && (typeof frame.k !== "string" || !HOST_KEY_PATTERN.test(frame.k))) return null;
       if (typeof frame.u !== "string" || !MEMBER_ID_PATTERN.test(frame.u)) return null;
       if (!isRole(frame.role) || !isFiniteNumber(frame.n) || !isFiniteNumber(frame.c)) return null;
       if (frame.v !== undefined && !isFiniteNumber(frame.v)) return null;
       const ready: Extract<RoomServerFrame, { t: "r" }> = {
         t: "r",
         r: frame.r,
-        k: frame.k as string | undefined,
+        k: frame.k,
         u: frame.u,
         role: frame.role,
         n: frame.n,
-        c: frame.c
+        c: frame.c,
       };
       if (isFiniteNumber(frame.v)) ready.v = frame.v;
       return ready;
@@ -120,12 +109,11 @@ export function parseServerFrame(raw: string): RoomServerFrame | null {
       return { t: "s", v: frame.v, a: frame.a, p: frame.p, c: frame.c };
     }
     case "m": {
-      if (!Array.isArray(frame.members)) return null;
+      if (!isArray(frame.members)) return null;
       if (frame.h !== undefined && typeof frame.h !== "string") return null;
       const members: RoomMember[] = [];
-      for (const entry of frame.members) {
-        if (typeof entry !== "object" || entry === null) return null;
-        const raw = entry as Record<string, unknown>;
+      for (const raw of frame.members) {
+        if (!isRecord(raw)) return null;
         if (typeof raw.u !== "string" || !MEMBER_ID_PATTERN.test(raw.u)) return null;
         if (!isRole(raw.r)) return null;
         if (raw.d !== undefined && typeof raw.d !== "string") return null;
@@ -142,9 +130,9 @@ export function parseServerFrame(raw: string): RoomServerFrame | null {
       return { t: "role", r: frame.r };
     }
     case "c": {
-      if (typeof frame.a !== "string" || !CONTROL_ACTIONS.includes(frame.a as ControlAction)) return null;
+      if (!isControlAction(frame.a)) return null;
       if (typeof frame.u !== "string" || !MEMBER_ID_PATTERN.test(frame.u)) return null;
-      const action = frame.a as ControlAction;
+      const action = frame.a;
       if (action === "seek") {
         if (!isFiniteNumber(frame.m) || frame.m < 0) return null;
         return { t: "c", a: action, m: frame.m, u: frame.u };
@@ -168,7 +156,6 @@ export function parseServerFrame(raw: string): RoomServerFrame | null {
   }
 }
 
-// Mirrors the relay's send gate: a steady-playing track produces no frames.
 export function isMeaningfulChange(previous: RoomStateFrame | null, next: RoomStateFrame, toleranceMs = 1500) {
   if (!previous) return true;
   if (previous.v !== next.v || previous.p !== next.p) return true;
@@ -180,8 +167,8 @@ export function positionMsFrom(frame: { a: number; p: 0 | 1 }, nowMs: number, cl
   return Math.max(0, nowMs + clockOffsetMs - frame.a);
 }
 
-export function anchorFrameFrom(videoId: string, progressSeconds: number, playing: boolean, nowMs: number): RoomStateFrame {
-  if (playing) return { t: "s", v: videoId, a: nowMs - progressSeconds * 1000, p: 1 };
+export function anchorFrameFrom(videoId: string, progressSeconds: number, isPlaying: boolean, nowMs: number): RoomStateFrame {
+  if (isPlaying) return { t: "s", v: videoId, a: nowMs - progressSeconds * 1000, p: 1 };
   return { t: "s", v: videoId, a: progressSeconds * 1000, p: 0 };
 }
 
@@ -194,7 +181,7 @@ export class ClockOffsetEstimator {
   add(serverMs: number, sentAtMs: number, receivedAtMs: number) {
     const rttMs = Math.max(0, receivedAtMs - sentAtMs);
     const offsetMs = serverMs - (sentAtMs + receivedAtMs) / 2;
-    const fresh = this.samples.filter(sample => receivedAtMs - sample.atMs <= CLOCK_SAMPLE_MAX_AGE_MS);
+    const fresh = this.samples.filter((sample) => receivedAtMs - sample.atMs <= CLOCK_SAMPLE_MAX_AGE_MS);
     this.samples = [...fresh, { offsetMs, rttMs, atMs: receivedAtMs }].slice(-CLOCK_SAMPLES);
   }
 
@@ -211,7 +198,6 @@ export class ClockOffsetEstimator {
   }
 }
 
-// The relay closes the socket right after these; anything else leaves it open.
 const FATAL_RELAY_ERRORS = new Set(["too many connections", "server busy", "no such room", "room full", "room unavailable", "room closed"]);
 
 export function isFatalRelayError(message: string) {
@@ -228,7 +214,6 @@ export function relayUrlFor(roomId: string | null) {
   return roomId ? `${RELAY_URL}?${RELAY_ROOM_QUERY}=${encodeURIComponent(roomId)}` : RELAY_URL;
 }
 
-// View model the main process publishes for the room UI.
 export type RoomPhase = "idle" | "connecting" | "hosting" | "listening" | "failed";
 
 export type RoomMemberView = { id: string; name: string | null; role: RoomRole };
@@ -248,20 +233,16 @@ export type RoomSnapshot = {
   error: string | null;
   syncStatus: "loading" | "synced" | "suspended" | null;
   syncDetail: string | null;
-  // Live audio for browser listeners, host side only.
+
   audioStreaming: boolean;
   webListenerCount: number;
   audioIssue: AudioIssue | null;
 };
 
-export function isRoomLive(snapshot: RoomSnapshot | null): boolean {
+export function isRoomLive(snapshot: RoomSnapshot | null): snapshot is RoomSnapshot & { phase: "hosting" | "listening" } {
   return snapshot?.phase === "hosting" || snapshot?.phase === "listening";
 }
 
-// Everyone in the room except you, which is what an at-a-glance indicator is
-// asking about. The relay counts room members, which excludes the host and
-// includes you when you are a listener, so for a listener swapping yourself
-// for the host cancels out. Browser listeners are counted host side only.
 export function otherListenerCount(snapshot: RoomSnapshot | null): number {
   if (!isRoomLive(snapshot)) return 0;
   return snapshot.listenerCount + snapshot.webListenerCount;

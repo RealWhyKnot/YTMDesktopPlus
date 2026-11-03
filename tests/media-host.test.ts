@@ -1,33 +1,34 @@
+import { fakeMessagePort } from "./helpers/fake-message-port";
+import { requireValue } from "./helpers/require-value";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import type { MessagePortMain } from "electron";
 import { MediaHost, serveMediaScheme, type MediaHostWindow } from "../src/main/media/media-host";
 
 function fakePort(name: string) {
-  return { name, close: vi.fn() } as unknown as MessagePortMain & { name: string; close: ReturnType<typeof vi.fn> };
+  return Object.assign(fakeMessagePort(), { name });
 }
 
 function fakeWindow() {
   const handlers = new Map<string, () => void>();
   const posted: { channel: string; ports: unknown[] }[] = [];
-  let destroyed = false;
+  let isDestroyed = false;
   const window: MediaHostWindow = {
-    isDestroyed: () => destroyed,
+    isDestroyed: () => isDestroyed,
     destroy: () => {
-      destroyed = true;
+      isDestroyed = true;
     },
     webContents: {
       postMessage: (channel, _message, ports) => posted.push({ channel, ports: ports ?? [] }),
       once: (event, listener) => handlers.set(event, listener),
-      on: (event, listener) => handlers.set(event, listener)
-    }
+      on: (event, listener) => handlers.set(event, listener),
+    },
   };
-  return { window, posted, fire: (event: string) => handlers.get(event)?.(), isDestroyed: () => destroyed };
+  return { window, posted, fire: (event: string) => handlers.get(event)?.(), isDestroyed: () => isDestroyed };
 }
 
 function host() {
   const windows: ReturnType<typeof fakeWindow>[] = [];
-  const channels: { port1: MessagePortMain; port2: MessagePortMain }[] = [];
+  const channels: { port1: ReturnType<typeof fakePort>; port2: ReturnType<typeof fakePort> }[] = [];
   const mediaHost = new MediaHost(() => {
     const channel = { port1: fakePort(`host end ${channels.length}`), port2: fakePort(`uplink end ${channels.length}`) };
     channels.push(channel);
@@ -58,10 +59,10 @@ describe("media host", () => {
     const port = fakePort("page");
 
     mediaHost.acceptPagePort(port);
-    expect(windows[0].posted).toEqual([]);
+    expect(requireValue(windows[0]).posted).toEqual([]);
 
-    windows[0].fire("did-finish-load");
-    expect(windows[0].posted).toEqual([{ channel: "mediaHost:capturePort", ports: [port] }]);
+    requireValue(windows[0]).fire("did-finish-load");
+    expect(requireValue(windows[0]).posted).toEqual([{ channel: "mediaHost:capturePort", ports: [port] }]);
   });
 
   it("keeps only the newest channel while waiting, closing the one it replaces", () => {
@@ -72,10 +73,10 @@ describe("media host", () => {
 
     mediaHost.acceptPagePort(first);
     mediaHost.acceptPagePort(second);
-    windows[0].fire("did-finish-load");
+    requireValue(windows[0]).fire("did-finish-load");
 
     expect(first.close).toHaveBeenCalled();
-    expect(windows[0].posted.map(entry => entry.ports)).toEqual([[second]]);
+    expect(requireValue(windows[0]).posted.map((entry) => entry.ports)).toEqual([[second]]);
   });
 
   it("closes a channel that arrives while no capture is running", () => {
@@ -94,11 +95,11 @@ describe("media host", () => {
     mediaHost.start(consumer);
     expect(channels).toHaveLength(0);
 
-    windows[0].fire("did-finish-load");
+    requireValue(windows[0]).fire("did-finish-load");
 
     expect(channels).toHaveLength(1);
-    expect(windows[0].posted).toEqual([{ channel: "mediaHost:uplinkPort", ports: [channels[0].port1] }]);
-    expect(uplink).toHaveBeenCalledWith(channels[0].port2);
+    expect(requireValue(windows[0]).posted).toEqual([{ channel: "mediaHost:uplinkPort", ports: [requireValue(channels[0]).port1] }]);
+    expect(uplink).toHaveBeenCalledWith(requireValue(channels[0]).port2);
   });
 
   it("pairs again for a restarted uplink and for a new window", () => {
@@ -106,27 +107,27 @@ describe("media host", () => {
     const first = vi.fn();
     const second = vi.fn();
     mediaHost.start(consumer);
-    windows[0].fire("did-finish-load");
+    requireValue(windows[0]).fire("did-finish-load");
     mediaHost.connectUplink(first);
 
     mediaHost.connectUplink(second);
-    expect(second).toHaveBeenCalledWith(channels[1].port2);
-    expect(windows[0].posted.map(entry => entry.ports)).toEqual([[channels[0].port1], [channels[1].port1]]);
+    expect(second).toHaveBeenCalledWith(requireValue(channels[1]).port2);
+    expect(requireValue(windows[0]).posted.map((entry) => entry.ports)).toEqual([[requireValue(channels[0]).port1], [requireValue(channels[1]).port1]]);
 
     mediaHost.stop();
     mediaHost.start(consumer);
-    windows[1].fire("did-finish-load");
+    requireValue(windows[1]).fire("did-finish-load");
 
     expect(channels).toHaveLength(3);
-    expect(windows[1].posted).toEqual([{ channel: "mediaHost:uplinkPort", ports: [channels[2].port1] }]);
-    expect(second).toHaveBeenLastCalledWith(channels[2].port2);
+    expect(requireValue(windows[1]).posted).toEqual([{ channel: "mediaHost:uplinkPort", ports: [requireValue(channels[2]).port1] }]);
+    expect(second).toHaveBeenLastCalledWith(requireValue(channels[2]).port2);
     expect(first).toHaveBeenCalledTimes(1);
   });
 
   it("opens no channel before an uplink connects or while no window is up", () => {
     const { mediaHost, windows, channels, consumer } = host();
     mediaHost.start(consumer);
-    windows[0].fire("did-finish-load");
+    requireValue(windows[0]).fire("did-finish-load");
     mediaHost.stop();
 
     mediaHost.connectUplink(vi.fn());
@@ -138,7 +139,7 @@ describe("media host", () => {
     const { mediaHost, windows, consumer } = host();
     mediaHost.start(consumer);
 
-    windows[0].fire("render-process-gone");
+    requireValue(windows[0]).fire("render-process-gone");
 
     expect(consumer.onStatus).toHaveBeenCalledWith({ error: "media host renderer gone" });
   });
@@ -150,9 +151,9 @@ describe("media host", () => {
     mediaHost.acceptPagePort(waiting);
 
     mediaHost.stop();
-    windows[0].fire("render-process-gone");
+    requireValue(windows[0]).fire("render-process-gone");
 
-    expect(windows[0].isDestroyed()).toBe(true);
+    expect(requireValue(windows[0]).isDestroyed()).toBe(true);
     expect(waiting.close).toHaveBeenCalled();
     expect(consumer.onStatus).not.toHaveBeenCalled();
   });
@@ -160,10 +161,10 @@ describe("media host", () => {
 
 describe("media scheme", () => {
   it("serves the capture worklet at the address the page script loads", async () => {
-    const enableSource = readFileSync("src/addons/bundled/rooms/scripts/audiocapture-enable.script.js", "utf8");
+    const enableSource = readFileSync("src/addons/bundled/rooms/scripts/audiocapture-enable.script.ts", "utf8");
     const address = /addModule\("([^"]+)"\)/.exec(enableSource)?.[1];
 
-    const response = serveMediaScheme({ url: address! });
+    const response = serveMediaScheme({ url: requireValue(address) });
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("text/javascript");

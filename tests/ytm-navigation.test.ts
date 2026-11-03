@@ -5,7 +5,7 @@ import {
   isPremiumRequiredRedirect,
   isYtmOrigin,
   urlIsGoogleAccountsDomain,
-  YTM_SIGN_IN_ORIGINS
+  YTM_SIGN_IN_ORIGINS,
 } from "../src/main/ytm-navigation";
 
 const SUPPORTED_SAMPLE = [
@@ -18,7 +18,7 @@ const SUPPORTED_SAMPLE = [
   "google.co.in",
   "google.cat",
   "google.rs",
-  "google.co.za"
+  "google.co.za",
 ];
 
 describe("classifyYtmNavigation", () => {
@@ -33,7 +33,7 @@ describe("classifyYtmNavigation", () => {
       "https://www.youtube.com/premium",
       "https://youtube.com/musicpremium",
       "https://www.youtube.com/signin_prompt",
-      "https://MUSIC.YouTube.COM/library"
+      "https://MUSIC.YouTube.COM/library",
     ]) {
       expect(classifyYtmNavigation(url), url).toBe("allow");
     }
@@ -51,7 +51,7 @@ describe("classifyYtmNavigation", () => {
       "https://youtube.com/channel/UC123",
       "https://support.google.com/youtubemusic",
       "https://google.com/",
-      "https://policies.google.com/privacy"
+      "https://policies.google.com/privacy",
     ]) {
       expect(classifyYtmNavigation(url), url).toBe("openExternal");
     }
@@ -71,7 +71,7 @@ describe("classifyYtmNavigation", () => {
       "https://youtube.com./watch",
       "https://xn--yutube-wqf.com/",
       "https://yоutube.com/",
-      "https://music.yоutube.com/"
+      "https://music.yоutube.com/",
     ]) {
       expect(classifyYtmNavigation(url), url).toBe("block");
     }
@@ -88,7 +88,7 @@ describe("classifyYtmNavigation", () => {
       "http://music.youtube.com/",
       "http://www.youtube.com/watch?v=abc",
       "ftp://youtube.com/",
-      "about:blank"
+      "about:blank",
     ]) {
       expect(classifyYtmNavigation(url), url).toBe("block");
     }
@@ -130,7 +130,7 @@ describe("urlIsGoogleAccountsDomain", () => {
       "https://accounts.google.example/",
       "https://accounts.google.com./",
       "http://accounts.google.com/",
-      "https://accounts.google.com@evil.com/"
+      "https://accounts.google.com@evil.com/",
     ]) {
       expect(urlIsGoogleAccountsDomain(new URL(url)), url).toBe(false);
     }
@@ -152,7 +152,7 @@ describe("canOpenExternally", () => {
       "https://fakeyoutube.com/",
       "https://youtube.com@evil.com/",
       "https://google.co.uk/",
-      "garbage"
+      "garbage",
     ]) {
       expect(canOpenExternally(url), url).toBe(false);
     }

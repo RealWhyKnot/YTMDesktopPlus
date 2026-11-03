@@ -1,16 +1,33 @@
+import { isArray, isRecord } from "../src/shared/unknown";
+import { callMethod } from "./helpers/call-method";
+import { requireValue } from "./helpers/require-value";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ElectronBlocker, Request } from "@ghostery/adblocker-electron";
+import { BlockingContext, ElectronBlocker, Request } from "@ghostery/adblocker-electron";
 import type { RequestType } from "@ghostery/adblocker-electron";
 import { CACHE_MAX_AGE_MS, ENGINE_CONFIG, isCacheStale, LEGACY_CACHE_FILES } from "../src/main/integrations/ad-blocker/cache";
 import { installAdPrune } from "../src/renderer/ytmview/ad-prune";
 import { AD_PRUNE_CONTRACT } from "../src/shared/ad-contract";
-import AdBlocker, { ENGINE_RETRY_MS } from "../src/main/integrations/ad-blocker";
-import type { BrowserView, Session } from "electron";
+import { AdBlocker, ENGINE_RETRY_MS } from "../src/main/integrations/ad-blocker";
+import type { Session } from "electron";
 import { makeTempDir } from "./helpers/temp-dir";
 
 const NOW = 1_770_000_000_000;
+
+function adPage(): Record<string, unknown> {
+  const page: unknown = Reflect.get(globalThis, "window");
+  if (!isRecord(page)) throw new Error("Missing ad test page");
+  return page;
+}
+
+function pruneState(): { count: number; unknown: string[] } {
+  const state = adPage().__ytmdAdPrune;
+  if (!isRecord(state) || typeof state.count !== "number" || !isArray(state.unknown) || !state.unknown.every((key) => typeof key === "string")) {
+    throw new Error("Invalid ad pruning state");
+  }
+  return { count: state.count, unknown: state.unknown };
+}
 
 describe("isCacheStale", () => {
   it("keeps a cache written moments ago", () => {
@@ -26,15 +43,11 @@ describe("isCacheStale", () => {
   });
 
   it("drops a cache stamped in the future", () => {
-    // A machine whose clock jumped back would otherwise sit on the same lists
-    // until the date caught up.
     expect(isCacheStale(NOW + 60_000, NOW)).toBe(true);
   });
 });
 
 describe("LEGACY_CACHE_FILES", () => {
-  // A serialized engine carries the options it was built with, so reading one of
-  // these back would quietly restore cosmetic filtering.
   it("names the cosmetic-era engine so it gets deleted rather than read", () => {
     expect(LEGACY_CACHE_FILES).toContain("adblocker-engine.bin");
   });
@@ -46,12 +59,9 @@ describe("LEGACY_CACHE_FILES", () => {
 
 describe("installAdPrune", () => {
   const nativeParse = JSON.parse;
-  let events: Array<[string, unknown]>;
+  let events: [string, unknown][];
   let misses: string[];
 
-  // The measured shape of a real break on music.youtube.com: the ad arrives in
-  // adSlots while adPlacements is empty, so a fixture that only carries
-  // adPlacements would pass against a prune that cannot work.
   const playerResponse = (): Record<string, unknown> => ({
     playabilityStatus: { status: "OK" },
     streamingData: { formats: [{ itag: 251 }] },
@@ -59,56 +69,56 @@ describe("installAdPrune", () => {
     adSlots: [
       { slotType: "SLOT_TYPE_PLAYER_BYTES", slotRenderer: { playerBytesAdLayoutRenderer: {} } },
       { slotType: "SLOT_TYPE_IN_PLAYER", slotRenderer: { inPlayerAdLayoutRenderer: {} } },
-      { slotType: "SLOT_TYPE_IN_PLAYER", slotRenderer: { inPlayerAdLayoutRenderer: {} } }
+      { slotType: "SLOT_TYPE_IN_PLAYER", slotRenderer: { inPlayerAdLayoutRenderer: {} } },
     ],
     playerAds: [{ playerLegacyDesktopWatchAdsRenderer: {} }],
-    videoDetails: { videoId: "dQw4w9WgXcQ" }
+    videoDetails: { videoId: "dQw4w9WgXcQ" },
   });
 
   beforeEach(() => {
     events = [];
     misses = [];
-    (globalThis as { window?: unknown }).window = {
+    vi.stubGlobal("window", {
       ytmd: {
         sendAdBlockEvent: (kind: string, detail: unknown) => events.push([kind, detail]),
-        reportContractMiss: (what: string) => misses.push(what)
-      }
-    };
+        reportContractMiss: (what: string) => misses.push(what),
+      },
+    });
   });
 
   afterEach(() => {
     JSON.parse = nativeParse;
-    delete (globalThis as { window?: unknown }).window;
+    vi.unstubAllGlobals();
   });
 
   it("takes the ad keys out of a player response", () => {
     installAdPrune(true, AD_PRUNE_CONTRACT);
 
-    const parsed = JSON.parse(JSON.stringify(playerResponse()));
+    const parsed: unknown = JSON.parse(JSON.stringify(playerResponse()));
 
     expect(parsed).not.toHaveProperty("adSlots");
     expect(parsed).not.toHaveProperty("playerAds");
     expect(parsed).not.toHaveProperty("adPlacements");
-    expect(parsed.videoDetails).toEqual({ videoId: "dQw4w9WgXcQ" });
-    expect(parsed.streamingData).toEqual({ formats: [{ itag: 251 }] });
+    expect(parsed).toHaveProperty("videoDetails", { videoId: "dQw4w9WgXcQ" });
+    expect(parsed).toHaveProperty("streamingData", { formats: [{ itag: 251 }] });
   });
 
   it("takes them out of a nested playerResponse too", () => {
     installAdPrune(true, AD_PRUNE_CONTRACT);
 
-    const parsed = JSON.parse(JSON.stringify({ playerResponse: playerResponse() }));
+    const parsed: unknown = JSON.parse(JSON.stringify({ playerResponse: playerResponse() }));
 
-    expect(parsed.playerResponse).not.toHaveProperty("adSlots");
-    expect(parsed.playerResponse.videoDetails).toEqual({ videoId: "dQw4w9WgXcQ" });
+    expect(parsed).not.toHaveProperty("playerResponse.adSlots");
+    expect(parsed).toHaveProperty("playerResponse.videoDetails", { videoId: "dQw4w9WgXcQ" });
   });
 
   it("leaves a payload with no ad keys exactly as it was", () => {
     installAdPrune(true, AD_PRUNE_CONTRACT);
 
-    const payload = { contents: { rows: [1, 2, 3] }, header: null as null };
+    const payload = { contents: { rows: [1, 2, 3] }, header: null };
 
     expect(JSON.parse(JSON.stringify(payload))).toEqual(payload);
-    expect((globalThis as unknown as { window: { __ytmdAdPrune: { count: number } } }).window.__ytmdAdPrune.count).toBe(0);
+    expect(pruneState().count).toBe(0);
   });
 
   it("prunes nothing while the setting is off", () => {
@@ -127,7 +137,7 @@ describe("installAdPrune", () => {
   it("keeps the reviver working", () => {
     installAdPrune(true, AD_PRUNE_CONTRACT);
 
-    const parsed = JSON.parse('{"a":1,"b":2}', (key, value) => (typeof value === "number" ? value * 10 : value));
+    const parsed: unknown = JSON.parse('{"a":1,"b":2}', (_key: string, value: unknown) => (typeof value === "number" ? value * 10 : value));
 
     expect(parsed).toEqual({ a: 10, b: 20 });
   });
@@ -136,7 +146,7 @@ describe("installAdPrune", () => {
     installAdPrune(true, AD_PRUNE_CONTRACT);
 
     const frozen = Object.freeze({ adPlacements: [], adSlots: [{}] });
-    const parsed = JSON.parse("{}", () => frozen);
+    const parsed: unknown = JSON.parse("{}", () => frozen);
 
     expect(parsed).toBe(frozen);
     expect(parsed).toHaveProperty("adSlots");
@@ -149,7 +159,7 @@ describe("installAdPrune", () => {
     JSON.parse(JSON.stringify(playerResponse()));
 
     expect(events).toEqual([["pruned", ["adPlacements", "adSlots", "playerAds"]]]);
-    expect((globalThis as unknown as { window: { __ytmdAdPrune: { count: number } } }).window.__ytmdAdPrune.count).toBe(2);
+    expect(pruneState().count).toBe(2);
   });
 
   it("does not wrap JSON.parse twice", () => {
@@ -163,16 +173,20 @@ describe("installAdPrune", () => {
   it("prunes the root and one playerResponse below it, no deeper", () => {
     installAdPrune(true, AD_PRUNE_CONTRACT);
 
-    const parsed = JSON.parse(JSON.stringify({ response: { playerResponse: playerResponse() }, playerResponse: { playerResponse: playerResponse() } }));
+    const parsed: unknown = JSON.parse(
+      JSON.stringify({ response: { playerResponse: playerResponse() }, playerResponse: { playerResponse: playerResponse() } })
+    );
 
-    expect(parsed.response.playerResponse).toHaveProperty("adSlots");
-    expect(parsed.playerResponse.playerResponse).toHaveProperty("adSlots");
+    expect(parsed).toHaveProperty("response.playerResponse.adSlots");
+    expect(parsed).toHaveProperty("playerResponse.playerResponse.adSlots");
   });
 
   it("lets a parse error through rather than swallowing it", () => {
     installAdPrune(true, AD_PRUNE_CONTRACT);
 
-    expect(() => JSON.parse("{not json")).toThrow();
+    expect(() => {
+      JSON.parse("{not json");
+    }).toThrow();
   });
 
   it("hands back results that are not plain objects untouched", () => {
@@ -188,38 +202,35 @@ describe("installAdPrune", () => {
 describe("ad key drift", () => {
   const nativeParse = JSON.parse;
   let misses: string[];
-  let events: Array<[string, unknown]>;
-
-  const pruneState = (): { count: number; unknown: string[] } =>
-    (globalThis as unknown as { window: { __ytmdAdPrune: { count: number; unknown: string[] } } }).window.__ytmdAdPrune;
+  let events: [string, unknown][];
 
   const known = (): Record<string, unknown> => ({
     adPlacements: [],
     adSlots: [{ slotType: "SLOT_TYPE_PLAYER_BYTES" }],
-    playerAds: [{ playerLegacyDesktopWatchAdsRenderer: {} }]
+    playerAds: [{ playerLegacyDesktopWatchAdsRenderer: {} }],
   });
 
   const response = (extra: Record<string, unknown> = {}): Record<string, unknown> => ({
     playabilityStatus: { status: "OK" },
     streamingData: { formats: [{ itag: 251 }], adaptiveFormats: [{ itag: 140 }] },
     videoDetails: { videoId: "dQw4w9WgXcQ" },
-    ...extra
+    ...extra,
   });
 
   beforeEach(() => {
     misses = [];
     events = [];
-    (globalThis as { window?: unknown }).window = {
+    vi.stubGlobal("window", {
       ytmd: {
         sendAdBlockEvent: (kind: string, detail: unknown) => events.push([kind, detail]),
-        reportContractMiss: (what: string) => misses.push(what)
-      }
-    };
+        reportContractMiss: (what: string) => misses.push(what),
+      },
+    });
   });
 
   afterEach(() => {
     JSON.parse = nativeParse;
-    delete (globalThis as { window?: unknown }).window;
+    vi.unstubAllGlobals();
   });
 
   it("names an ad key it does not recognise", () => {
@@ -298,13 +309,15 @@ describe("ad key drift", () => {
   });
 
   it("still records the prune when the drift report throws", () => {
-    (globalThis as unknown as { window: { ytmd: { reportContractMiss: () => void } } }).window.ytmd.reportContractMiss = () => {
+    const page = adPage();
+    if (!isRecord(page.ytmd)) throw new Error("Missing page bridge");
+    page.ytmd.reportContractMiss = () => {
       throw new Error("ipc unavailable");
     };
 
     installAdPrune(true, AD_PRUNE_CONTRACT);
 
-    const parsed = JSON.parse(JSON.stringify(response({ ...known(), adBreaks: [{}] })));
+    const parsed: unknown = JSON.parse(JSON.stringify(response({ ...known(), adBreaks: [{}] })));
 
     expect(parsed).not.toHaveProperty("adSlots");
     expect(events).toEqual([["pruned", ["adPlacements", "adSlots", "playerAds"]]]);
@@ -350,8 +363,8 @@ describe("engine options", () => {
 
 describe("ad skip injection", () => {
   const build = () => {
-    const sends: Array<unknown[]> = [];
-    const view = { webContents: { send: (...args: unknown[]) => sends.push(args), isDestroyed: () => false } } as unknown as BrowserView;
+    const sends: unknown[][] = [];
+    const view = { webContents: { send: (...args: unknown[]) => sends.push(args), isDestroyed: () => false } };
     return { blocker: new AdBlocker(), view, sends };
   };
 
@@ -359,7 +372,7 @@ describe("ad skip injection", () => {
     const { blocker, view, sends } = build();
 
     blocker.enable();
-    blocker.provideView(view);
+    callMethod(blocker, "provideView", view);
 
     expect(sends).toEqual([]);
 
@@ -369,12 +382,10 @@ describe("ad skip injection", () => {
   });
 
   it("injects again for the next document the view loads", () => {
-    // Signing in navigates the view away and back, which leaves a fresh main
-    // world with nothing in it.
     const { blocker, view, sends } = build();
 
     blocker.enable();
-    blocker.provideView(view);
+    callMethod(blocker, "provideView", view);
     blocker.ytmViewLoaded();
     blocker.ytmViewLoaded();
 
@@ -385,7 +396,7 @@ describe("ad skip injection", () => {
     const { blocker, view, sends } = build();
 
     blocker.enable();
-    blocker.provideView(view);
+    callMethod(blocker, "provideView", view);
     blocker.ytmViewLoaded();
     blocker.disable();
 
@@ -395,7 +406,7 @@ describe("ad skip injection", () => {
   it("injects nothing while the setting is off", () => {
     const { blocker, view, sends } = build();
 
-    blocker.provideView(view);
+    callMethod(blocker, "provideView", view);
     blocker.ytmViewLoaded();
     blocker.disable();
 
@@ -403,14 +414,12 @@ describe("ad skip injection", () => {
   });
 
   it("stays quiet when the window took the view down with it", () => {
-    // A destroyed window leaves webContents undefined rather than destroyed,
-    // and reading through it is what crashed the app on every native close.
     const { blocker, view } = build();
 
     blocker.enable();
-    blocker.provideView(view);
+    callMethod(blocker, "provideView", view);
     blocker.ytmViewLoaded();
-    (view as unknown as { webContents: unknown }).webContents = undefined;
+    Reflect.set(view, "webContents", undefined);
 
     expect(() => blocker.disable()).not.toThrow();
   });
@@ -418,27 +427,27 @@ describe("ad skip injection", () => {
   it("stays quiet when the view is destroyed", () => {
     const { blocker, view, sends } = build();
 
-    blocker.provideView(view);
+    callMethod(blocker, "provideView", view);
     blocker.ytmViewLoaded();
-    (view.webContents as unknown as { isDestroyed: () => boolean }).isDestroyed = () => true;
+    view.webContents.isDestroyed = () => true;
     blocker.enable();
 
     expect(sends).toEqual([]);
   });
 
   it("serves both scripts to the page", () => {
-    expect(new AdBlocker().getYTMScripts().map(entry => entry.name)).toEqual(["enable", "disable"]);
+    expect(new AdBlocker().getYTMScripts().map((entry) => entry.name)).toEqual(["enable", "disable"]);
   });
 });
 
 describe("filter engine without a network", () => {
-  const STALE_FILTER = "||stale-ads.example^";
-  const FRESH_FILTER = "||fresh-ads.example^";
+  const staleFilter = "||stale-ads.example^";
+  const freshFilter = "||fresh-ads.example^";
   let enabledIn: Map<ElectronBlocker, Set<unknown>>;
   let made: AdBlocker[];
 
   const blocks = (engine: ElectronBlocker | null, host: string): boolean =>
-    engine !== null && engine.match(Request.fromRawDetails({ url: `https://${host}/ad.js`, type: "script", sourceUrl: "https://music.youtube.com/" })).match;
+    engine?.match(Request.fromRawDetails({ url: `https://${host}/ad.js`, type: "script", sourceUrl: "https://music.youtube.com/" })).match ?? false;
 
   const activeEngine = (): ElectronBlocker | null => {
     for (const [engine, sessions] of enabledIn) if (sessions.size > 0) return engine;
@@ -452,17 +461,18 @@ describe("filter engine without a network", () => {
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 0, 1));
     enabledIn = new Map();
     made = [];
     vi.spyOn(ElectronBlocker.prototype, "enableBlockingInSession").mockImplementation(function (this: ElectronBlocker, session: Session) {
-      sessionsOf(this).add(session);
-      return undefined as never;
+      requireValue(sessionsOf(this)).add(session);
+      return new BlockingContext(session, this);
     });
     vi.spyOn(ElectronBlocker.prototype, "disableBlockingInSession").mockImplementation(function (this: ElectronBlocker, session: Session) {
-      sessionsOf(this).delete(session);
+      requireValue(sessionsOf(this)).delete(session);
     });
     vi.spyOn(ElectronBlocker.prototype, "isBlockingEnabled").mockImplementation(function (this: ElectronBlocker, session: Session) {
-      return sessionsOf(this).has(session);
+      return requireValue(sessionsOf(this)).has(session);
     });
   });
 
@@ -481,68 +491,69 @@ describe("filter engine without a network", () => {
     return cachePath;
   };
 
-  const until = async (check: () => boolean) => {
-    for (let i = 0; i < 5000 && !check(); i++) await new Promise(resolve => setImmediate(resolve));
-    expect(check()).toBe(true);
-  };
-
-  const settle = async () => {
-    for (let i = 0; i < 50; i++) await new Promise(resolve => setImmediate(resolve));
+  const settle = async (blocker: AdBlocker) => {
+    const loading: unknown = Reflect.get(blocker, "loading");
+    if (loading instanceof Promise) await loading;
+    const refreshing: unknown = Reflect.get(blocker, "refreshing");
+    if (refreshing instanceof Promise) await refreshing;
   };
 
   const start = (cachePath: string) => {
     const blocker = new AdBlocker();
     made.push(blocker);
-    blocker.provide({} as Session, cachePath);
+    callMethod(blocker, "provide", {}, cachePath);
     blocker.enable();
     return blocker;
   };
 
   it("keeps using a stale cache when the download fails, then swaps in fresh lists", async () => {
-    const cachePath = writeCache(STALE_FILTER, CACHE_MAX_AGE_MS + 60_000);
+    const cachePath = writeCache(staleFilter, CACHE_MAX_AGE_MS + 60_000);
     const fromLists = vi.spyOn(ElectronBlocker, "fromLists").mockRejectedValue(new TypeError("fetch failed"));
-    start(cachePath);
-    await until(() => activeEngine() !== null);
+    const blocker = start(cachePath);
+    await settle(blocker);
+    expect(activeEngine()).not.toBeNull();
 
     expect(fs.existsSync(cachePath)).toBe(true);
     expect(blocks(activeEngine(), "stale-ads.example")).toBe(true);
 
     await vi.advanceTimersByTimeAsync(ENGINE_RETRY_MS);
-    await until(() => fromLists.mock.calls.length === 2);
-    await settle();
+    await settle(blocker);
+    expect(fromLists).toHaveBeenCalledTimes(2);
     expect(blocks(activeEngine(), "stale-ads.example")).toBe(true);
 
-    fromLists.mockResolvedValue(ElectronBlocker.parse(FRESH_FILTER, ENGINE_CONFIG));
+    fromLists.mockResolvedValue(ElectronBlocker.parse(freshFilter, ENGINE_CONFIG));
     await vi.advanceTimersByTimeAsync(ENGINE_RETRY_MS);
-    await until(() => blocks(activeEngine(), "fresh-ads.example"));
+    await settle(blocker);
+    expect(blocks(activeEngine(), "fresh-ads.example")).toBe(true);
 
-    expect([...enabledIn.values()].filter(sessions => sessions.size > 0)).toHaveLength(1);
+    expect([...enabledIn.values()].filter((sessions) => sessions.size > 0)).toHaveLength(1);
     expect(blocks(ElectronBlocker.deserialize(fs.readFileSync(cachePath)), "fresh-ads.example")).toBe(true);
   });
 
   it("starts blocking once a later retry succeeds when there was no cache", async () => {
     const cachePath = path.join(makeTempDir("ytmd-adblock-"), "adblocker-engine-network.bin");
     const fromLists = vi.spyOn(ElectronBlocker, "fromLists").mockRejectedValue(new TypeError("fetch failed"));
-    start(cachePath);
-    await until(() => fromLists.mock.calls.length === 1);
-    await settle();
+    const blocker = start(cachePath);
+    await settle(blocker);
+    expect(fromLists).toHaveBeenCalledTimes(1);
     expect(activeEngine() === null).toBe(true);
 
-    fromLists.mockResolvedValue(ElectronBlocker.parse(FRESH_FILTER, ENGINE_CONFIG));
+    fromLists.mockResolvedValue(ElectronBlocker.parse(freshFilter, ENGINE_CONFIG));
     await vi.advanceTimersByTimeAsync(ENGINE_RETRY_MS);
-    await until(() => blocks(activeEngine(), "fresh-ads.example"));
+    await settle(blocker);
+    expect(blocks(activeEngine(), "fresh-ads.example")).toBe(true);
   });
 
   it("stops retrying once turned off", async () => {
     const cachePath = path.join(makeTempDir("ytmd-adblock-"), "adblocker-engine-network.bin");
     const fromLists = vi.spyOn(ElectronBlocker, "fromLists").mockRejectedValue(new TypeError("fetch failed"));
     const blocker = start(cachePath);
-    await until(() => fromLists.mock.calls.length === 1);
-    await settle();
+    await settle(blocker);
+    expect(fromLists).toHaveBeenCalledTimes(1);
     blocker.disable();
     const attempts = fromLists.mock.calls.length;
     await vi.advanceTimersByTimeAsync(ENGINE_RETRY_MS * 3);
-    await settle();
+    await settle(blocker);
 
     expect(fromLists.mock.calls.length).toBe(attempts);
   });

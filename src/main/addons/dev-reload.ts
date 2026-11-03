@@ -6,33 +6,33 @@ type DevReloadLog = {
   warn(...params: unknown[]): void;
 };
 
-/** Watches every external addon folder, broken ones included, and reloads the
- *  addon after its files change. Development only: the user-facing enable and
- *  disable model stays restart-scoped. Returns a stop function. */
 export function watchExternalAddonsForDev(scans: ExternalAddonScan[], reload: (id: string) => Promise<void>, log: DevReloadLog): () => void {
   const watchers: fs.FSWatcher[] = [];
   const timers = new Map<string, NodeJS.Timeout>();
   const inFlight = new Set<string>();
 
+  const reloadAddon = async (id: string) => {
+    if (inFlight.has(id)) return;
+    inFlight.add(id);
+    try {
+      log.info(`Reloading addon after a file change: ${id}`);
+      await reload(id);
+    } catch (error) {
+      log.warn(`Addon reload failed: ${id}`, error);
+    } finally {
+      inFlight.delete(id);
+    }
+  };
+
   for (const scan of scans) {
     const id = scan.manifest?.id ?? scan.folderName;
     try {
-      // 500ms of quiet absorbs editors that fire several events per save.
       const watcher = fs.watch(scan.dir, { recursive: true }, () => {
         clearTimeout(timers.get(id));
         timers.set(
           id,
-          setTimeout(async () => {
-            if (inFlight.has(id)) return;
-            inFlight.add(id);
-            try {
-              log.info(`Reloading addon after a file change: ${id}`);
-              await reload(id);
-            } catch (error) {
-              log.warn(`Addon reload failed: ${id}`, error);
-            } finally {
-              inFlight.delete(id);
-            }
+          setTimeout(() => {
+            void reloadAddon(id).catch((error: unknown) => log.warn(`Addon reload failed: ${id}`, error));
           }, 500)
         );
       });

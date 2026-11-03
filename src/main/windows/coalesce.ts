@@ -1,10 +1,10 @@
 export function coalesce(run: () => void): () => void {
-  let pending = false;
+  let isPending = false;
   return () => {
-    if (pending) return;
-    pending = true;
+    if (isPending) return;
+    isPending = true;
     setTimeout(() => {
-      pending = false;
+      isPending = false;
       run();
     });
   };

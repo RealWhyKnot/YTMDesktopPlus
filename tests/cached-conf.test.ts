@@ -6,13 +6,23 @@ import log from "electron-log";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CachedConf } from "../src/main/store/cached-conf";
 import { makeTempDir } from "./helpers/temp-dir";
+import { arrayOf, isNumber, isString, objectOf } from "../src/shared/validation";
 
-vi.mock("atomically", async importOriginal => {
+vi.mock("atomically", async (importOriginal) => {
   const actual = await importOriginal<typeof import("atomically")>();
   return { ...actual, writeFile: vi.fn(actual.writeFile) };
 });
 
 type Schema = { playback: { volume: number; tags: string[] }; state: { lastUrl: string } };
+
+const isSchema = objectOf<Schema>({ playback: objectOf({ volume: isNumber, tags: arrayOf(isString) }), state: objectOf({ lastUrl: isString }) });
+
+function parseConfig(data: unknown): Schema {
+  if (typeof data !== "string") throw new TypeError("Expected a JSON string in the config fixture");
+  const parsed: unknown = JSON.parse(data);
+  if (!isSchema(parsed)) throw new TypeError("Invalid config fixture");
+  return parsed;
+}
 
 const DEFAULTS: Schema = { playback: { volume: 50, tags: [] }, state: { lastUrl: "https://music.youtube.com/" } };
 
@@ -23,16 +33,16 @@ const MIGRATING = {
   migrations: {
     ">=2.0.0": (migrating: Conf<Schema>) => {
       if (!migrating.has("playback.volume")) migrating.set("playback.volume", 50);
-    }
-  }
+    },
+  },
 };
 
-function readConfigFile(cwd: string) {
+function readConfigFile(cwd: string): unknown {
   return JSON.parse(fs.readFileSync(path.join(cwd, "config.json"), "utf8"));
 }
 
 function readVolume(file: string) {
-  return JSON.parse(fs.readFileSync(file, "utf8")).playback.volume;
+  return parseConfig(fs.readFileSync(file, "utf8")).playback.volume;
 }
 
 const stores: CachedConf<Schema>[] = [];
@@ -45,7 +55,7 @@ function makeStore() {
 }
 
 afterEach(async () => {
-  await Promise.all(stores.splice(0).map(store => store.flush()));
+  await Promise.all(stores.splice(0).map((store) => store.flush()));
   vi.restoreAllMocks();
 });
 
@@ -57,7 +67,7 @@ describe("CachedConf", () => {
 
     for (let i = 0; i < 50; i++) store.get("playback");
 
-    expect(reads.mock.calls.filter(call => String(call[0]) === file)).toHaveLength(0);
+    expect(reads.mock.calls.filter((call) => String(call[0]) === file)).toHaveLength(0);
   });
 
   it("hands out copies, so a caller mutating a result does not change the store", () => {
@@ -93,8 +103,8 @@ describe("CachedConf", () => {
     expect(seen).toEqual([
       [
         { volume: 80, tags: [] },
-        { volume: 50, tags: [] }
-      ]
+        { volume: 50, tags: [] },
+      ],
     ]);
   });
 
@@ -107,11 +117,11 @@ describe("CachedConf", () => {
       defaults: DEFAULTS,
       projectVersion: "2.0.0",
       migrations: {
-        ">=2.0.0": migrating => {
+        ">=2.0.0": (migrating) => {
           migrating.set("state.lastUrl", "https://music.youtube.com/explore");
           readBack.push(migrating.get("state.lastUrl"));
-        }
-      }
+        },
+      },
     });
 
     expect(readBack).toEqual(["https://music.youtube.com/explore"]);
@@ -119,7 +129,7 @@ describe("CachedConf", () => {
 
   it.each([
     ["no config file", undefined],
-    ["a config file missing a section", { playback: { volume: 20, tags: ["kept"] } }]
+    ["a config file missing a section", { playback: { volume: 20, tags: ["kept"] } }],
   ])("ends a migration from %s with what plain conf writes, then reads from memory", (_, existing) => {
     const cachedDir = makeTempDir("ytmd-conf-");
     const plainDir = makeTempDir("ytmd-conf-");
@@ -135,13 +145,13 @@ describe("CachedConf", () => {
     expect(readConfigFile(cachedDir)).toEqual(readConfigFile(plainDir));
     const reads = vi.spyOn(fs, "readFileSync");
     for (let i = 0; i < 50; i++) store.get("playback");
-    expect(reads.mock.calls.filter(call => String(call[0]) === path.join(cachedDir, "config.json"))).toHaveLength(0);
+    expect(reads.mock.calls.filter((call) => String(call[0]) === path.join(cachedDir, "config.json"))).toHaveLength(0);
   });
 
   it("rereads the file once after a change event from outside the process", () => {
     const { store, file } = makeStore();
     store.get("state");
-    const written = JSON.parse(fs.readFileSync(file, "utf8"));
+    const written = parseConfig(fs.readFileSync(file, "utf8"));
     written.state.lastUrl = "https://music.youtube.com/library";
     fs.writeFileSync(file, JSON.stringify(written));
 
@@ -151,7 +161,7 @@ describe("CachedConf", () => {
 
     expect(store.get("state").lastUrl).toBe("https://music.youtube.com/library");
     expect(store.get("state").lastUrl).toBe("https://music.youtube.com/library");
-    expect(reads.mock.calls.filter(call => String(call[0]) === file)).toHaveLength(1);
+    expect(reads.mock.calls.filter((call) => String(call[0]) === file)).toHaveLength(1);
   });
 
   it("returns a write before it reaches the disk, then writes it in the background", async () => {
@@ -174,7 +184,7 @@ describe("CachedConf", () => {
     store.set("playback.volume", 80);
     await store.flush();
 
-    expect(vi.mocked(writeFile).mock.calls.map(([, data]) => JSON.parse(String(data)).playback.volume)).toEqual([60, 80]);
+    expect(vi.mocked(writeFile).mock.calls.map(([, data]) => parseConfig(data).playback.volume)).toEqual([60, 80]);
     expect(readVolume(file)).toBe(80);
   });
 
@@ -214,7 +224,7 @@ describe("CachedConf", () => {
     store.events.dispatchEvent(new Event("change"));
 
     expect(store.get("playback").volume).toBe(80);
-    expect(reads.mock.calls.filter(call => String(call[0]) === file)).toHaveLength(0);
+    expect(reads.mock.calls.filter((call) => String(call[0]) === file)).toHaveLength(0);
   });
 
   it("does not reread the file for the watcher event of its own finished write", async () => {
@@ -226,14 +236,14 @@ describe("CachedConf", () => {
     store.events.dispatchEvent(new Event("change"));
 
     expect(store.get("playback").volume).toBe(80);
-    expect(reads.mock.calls.filter(call => String(call[0]) === file)).toHaveLength(0);
+    expect(reads.mock.calls.filter((call) => String(call[0]) === file)).toHaveLength(0);
   });
 
   it("reloads a change from outside the process that follows its own write", async () => {
     const { store, file } = makeStore();
     store.set("playback.volume", 80);
     await store.flush();
-    const written = JSON.parse(fs.readFileSync(file, "utf8"));
+    const written = parseConfig(fs.readFileSync(file, "utf8"));
     written.playback.volume = 5;
     fs.writeFileSync(file, JSON.stringify(written));
 

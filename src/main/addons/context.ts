@@ -1,69 +1,64 @@
 import log from "electron-log";
 import fs from "fs";
 import path from "path";
-import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import type {
   AddonActiveTheme,
   AddonContext,
+  AddonIpcEvent,
+  AddonIpcInvokeEvent,
   AddonManifest,
   AddonSettingsSection,
   AddonTitlebarBadge,
   AddonTrayMenuItem,
   AddonWindowOptions,
+  AddonWebContents,
   CueRequest,
   CueResult,
   PlayerEventName,
+  PlayerEventMap,
   PlayerQueue,
   PlayerState,
   RemoteCommandName,
   RemoteTrackActivity,
   Unsubscribe,
-  YTMRepeatMode
+  YTMRepeatMode,
 } from "~shared/addons/sdk";
 import type { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
 import { AddonCssHandle, cssHandleFromFile } from "./css";
 import { clampBadge, clampNumberSetting, correctNumberSetting, numberFieldBounds, type NumberBounds } from "./settings-values";
+import { isRecord } from "~shared/unknown";
 
-export type { AddonContext, AddonInstance, AddonWindowHandle, AddonWindowOptions, Unsubscribe } from "~shared/addons/sdk";
-
-/** Namespace for page scripts the host registers itself; addon namespaces are
- *  always addon:<id>, so this can never collide. */
 export const HOST_SCRIPT_NAMESPACE = "addon-host";
 
-/** The slice of the settings store the addon system needs. The real conf
- *  instance satisfies it; tests satisfy it with a plain object. */
-export interface AddonStore {
-  get<K extends keyof StoreSchema>(key: K): StoreSchema[K];
-  set<K extends keyof StoreSchema>(key: K, value: StoreSchema[K]): void;
-  onDidChange<K extends keyof StoreSchema>(key: K, callback: (newValue?: StoreSchema[K], oldValue?: StoreSchema[K]) => void): () => void;
-  readonly store: StoreSchema;
-}
+export type AddonStore = {
+  get(key: "addons"): StoreSchema["addons"];
+  set(key: "addons", value: StoreSchema["addons"]): void;
+  onDidChange(key: "addons", callback: (newValue?: StoreSchema["addons"], oldValue?: StoreSchema["addons"]) => void): () => void;
+  readonly store: Pick<StoreSchema, "addons">;
+};
 
-/** The slice of the in-memory store the addon system touches. */
-export interface AddonMemoryStore {
-  get(key: keyof MemoryStoreSchema & string): unknown;
-  set(key: keyof MemoryStoreSchema & string, value: unknown): void;
-}
+export type AddonMemoryStore = {
+  get(key: keyof MemoryStoreSchema): unknown;
+  set(key: keyof MemoryStoreSchema, value: unknown): void;
+};
 
-/** Everything the host hands the addon runtime. Assembled once in the main
- *  entry point; the manager and contexts never reach for globals themselves. */
 export type AddonHostServices = {
   store: AddonStore;
   memoryStore: AddonMemoryStore;
   appVersion: string;
   userDataPath: string;
-  getYtmView(): { webContents: Electron.WebContents } | null;
+  getYtmView: () => { webContents: Pick<Electron.WebContents, "send" | "insertCSS" | "removeInsertedCSS"> } | null;
   registerYtmScript(namespace: string, name: string, script: string): void;
   invokeYtmScript(namespace: string, name: string, arg?: unknown): Promise<unknown>;
   player: {
     getState(): PlayerState;
     getQueue(): PlayerQueue | null;
-    getPlaylistId(): string | null;
+    getPlaylistId(): string | null | undefined;
     addEventListener(listener: (state: PlayerState) => void): void;
     removeEventListener(listener: (state: PlayerState) => void): void;
     events: {
-      on(event: PlayerEventName, listener: (payload: unknown) => void): void;
-      off(event: PlayerEventName, listener: (payload: unknown) => void): void;
+      on<K extends PlayerEventName>(event: K, listener: (payload: PlayerEventMap[K]) => void): void;
+      off<K extends PlayerEventName>(event: K, listener: (payload: PlayerEventMap[K]) => void): void;
     };
   };
   playback: {
@@ -72,17 +67,16 @@ export type AddonHostServices = {
     getPlaylists(): Promise<{ id: string; title: string }[]>;
   };
   ipc: {
-    handle(channel: string, listener: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown): void;
+    handle(channel: string, listener: (event: AddonIpcInvokeEvent, ...args: unknown[]) => unknown): void;
     removeHandler(channel: string): void;
-    on(channel: string, listener: (event: IpcMainEvent, ...args: unknown[]) => void): void;
-    removeListener(channel: string, listener: (event: IpcMainEvent, ...args: unknown[]) => void): void;
+    on(channel: string, listener: (event: AddonIpcEvent, ...args: unknown[]) => void): void;
+    removeListener(channel: string, listener: (event: AddonIpcEvent, ...args: unknown[]) => void): void;
   };
-  isAppSender(sender: Electron.WebContents): boolean;
+  isAppSender(sender: AddonWebContents): boolean;
   notify(options: { title: string; body?: string; onClick?: () => void }): void;
-  /** Rebuilds the tray menu from its template plus every addon's items. */
+
   refreshTrayMenu(): void;
-  /** filePath is the pre-resolved absolute path for file windows; the context
-   *  owns containment validation before it gets here. */
+
   createWindow(options: AddonWindowOptions & { addonId: string; filePath?: string }): AddonHostWindow;
   discord: {
     isEnabled(): boolean;
@@ -106,10 +100,9 @@ export type AddonHostWindow = {
   close(): void;
   isDestroyed(): boolean;
   once(event: "closed", callback: () => void): void;
-  webContents: Electron.WebContents;
+  webContents: AddonWebContents;
 };
 
-/** Per-addon plumbing the manager owns: registries the context writes into. */
 export type AddonHostBridge = {
   setSettingsSections(sections: AddonSettingsSection[]): void;
   addLoadedCallback(callback: () => void): Unsubscribe;
@@ -121,7 +114,7 @@ export type AddonHostBridge = {
   addMessageCallback(name: string, callback: (payload: unknown) => void): Unsubscribe;
   setTrayMenuItems(items: AddonTrayMenuItem[]): void;
   addWindow(window: AddonHostWindow): void;
-  /** Records a runtime failure on the descriptor so the settings card shows it. */
+
   reportError(source: string, error: unknown): void;
 };
 
@@ -132,20 +125,18 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
   const dataPath = path.join(services.userDataPath, "addon-data", id);
   fs.mkdirSync(dataPath, { recursive: true });
 
-  const settingsOf = (state: StoreSchema): Record<string, unknown> => state.addons.settings[id] ?? {};
+  const settingsOf = (state: Pick<StoreSchema, "addons">): Record<string, unknown> => state.addons.settings[id] ?? {};
 
   const reportError = (source: string, error: unknown) => {
     scopedLog.error(`${source} failed`, error);
     bridge.reportError(source, error);
   };
 
-  // An addon callback that throws (or rejects) is contained here: the failure
-  // lands on the descriptor and in the log instead of inside a host emitter.
   const guard = <A extends unknown[]>(source: string, fn: (...args: A) => unknown): ((...args: A) => void) => {
     return (...args: A) => {
       try {
         const result = fn(...args);
-        if (result instanceof Promise) result.catch(error => reportError(source, error));
+        if (result instanceof Promise) result.catch((error: unknown) => reportError(source, error));
       } catch (error) {
         reportError(source, error);
       }
@@ -155,27 +146,27 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
   const needsView = (what: string) =>
     services.getYtmView() === null ? Promise.reject(new Error(`${what} can't run until the YouTube Music page loads; call it from ytmview.onLoaded`)) : null;
 
-  const defaults: Record<string, unknown> = {};
+  const defaults = new Map<string, unknown>();
   let numberBounds = new Map<string, NumberBounds>();
-  let numberGuardInstalled = false;
+  let isNumberGuardInstalled = false;
 
   const correctNumber = (key: string, value: unknown, previous: unknown) => {
     const bounds = numberBounds.get(key);
-    return bounds ? correctNumberSetting(value, bounds, [previous, defaults[key]]) : { changed: false, value };
+    return bounds ? correctNumberSetting(value, bounds, [previous, defaults.get(key)]) : { changed: false, value };
   };
 
   const correctStoredNumbers = (previous?: Record<string, unknown>) => {
     const addonsSection = services.store.get("addons");
     const target = addonsSection.settings[id];
     if (!target) return;
-    let changed = false;
+    let isChanged = false;
     for (const key of numberBounds.keys()) {
       const correction = correctNumber(key, target[key], previous?.[key]);
       if (!correction.changed) continue;
       target[key] = correction.value;
-      changed = true;
+      isChanged = true;
     }
-    if (changed) services.store.set("addons", addonsSection);
+    if (isChanged) services.store.set("addons", addonsSection);
   };
 
   return {
@@ -188,21 +179,21 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       registerDefaults(newDefaults) {
         const addonsSection = services.store.get("addons");
         const target = addonsSection.settings[id] ?? {};
-        let changed = false;
+        let isChanged = false;
         for (const [key, value] of Object.entries(newDefaults)) {
-          defaults[key] = value;
+          defaults.set(key, value);
           if (target[key] === undefined) {
             target[key] = value;
-            changed = true;
+            isChanged = true;
           }
         }
-        if (changed) {
+        if (isChanged) {
           addonsSection.settings[id] = target;
           services.store.set("addons", addonsSection);
         }
       },
-      get<T>(key: string) {
-        return settingsOf(services.store.store)[key] as T;
+      get(key) {
+        return settingsOf(services.store.store)[key];
       },
       set(key, value) {
         const bounds = numberBounds.get(key);
@@ -219,7 +210,7 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       onDidChange(key, callback) {
         const guarded = guard(`settings.onDidChange(${key})`, callback);
         let delivered = settingsOf(services.store.store)[key];
-        const unsubscribe = services.store.onDidChange("addons", newValue => {
+        const unsubscribe = services.store.onDidChange("addons", (newValue) => {
           const next = newValue?.settings[id]?.[key];
           if (Object.is(next, delivered) || correctNumber(key, next, delivered).changed) return;
           const prev = delivered;
@@ -232,27 +223,30 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       registerSettingsUI(sections) {
         numberBounds = numberFieldBounds(sections);
         bridge.setSettingsSections(sections);
-        if (!numberGuardInstalled) {
-          numberGuardInstalled = true;
+        if (!isNumberGuardInstalled) {
+          isNumberGuardInstalled = true;
           bridge.addCleanup(services.store.onDidChange("addons", (_newValue, oldValue) => correctStoredNumbers(oldValue?.settings[id])));
         }
         correctStoredNumbers();
       },
       onAction(key, callback) {
         return bridge.addActionCallback(key, guard(`settings.onAction(${key})`, callback));
-      }
+      },
     },
 
     memory: {
-      get<T>(key: string) {
-        const all = (services.memoryStore.get("addonMemory") ?? {}) as Record<string, Record<string, unknown>>;
-        return all[id]?.[key] as T;
+      get(key) {
+        const all = services.memoryStore.get("addonMemory");
+        const values = isRecord(all) ? all[id] : undefined;
+        return isRecord(values) ? values[key] : undefined;
       },
       set(key, value) {
-        const all = { ...((services.memoryStore.get("addonMemory") ?? {}) as Record<string, Record<string, unknown>>) };
-        all[id] = { ...all[id], [key]: value };
+        const stored = services.memoryStore.get("addonMemory");
+        const all = isRecord(stored) ? { ...stored } : {};
+        const values = all[id];
+        all[id] = { ...(isRecord(values) ? values : {}), [key]: value };
         services.memoryStore.set("addonMemory", all);
-      }
+      },
     },
 
     ytmview: {
@@ -274,15 +268,15 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       insertCSS(css) {
         const handle = new AddonCssHandle(services.getYtmView, scopedLog, css);
         bridge.addCssHandle(handle);
-        handle.apply();
+        void handle.apply().catch((error: unknown) => log.warn("insertCSS failed", error));
         return handle;
       },
       watchCSSFile(filePath) {
         const handle = cssHandleFromFile(services.getYtmView, scopedLog, filePath);
         bridge.addCssHandle(handle);
-        handle.apply();
+        void handle.apply().catch((error: unknown) => log.warn("watchCSSFile failed", error));
         return handle;
-      }
+      },
     },
 
     player: {
@@ -308,7 +302,7 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
         const unsubscribe = () => services.player.events.off(event, guarded);
         bridge.addCleanup(unsubscribe);
         return unsubscribe;
-      }
+      },
     },
 
     playback: {
@@ -328,16 +322,15 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       setRepeatMode: (mode: YTMRepeatMode) => services.playback.sendPlaybackCommand("repeatMode", mode),
       shuffle: () => services.playback.sendPlaybackCommand("shuffle"),
       playQueueIndex: (index: number) => services.playback.sendPlaybackCommand("playQueueIndex", index),
-      cueTrack: request => services.playback.cueTrack(request),
+      cueTrack: (request) => services.playback.cueTrack(request),
       sendPlaybackCommand: (command, value) => services.playback.sendPlaybackCommand(command, value),
-      getPlaylists: () => services.playback.getPlaylists()
+      getPlaylists: () => services.playback.getPlaylists(),
     },
 
     ipc: {
       handle(channel, listener) {
         const fullChannel = `addon:${id}:${channel}`;
-        // A throw still rejects the renderer's invoke promise; it is recorded
-        // on the way through rather than swallowed.
+
         services.ipc.handle(fullChannel, (event, ...args) => {
           if (!services.isAppSender(event.sender)) return;
           try {
@@ -361,7 +354,7 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       on(channel, listener) {
         const fullChannel = `addon:${id}:${channel}`;
         const safeListener = guard(`ipc.on(${channel})`, listener);
-        const guarded = (event: IpcMainEvent, ...args: unknown[]) => {
+        const guarded = (event: AddonIpcEvent, ...args: unknown[]) => {
           if (!services.isAppSender(event.sender)) return;
           safeListener(event, ...args);
         };
@@ -369,19 +362,19 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
         const unsubscribe = () => services.ipc.removeListener(fullChannel, guarded);
         bridge.addCleanup(unsubscribe);
         return unsubscribe;
-      }
+      },
     },
 
     innertube: {
-      request<T>(endpoint: string, body?: Record<string, unknown>) {
-        return (needsView("innertube.request") ?? services.invokeYtmScript(HOST_SCRIPT_NAMESPACE, "innertubeRequest", { endpoint, body })) as Promise<T>;
-      }
+      request(endpoint, body) {
+        return needsView("innertube.request") ?? services.invokeYtmScript(HOST_SCRIPT_NAMESPACE, "innertubeRequest", { endpoint, body });
+      },
     },
 
     notifications: {
       show(options) {
         services.notify(options);
-      }
+      },
     },
 
     windows: {
@@ -403,16 +396,15 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
 
         const window = services.createWindow({ ...options, addonId: id, filePath });
         bridge.addWindow(window);
-        let open = true;
+        let isOpen = true;
         window.once("closed", () => {
-          open = false;
+          isOpen = false;
         });
 
         if (filePath) {
-          // The bridge's closeWindow() lands here, scoped to this window.
           const closeChannel = `addon:${id}:window:close`;
-          const onCloseRequest = (event: IpcMainEvent) => {
-            if (!open || window.isDestroyed()) return;
+          const onCloseRequest = (event: AddonIpcEvent) => {
+            if (!isOpen || window.isDestroyed()) return;
             if (event.sender !== window.webContents) return;
             window.close();
           };
@@ -422,20 +414,20 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
 
         return {
           show() {
-            if (!open) return;
+            if (!isOpen) return;
             window.show();
             window.focus();
           },
           close() {
-            if (open) window.close();
+            if (isOpen) window.close();
           },
-          isOpen: () => open && !window.isDestroyed(),
-          webContents: () => (open && !window.isDestroyed() ? window.webContents : null),
+          isOpen: () => isOpen && !window.isDestroyed(),
+          webContents: () => (isOpen && !window.isDestroyed() ? window.webContents : null),
           send(channel, ...args) {
-            if (open && !window.isDestroyed()) window.webContents.send(`addon:${id}:${channel}`, ...args);
-          }
+            if (isOpen && !window.isDestroyed()) window.webContents.send(`addon:${id}:${channel}`, ...args);
+          },
         };
-      }
+      },
     },
 
     deepLinks: {
@@ -443,7 +435,7 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
         const unsubscribe = services.deepLinks.register(command, guard(`deepLinks(${command})`, handler));
         bridge.addCleanup(unsubscribe);
         return unsubscribe;
-      }
+      },
     },
 
     theme: {
@@ -454,7 +446,7 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
         const unsubscribe = services.theme.subscribe(guard("theme.onChanged", callback));
         bridge.addCleanup(unsubscribe);
         return unsubscribe;
-      }
+      },
     },
 
     discord: {
@@ -492,7 +484,7 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       },
       refreshActivity() {
         services.discord.refreshActivity();
-      }
+      },
     },
 
     titlebar: {
@@ -501,13 +493,13 @@ export function createAddonContext(manifest: AddonManifest, services: AddonHostS
       },
       onBadgeClick(callback) {
         return bridge.addBadgeClickCallback(guard("titlebar.onBadgeClick", callback));
-      }
+      },
     },
 
     tray: {
       setMenuItems(items) {
-        bridge.setTrayMenuItems(items.map(item => ({ ...item, click: guard("tray.item", () => item.click()) })));
-      }
-    }
+        bridge.setTrayMenuItems(items.map((item) => ({ ...item, click: guard("tray.item", () => item.click()) })));
+      },
+    },
   };
 }

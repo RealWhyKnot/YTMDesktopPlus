@@ -17,5 +17,5 @@ export type AdPruneContract = {
 export const AD_PRUNE_CONTRACT: AdPruneContract = {
   keys: AD_RESPONSE_KEYS,
   markers: PLAYER_RESPONSE_MARKERS,
-  unknownKeyPattern: UNKNOWN_AD_KEY_PATTERN.source
+  unknownKeyPattern: UNKNOWN_AD_KEY_PATTERN.source,
 };

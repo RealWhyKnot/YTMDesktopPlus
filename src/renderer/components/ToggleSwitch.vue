@@ -5,15 +5,15 @@ const props = defineProps<{
   modelValue?: boolean;
   disabled?: boolean;
 }>();
-const emit = defineEmits(["update:modelValue", "change"]);
+const emit = defineEmits<{ "update:modelValue": [isValue: boolean | undefined]; change: [event: Event] }>();
 
 const value = computed({
   get() {
     return props.modelValue;
   },
-  set(value) {
-    emit("update:modelValue", value);
-  }
+  set(isValue) {
+    emit("update:modelValue", isValue);
+  },
 });
 </script>
 
@@ -23,8 +23,6 @@ const value = computed({
 
 <style scoped>
 .toggle-switch {
-  -webkit-appearance: none;
-  -moz-appearance: none;
   appearance: none;
   min-width: 62px;
   min-height: 32px;
@@ -34,18 +32,18 @@ const value = computed({
   position: relative;
   border-radius: 50px;
   overflow: hidden;
-  outline: none;
+  outline: 2px solid transparent;
   border: none;
   cursor: pointer;
   background-color: var(--bg-control);
   transition: background-color ease 0.3s;
 }
 
-.toggle-switch:before {
+.toggle-switch::before {
   content: "";
   display: block;
   position: absolute;
-  z-index: 2;
+  z-index: var(--layer-toggle-knob);
   width: 28px;
   height: 28px;
   background: var(--knob);
@@ -53,7 +51,10 @@ const value = computed({
   top: 2px;
   border-radius: 50%;
   box-shadow: var(--shadow);
-  transition: all ease 0.3s;
+  transition:
+    transform ease 0.3s,
+    background-color ease 0.3s,
+    box-shadow ease 0.3s;
 }
 
 .toggle-switch:focus-visible {
@@ -65,8 +66,8 @@ const value = computed({
   background-color: var(--accent);
 }
 
-.toggle-switch:checked:before {
-  left: 32px;
+.toggle-switch:checked::before {
+  transform: translateX(30px);
 }
 
 .toggle-switch:disabled {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import AudioStreamCapture from "../src/addons/bundled/rooms/audio-capture";
+import { AudioStreamCapture } from "../src/addons/bundled/rooms/audio-capture";
 
 function capture() {
   const calls: string[] = [];

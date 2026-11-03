@@ -1,6 +1,18 @@
-.titlebar {
-  background: linear-gradient(to bottom, #2b2825 0%, #1d1b1a 55%, #151312 100%) !important;
-  border-bottom: 1px solid #0d0c0b;
+:root {
+  --color-cassette-app-background-1: #2b2825;
+  --color-cassette-app-background-2: #1d1b1a;
+  --color-cassette-app-background-3: #151312;
+  --color-cassette-app-border-bottom-4: #0d0c0b;
+}
+
+:root .app-root .titlebar {
+  background: linear-gradient(
+    to bottom,
+    var(--color-cassette-app-background-1) 0%,
+    var(--color-cassette-app-background-2) 55%,
+    var(--color-cassette-app-background-3) 100%
+  );
+  border-bottom: 1px solid var(--color-cassette-app-border-bottom-4);
 }
 
 .title-text {

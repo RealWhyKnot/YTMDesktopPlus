@@ -1,7 +1,8 @@
-import { readFileSync } from "node:fs";
+import { requireValue } from "./helpers/require-value";
+import { readPageScript, runPageScript } from "./helpers/page-script";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const source = readFileSync("src/renderer/ytmview/scripts/togglerating.script.js", "utf8")
+const source = (await readPageScript("src/renderer/ytmview/scripts/togglerating.script.ts"))
   .trim()
   .replaceAll("__RATING__", "LIKE")
   .replaceAll("__OPPOSITE__", "DISLIKE");
@@ -11,11 +12,11 @@ const INDIFFERENT_ENDPOINT = { likeEndpoint: { status: "INDIFFERENT" } };
 
 let playerResponse: unknown;
 let storeVideos: Record<string, string>;
-let dispatched: CustomEvent[];
+let dispatched: CustomEvent<{ args: unknown[]; returnValue: unknown[] }>[];
 let likeButtonReads: number;
 
 function run() {
-  return new Function(`return (${source.replace(/;$/, "")})`)()();
+  return runPageScript(source);
 }
 
 beforeEach(() => {
@@ -29,18 +30,18 @@ beforeEach(() => {
       likeButtonReads++;
       return { likeStatus: "INDIFFERENT", serviceEndpoints: [LIKE_ENDPOINT, INDIFFERENT_ENDPOINT] };
     },
-    dispatchEvent: (event: CustomEvent) => dispatched.push(event)
+    dispatchEvent: (event: CustomEvent<{ args: unknown[]; returnValue: unknown[] }>) => dispatched.push(event),
   };
   const playerBar = {
     playerApi: { getPlayerResponse: () => playerResponse },
-    querySelector: () => likeButton
+    querySelector: () => likeButton,
   };
 
   vi.stubGlobal("document", {
-    querySelector: (selector: string) => (selector === "ytmusic-like-button-renderer" ? likeButton : playerBar)
+    querySelector: (selector: string) => (selector === "ytmusic-like-button-renderer" ? likeButton : playerBar),
   });
   vi.stubGlobal("window", {
-    __YTMD_HOOK__: { ytmStore: { getState: () => ({ likeStatus: { videos: storeVideos } }) } }
+    __YTMD_HOOK__: { ytmStore: { getState: () => ({ likeStatus: { videos: storeVideos } }) } },
   });
 });
 
@@ -52,13 +53,13 @@ describe("togglerating", () => {
   it("likes an unrated track", () => {
     run();
     expect(dispatched).toHaveLength(1);
-    expect(dispatched[0].detail.args[1]).toBe(LIKE_ENDPOINT);
+    expect(requireValue(dispatched[0]).detail.args[1]).toBe(LIKE_ENDPOINT);
   });
 
   it("clears a like the store already holds for the track", () => {
     storeVideos.abc = "LIKE";
     run();
-    expect(dispatched[0].detail.args[1]).toBe(INDIFFERENT_ENDPOINT);
+    expect(requireValue(dispatched[0]).detail.args[1]).toBe(INDIFFERENT_ENDPOINT);
   });
 
   it("does nothing while a preroll ad nulls the player response", () => {

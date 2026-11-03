@@ -1,3 +1,4 @@
+import { requireValue } from "./helpers/require-value";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,17 +8,17 @@ import {
   AD_RESPONSE_KEYS,
   AD_SKIP_SELECTORS,
   PLAYER_RESPONSE_MARKERS,
-  UNKNOWN_AD_KEY_PATTERN
+  UNKNOWN_AD_KEY_PATTERN,
 } from "../src/shared/ad-contract";
 
-const SKIP_SCRIPT = "src/main/integrations/ad-blocker/script/enable.script.js";
+const SKIP_SCRIPT = "src/main/integrations/ad-blocker/script/enable.script.ts";
 const skipSource = readFileSync(SKIP_SCRIPT, "utf8");
 
 const sourceFiles = readdirSync("src", { recursive: true })
   .map(String)
-  .filter(name => /\.(ts|js|vue)$/.test(name))
-  .map(name => join("src", name))
-  .filter(path => path !== join("src", "shared", "ad-contract.ts"));
+  .filter((name) => /\.(ts|js|vue)$/.test(name))
+  .map((name) => join("src", name))
+  .filter((path) => path !== join("src", "shared", "ad-contract.ts"));
 
 const stripComments = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
@@ -26,8 +27,8 @@ describe("ad response keys", () => {
     expect([...AD_RESPONSE_KEYS]).toEqual([...AD_RESPONSE_KEYS].sort());
   });
 
-  it.each([...AD_RESPONSE_KEYS])("no other source file hardcodes %s", key => {
-    const offenders = sourceFiles.filter(path => {
+  it.each([...AD_RESPONSE_KEYS])("no other source file hardcodes %s", (key) => {
+    const offenders = sourceFiles.filter((path) => {
       const source = stripComments(readFileSync(path, "utf8"));
       return source.includes(`"${key}"`) || source.includes(`'${key}'`);
     });
@@ -38,8 +39,10 @@ describe("ad response keys", () => {
 
 describe("ad skip selectors", () => {
   it("match the list the page script queries", () => {
-    const literal = /const SKIP_SELECTORS = \[([^\]]*)\]/.exec(skipSource);
-    const selectors = literal?.[1].split(",").map(entry => entry.trim().replace(/^["']|["']$/g, ""));
+    const literal = /const skipSelectors = \[([^\]]*)\]/.exec(skipSource);
+    const selectors = requireValue(literal?.[1])
+      .split(",")
+      .map((entry) => entry.trim().replace(/^["']|["']$/g, ""));
 
     expect(selectors).toEqual([...AD_SKIP_SELECTORS]);
   });
@@ -49,7 +52,8 @@ describe("ad playing path", () => {
   it("is the store path the page script reads", () => {
     const [head] = AD_PLAYING_PATH.split(".");
 
-    expect(skipSource).toContain(`getState().${head}`);
+    expect(skipSource).toContain("store.getState()");
+    expect(skipSource).toContain(`snapshot.${head}`);
     expect(skipSource).toContain(AD_PLAYING_PATH);
   });
 });

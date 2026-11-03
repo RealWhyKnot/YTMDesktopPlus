@@ -1,10 +1,10 @@
 import type Conf from "conf";
 
-import playerStateStore, { PlayerState, Thumbnail, VideoDetails, VideoState } from "../../player-state-store";
-import IIntegration from "../integration";
-import MemoryStore from "../../memory-store";
-import { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
-import DiscordClient from "./minimal-discord-client";
+import { playerStateStore, type PlayerState, type Thumbnail, type VideoDetails, VideoState } from "../../player-state-store";
+import type { Integration } from "../integration";
+import { MemoryStore } from "../../memory-store";
+import { type MemoryStoreSchema, type StoreSchema } from "~shared/store/schema";
+import { DiscordClient } from "./minimal-discord-client";
 import log from "electron-log";
 import { DiscordActivityType } from "./minimal-discord-client/types";
 
@@ -21,40 +21,45 @@ export function connectionRetryDelay(attempt: number): number {
 export type PresenceButton = { label: string; url: string };
 export type PresenceButtonsProvider = () => PresenceButton[] | undefined;
 
-/** A track playing somewhere other than this app, offered as a presence
- *  fallback while local playback has nothing to show. No end timestamp: remote
- *  sources have no position, only (at best) when the track was first seen. */
 import type { RemoteTrackActivity } from "~shared/addons/sdk";
 
-export type { RemoteTrackActivity } from "~shared/addons/sdk";
 export type RemoteActivityProvider = () => RemoteTrackActivity | undefined;
 
-export function getHighestResThumbnail(thumbnails: Thumbnail[] | null | undefined): string | undefined {
-  const usable = Array.isArray(thumbnails) ? thumbnails.filter(thumbnail => typeof thumbnail?.url === "string" && thumbnail.url.length > 0) : [];
+type PresenceThumbnail = Pick<Thumbnail, "url"> & { width?: unknown; height?: unknown };
+
+export function getHighestResThumbnail(thumbnails: (PresenceThumbnail | null | undefined)[] | null | undefined): string | undefined {
+  const usable = Array.isArray(thumbnails)
+    ? thumbnails.filter((thumbnail): thumbnail is PresenceThumbnail => typeof thumbnail?.url === "string" && thumbnail.url.length > 0)
+    : [];
   if (usable.length === 0) return undefined;
-  const area = (thumbnail: Thumbnail) => (Number(thumbnail.width) || 0) * (Number(thumbnail.height) || 0);
+  const area = (thumbnail: PresenceThumbnail) => (Number(thumbnail.width) || 0) * (Number(thumbnail.height) || 0);
   return usable.reduce((accumulator, current) => (area(current) <= area(accumulator) ? accumulator : current)).url;
 }
 
-function getSmallImageKey(state: VideoState) {
-  // Developer Note:
-  // These are asset keys on the Discord application, not files in this repo.
-  // Add "-inverted" to either key for the dark variant (white glyph on black).
+function getSmallImageKey(state: VideoState | null) {
   switch (state) {
     case VideoState.Playing: {
       return "start";
     }
+    case VideoState.Unknown:
+    case VideoState.Paused:
+    case VideoState.Buffering:
+    case null:
     default: {
       return "pause";
     }
   }
 }
 
-function getSmallImageText(state: VideoState) {
+function getSmallImageText(state: VideoState | null) {
   switch (state) {
     case VideoState.Playing: {
       return "Playing";
     }
+    case VideoState.Unknown:
+    case VideoState.Paused:
+    case VideoState.Buffering:
+    case null:
     default: {
       return "Paused";
     }
@@ -66,34 +71,49 @@ function stringLimit(str: string, limit: number, minimum: number) {
     return str.substring(0, limit - 3).trim() + "...";
   }
   if (str.length < minimum) {
-    return str.padEnd(minimum, "​"); // There's a zero width space here
+    return str.padEnd(minimum, "\u200B");
   }
   return str;
 }
 
-export default class DiscordPresence implements IIntegration {
-  private store: Conf<StoreSchema>;
-  private memoryStore: MemoryStore<MemoryStoreSchema>;
+export class DiscordPresence implements Integration {
+  private storeValue: Conf<StoreSchema> | undefined;
+  private get store(): Conf<StoreSchema> {
+    const value = this.storeValue;
+    if (value === undefined) throw new Error("Integration store has not been provided");
+    return value;
+  }
+  private set store(value: Conf<StoreSchema>) {
+    this.storeValue = value;
+  }
+  private memoryStoreValue: MemoryStore<MemoryStoreSchema> | undefined;
+  private get memoryStore(): MemoryStore<MemoryStoreSchema> {
+    const value = this.memoryStoreValue;
+    if (value === undefined) throw new Error("Integration memoryStore has not been provided");
+    return value;
+  }
+  private set memoryStore(value: MemoryStore<MemoryStoreSchema>) {
+    this.memoryStoreValue = value;
+  }
 
-  private discordClient: DiscordClient = null;
-  private enabled = false;
-  private ready = false;
+  private discordClient: DiscordClient | null = null;
+  private isEnabled = false;
+  private isReady = false;
   private activityDebounceTimeout: NodeJS.Timeout | null = null;
-  private pauseTimeout: string | number | NodeJS.Timeout = null;
-  private connectionRetryTimeout: string | number | NodeJS.Timeout = null;
-  private stateCallback: (event: PlayerState) => void = null;
+  private pauseTimeout: NodeJS.Timeout | null = null;
+  private connectionRetryTimeout: NodeJS.Timeout | null = null;
+  private stateCallback: ((event: PlayerState) => void) | null = null;
 
   private videoState: VideoState | null = null;
-  private videoDetails: Partial<VideoDetails> | null = null;
+  private videoDetails: VideoDetails | null = null;
   private progress: number | null = null;
 
-  private connectionRetries: number = 0;
+  private connectionRetries = 0;
   private buttonsProviders: PresenceButtonsProvider[] = [];
   private remoteActivityProviders: RemoteActivityProvider[] = [];
 
-  // Everywhere the activity used to clear, a remote track may stand in
-  // instead; when no provider offers one the activity clears as before.
   private clearOrRemote() {
+    if (this.discordClient === null) throw new Error("Discord client is not connected");
     const remote = this.getRemoteActivity();
     if (!remote) {
       this.discordClient.clearActivity();
@@ -108,12 +128,11 @@ export default class DiscordPresence implements IIntegration {
       timestamps: remote.startedAtEpochMs ? { start: remote.startedAtEpochMs } : undefined,
       assets: {
         large_image: (remote.thumbnailUrl?.length ?? 300) <= 256 ? remote.thumbnailUrl : "icon",
-        // An asset key on the Discord application, like "start"/"pause"; a
-        // "phone-inverted" dark variant follows the same convention.
+
         small_image: "phone",
-        small_text: remote.smallText ?? "Playing on another device"
+        small_text: remote.smallText ?? "Playing on another device",
       },
-      instance: false
+      instance: false,
     });
     log.debug(`dpresence: remote activity set for ${remote.videoId ?? remote.title}`);
   }
@@ -130,11 +149,9 @@ export default class DiscordPresence implements IIntegration {
     return undefined;
   }
 
-  private UpdateActivity() {
+  private updateActivity() {
     if (this.activityDebounceTimeout) return;
     this.activityDebounceTimeout = setTimeout(() => {
-      // Released before any early return: the handle is the debounce gate, so
-      // leaving it set would silence every later update for the session.
       this.activityDebounceTimeout = null;
       try {
         this.applyActivity();
@@ -151,14 +168,15 @@ export default class DiscordPresence implements IIntegration {
     }
     const { title, author, album, id, thumbnails, durationSeconds, channelId, albumId } = this.videoDetails;
     const thumbnail = getHighestResThumbnail(thumbnails);
-    const playing = this.videoState === VideoState.Playing;
-    if (!playing && this.store?.get("integrations").discordPresenceHideOnPause) {
+    const isPlaying = this.videoState === VideoState.Playing;
+    if (!isPlaying && this.storeValue?.get("integrations").discordPresenceHideOnPause) {
       this.clearOrRemote();
       return;
     }
     const nowMs = Date.now();
-    const startEpochMs = nowMs - this.progress * 1000;
+    const startEpochMs = nowMs - Number(this.progress) * 1000;
     const buttons = this.buildButtons();
+    if (this.discordClient === null) throw new Error("Discord client is not connected");
     this.discordClient.setActivity({
       type: DiscordActivityType.Listening,
       status_display_type: 1,
@@ -167,28 +185,27 @@ export default class DiscordPresence implements IIntegration {
       state: stringLimit(author, 128, 2),
       state_url: `https://music.youtube.com/channel/${channelId}`,
       timestamps: {
-        start: playing ? startEpochMs : undefined,
-        end: playing ? nowMs + (durationSeconds - this.progress) * 1000 : undefined
+        start: isPlaying ? startEpochMs : undefined,
+        end: isPlaying ? nowMs + (durationSeconds - Number(this.progress)) * 1000 : undefined,
       },
       assets: {
         large_image: thumbnail && thumbnail.length <= 256 ? thumbnail : "icon",
         large_text: album ? stringLimit(album, 128, 2) : undefined,
         large_url: albumId ? `https://music.youtube.com/browse/${albumId}` : undefined,
         small_image: getSmallImageKey(this.videoState),
-        small_text: getSmallImageText(this.videoState)
+        small_text: getSmallImageText(this.videoState),
       },
       instance: false,
-      buttons
+      buttons,
     });
-    log.debug(`dpresence: activity set for ${id}, ${playing ? "playing" : "paused"}, ${buttons?.length ?? 0} buttons`);
+    log.debug(`dpresence: activity set for ${id}, ${isPlaying ? "playing" : "paused"}, ${buttons?.length ?? 0} buttons`);
   }
 
   private playerStateChanged(state: PlayerState) {
-    if (!this.ready) return;
+    if (!this.isReady) return;
 
     const { videoDetails, videoProgress, trackState, hasFullMetadata } = state;
     if (!videoDetails) {
-      // Drop the cached track too, or a later debounced update would revive it.
       this.videoDetails = null;
       this.videoState = null;
       this.progress = null;
@@ -203,17 +220,20 @@ export default class DiscordPresence implements IIntegration {
     this.progress = Math.floor(videoProgress);
     if (
       hasFullMetadata &&
-      (oldState !== this.videoState || oldId !== this.videoDetails.id || Math.abs(this.progress - oldProgress) > 1 || oldProgress > this.progress)
+      (oldState !== this.videoState ||
+        oldId !== this.videoDetails.id ||
+        Math.abs(this.progress - Number(oldProgress)) > 1 ||
+        Number(oldProgress) > this.progress)
     ) {
-      this.UpdateActivity();
+      this.updateActivity();
     }
 
-    clearTimeout(this.pauseTimeout);
+    if (this.pauseTimeout !== null) clearTimeout(this.pauseTimeout);
     this.pauseTimeout = null;
-    if (state.trackState == VideoState.Playing) return;
+    if (state.trackState === VideoState.Playing) return;
     this.pauseTimeout = setTimeout(() => {
       this.pauseTimeout = null;
-      if (!this.discordClient || !this.ready) return;
+      if (!this.discordClient || !this.isReady) return;
       try {
         this.clearOrRemote();
       } catch (error) {
@@ -227,33 +247,25 @@ export default class DiscordPresence implements IIntegration {
     this.memoryStore = memoryStore;
   }
 
-  /** Rebuilds the activity when something other than playback changed it, like a room opening or closing. */
   public refreshActivity(): void {
-    if (!this.ready) return;
-    this.UpdateActivity();
+    if (!this.isReady) return;
+    this.updateActivity();
   }
 
-  /** Features that want buttons on the presence contribute them here rather
-   *  than being read directly; a provider returning nothing shows nothing. */
   public registerButtonsProvider(provider: PresenceButtonsProvider): () => void {
     this.buttonsProviders.push(provider);
     return () => {
-      this.buttonsProviders = this.buttonsProviders.filter(entry => entry !== provider);
+      this.buttonsProviders = this.buttonsProviders.filter((entry) => entry !== provider);
     };
   }
 
-  /** Features that know about playback outside this app contribute a stand-in
-   *  activity here; the first provider with a track wins. Call refreshActivity
-   *  after the provided value changes. */
   public registerRemoteActivityProvider(provider: RemoteActivityProvider): () => void {
     this.remoteActivityProviders.push(provider);
     return () => {
-      this.remoteActivityProviders = this.remoteActivityProviders.filter(entry => entry !== provider);
+      this.remoteActivityProviders = this.remoteActivityProviders.filter((entry) => entry !== provider);
     };
   }
 
-  // Discord renders at most two buttons and silently drops the whole activity
-  // frame on a non-http(s) url, so both limits are enforced here.
   private buildButtons(): { label: string; url: string }[] | undefined {
     const buttons: PresenceButton[] = [];
     for (const provider of this.buttonsProviders) {
@@ -263,12 +275,12 @@ export default class DiscordPresence implements IIntegration {
         log.error("Presence buttons provider failed", error);
       }
     }
-    const usable = buttons.filter(button => button.url.startsWith("https://") || button.url.startsWith("http://"));
+    const usable = buttons.filter((button) => button.url.startsWith("https://") || button.url.startsWith("http://"));
     return usable.length > 0 ? usable.slice(0, 2) : undefined;
   }
 
   private retryDiscordConnection() {
-    if (!this.enabled) return;
+    if (!this.isEnabled) return;
 
     this.connectionRetries++;
     if (this.connectionRetries === CONNECTION_FAILED_AFTER_ATTEMPTS) {
@@ -280,10 +292,10 @@ export default class DiscordPresence implements IIntegration {
       log.info(`Connecting to Discord attempt ${this.connectionRetries} in ${delay / 1000}s`);
     }
 
-    clearTimeout(this.connectionRetryTimeout);
+    if (this.connectionRetryTimeout !== null) clearTimeout(this.connectionRetryTimeout);
     this.connectionRetryTimeout = setTimeout(() => {
       this.connectionRetryTimeout = null;
-      if (!this.enabled || !this.discordClient) return;
+      if (!this.isEnabled || !this.discordClient) return;
       try {
         this.discordClient.connect().catch(() => this.retryDiscordConnection());
       } catch (error) {
@@ -294,22 +306,22 @@ export default class DiscordPresence implements IIntegration {
   }
 
   public enable(): void {
-    this.enabled = true;
+    this.isEnabled = true;
     if (this.discordClient) return;
     this.discordClient = new DiscordClient(DISCORD_CLIENT_ID);
 
     this.discordClient.on("connect", () => {
-      this.ready = true;
+      this.isReady = true;
       this.connectionRetries = 0;
       this.memoryStore.set("discordPresenceConnectionFailed", false);
     });
     this.discordClient.on("close", () => {
       log.info("Discord connection closed");
-      this.ready = false;
+      this.isReady = false;
       this.retryDiscordConnection();
     });
     this.discordClient.connect().catch(() => this.retryDiscordConnection());
-    this.stateCallback = event => {
+    this.stateCallback = (event) => {
       try {
         this.playerStateChanged(event);
       } catch (error) {
@@ -321,13 +333,13 @@ export default class DiscordPresence implements IIntegration {
   }
 
   public disable(): void {
-    this.enabled = false;
+    this.isEnabled = false;
     this.connectionRetries = 0;
     this.memoryStore.set("discordPresenceConnectionFailed", false);
 
-    clearTimeout(this.activityDebounceTimeout);
-    clearTimeout(this.pauseTimeout);
-    clearTimeout(this.connectionRetryTimeout);
+    if (this.activityDebounceTimeout !== null) clearTimeout(this.activityDebounceTimeout);
+    if (this.pauseTimeout !== null) clearTimeout(this.pauseTimeout);
+    if (this.connectionRetryTimeout !== null) clearTimeout(this.connectionRetryTimeout);
     this.activityDebounceTimeout = this.pauseTimeout = this.connectionRetryTimeout = null;
 
     if (this.stateCallback) {
@@ -335,7 +347,7 @@ export default class DiscordPresence implements IIntegration {
     }
 
     if (!this.discordClient) return;
-    this.ready = false;
+    this.isReady = false;
     this.discordClient.destroy();
     this.discordClient = null;
   }

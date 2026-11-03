@@ -1,6 +1,3 @@
-// Staging model for the settings window: edits accumulate in a draft and are
-// written to the store only on an explicit save. Keys not listed here keep
-// their immediate write path (auth tokens, session keys, memory store fields).
 export const STAGED_SETTING_KEYS = [
   "general.hideToTrayOnClose",
   "general.showNotificationOnSongChange",
@@ -33,28 +30,27 @@ export const STAGED_SETTING_KEYS = [
   "shortcuts.volumeUp",
   "shortcuts.volumeDown",
   "updates.autoUpdateEnabled",
-  "updates.channel"
+  "updates.channel",
 ] as const;
 
 export type StagedSettingKey = (typeof STAGED_SETTING_KEYS)[number];
-// Also carries dynamic addon keys ("addons.settings.<id>.<key>"), so plain strings
+
 export type SettingsSnapshot = Record<string, unknown>;
 
 export const RESTART_REQUIRED_KEYS: ReadonlySet<StagedSettingKey> = new Set<StagedSettingKey>([
   "general.disableHardwareAcceleration",
-  "playback.enableSpeakerFill"
+  "playback.enableSpeakerFill",
 ]);
 
-// Range inputs bound through v-model deliver strings; the store expects numbers.
-const NUMERIC_KEYS: ReadonlySet<StagedSettingKey> = new Set<StagedSettingKey>([
+const NUMERIC_KEYS: ReadonlySet<string> = new Set<StagedSettingKey>([
   "appearance.zoom",
   "appearance.trayIconStyle",
   "lastfm.scrobblePercent",
-  "updates.channel"
+  "updates.channel",
 ]);
 
 export function normalizeSettingValue(key: string, value: unknown): unknown {
-  if (NUMERIC_KEYS.has(key as StagedSettingKey) && value !== null && value !== undefined && typeof value !== "number") {
+  if (NUMERIC_KEYS.has(key) && value !== null && value !== undefined && typeof value !== "number") {
     const numeric = Number(value);
     if (!Number.isNaN(numeric)) return numeric;
   }
@@ -65,26 +61,23 @@ function valueAtPath(state: unknown, path: string): unknown {
   let current: unknown = state;
   for (const part of path.split(".")) {
     if (current === null || typeof current !== "object") return undefined;
-    current = (current as Record<string, unknown>)[part];
+    current = Reflect.get(current, part);
   }
   return current;
 }
 
 export function snapshotFromState(state: unknown, extraKeys: readonly string[] = []): SettingsSnapshot {
-  const snapshot = {} as SettingsSnapshot;
+  const snapshot = new Map<string, unknown>();
   for (const key of [...STAGED_SETTING_KEYS, ...extraKeys]) {
-    snapshot[key] = normalizeSettingValue(key, valueAtPath(state, key));
+    snapshot.set(key, normalizeSettingValue(key, valueAtPath(state, key)));
   }
-  return snapshot;
+  return Object.fromEntries(snapshot);
 }
 
 export function diffSnapshots(pristine: SettingsSnapshot, draft: SettingsSnapshot, extraKeys: readonly string[] = []): string[] {
-  return [...STAGED_SETTING_KEYS, ...extraKeys].filter(key => !Object.is(pristine[key], draft[key]));
+  return [...STAGED_SETTING_KEYS, ...extraKeys].filter((key) => !Object.is(pristine[key], draft[key]));
 }
 
-// An external store write (another window, the main process) must update the
-// pristine baseline without discarding in-progress edits: keys the user has
-// not touched follow the incoming value, dirty keys keep the draft.
 export function mergeExternalState(
   pristine: SettingsSnapshot,
   draft: SettingsSnapshot,
@@ -92,10 +85,10 @@ export function mergeExternalState(
   extraKeys: readonly string[] = []
 ): { pristine: SettingsSnapshot; followedKeys: string[] } {
   const incoming = snapshotFromState(incomingState, extraKeys);
-  const followedKeys = [...STAGED_SETTING_KEYS, ...extraKeys].filter(key => Object.is(pristine[key], draft[key]) && !Object.is(pristine[key], incoming[key]));
+  const followedKeys = [...STAGED_SETTING_KEYS, ...extraKeys].filter((key) => Object.is(pristine[key], draft[key]) && !Object.is(pristine[key], incoming[key]));
   return { pristine: incoming, followedKeys };
 }
 
 export function restartRequiredIn(keys: readonly string[]): boolean {
-  return keys.some(key => RESTART_REQUIRED_KEYS.has(key as StagedSettingKey));
+  return keys.some((key) => [...RESTART_REQUIRED_KEYS].some((required) => required === key));
 }

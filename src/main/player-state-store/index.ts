@@ -1,4 +1,5 @@
 import { EventEmitter } from "events";
+import { readIntegerPrefix } from "~shared/integer-prefix";
 import log from "electron-log";
 import {
   LikeStatus,
@@ -9,60 +10,45 @@ import {
   type PlayerQueueItem,
   type PlayerState,
   type Thumbnail,
-  type VideoDetails
+  type VideoDetails,
 } from "~shared/addons/sdk";
 
 import type { ProjectedQueue } from "~shared/queue-projection";
+import type { VideoDetailsPayload } from "../ipc/ytm-view-payloads";
 import { createPlayerEventDeriver } from "./derived-events";
 
 export { LikeStatus, RepeatMode, VideoState, VideoType };
 export type { PlayerQueue, PlayerQueueItem, PlayerState, Thumbnail, VideoDetails };
 
-enum YTMVideoState {
-  Unstarted = -1,
-  Ended = 0,
-  Playing = 1,
-  Paused = 2,
-  Buffering = 3,
-  VideoCued = 5
+const YTMVideoState = {
+  Unstarted: -1,
+  [-1]: "Unstarted",
+  Ended: 0,
+  [0]: "Ended",
+  Playing: 1,
+  [1]: "Playing",
+  Paused: 2,
+  [2]: "Paused",
+  Buffering: 3,
+  [3]: "Buffering",
+  VideoCued: 5,
+  [5]: "VideoCued",
+} as const;
+
+function mapYTMThumbnails(thumbnail: { url: string; width?: unknown; height?: unknown }): Thumbnail[] {
+  if (typeof thumbnail.width !== "number" || !Number.isFinite(thumbnail.width) || typeof thumbnail.height !== "number" || !Number.isFinite(thumbnail.height)) {
+    return [];
+  }
+  return [
+    {
+      url: thumbnail.url,
+      width: thumbnail.width,
+      height: thumbnail.height,
+    },
+  ];
 }
 
-type YTMThumbnail = {
-  height: number;
-  url: string;
-  width: number;
-};
-
-type YTMRepeatMode = "NONE" | "ALL" | "ONE";
-
-type YTMLikeStatus = "INDIFFERENT" | "DISLIKE" | "LIKE";
-
-type YTMVideoDetails = {
-  album: string;
-  author: string;
-  channelId: string;
-  lengthSeconds: string;
-  thumbnail: {
-    thumbnails: YTMThumbnail[];
-  };
-  title: string;
-  videoId: string;
-  isLive: boolean;
-  musicVideoType: string;
-};
-
-function mapYTMThumbnails(thumbnail: YTMThumbnail) {
-  // Explicit mapping to keep a consistent API
-  // If YouTube Music changes how this is presented internally then it's easier to update without breaking the API
-  return {
-    url: thumbnail.url,
-    width: thumbnail.width,
-    height: thumbnail.height
-  };
-}
-
-// This may seem redundant but we do this in case YTM changes its own data to accomodate and prevent severe breaking of things
-function transformRepeatMode(repeatMode: YTMRepeatMode) {
+function transformRepeatMode(repeatMode: string | null | undefined) {
   switch (repeatMode) {
     case "NONE": {
       return RepeatMode.None;
@@ -76,13 +62,15 @@ function transformRepeatMode(repeatMode: YTMRepeatMode) {
       return RepeatMode.One;
     }
 
+    case null:
+    case undefined:
     default: {
       return RepeatMode.Unknown;
     }
   }
 }
 
-function transformLikeStatus(likeStatus: YTMLikeStatus) {
+function transformLikeStatus(likeStatus: string | null | undefined) {
   switch (likeStatus) {
     case "DISLIKE": {
       return LikeStatus.Dislike;
@@ -96,13 +84,15 @@ function transformLikeStatus(likeStatus: YTMLikeStatus) {
       return LikeStatus.Like;
     }
 
+    case null:
+    case undefined:
     default: {
       return LikeStatus.Unknown;
     }
   }
 }
 
-function transformVideoType(videoType: string) {
+function transformVideoType(videoType: string | null | undefined) {
   switch (videoType) {
     case "MUSIC_VIDEO_TYPE_ATV": {
       return VideoType.MusicAudio;
@@ -121,6 +111,8 @@ function transformVideoType(videoType: string) {
       return VideoType.PodcastEpisode;
     }
 
+    case null:
+    case undefined:
     default: {
       return VideoType.Unknown;
     }
@@ -131,16 +123,16 @@ class PlayerStateStore {
   private videoProgress = 0;
   private state: VideoState = -1;
   private videoDetails: VideoDetails | null = null;
-  private playlistId: string | null = null;
+  private playlistId: string | null | undefined = null;
   private queue: PlayerQueue | null = null;
-  private volume: number = 0;
-  private muted: boolean = false;
-  private adPlaying: boolean = false;
-  private hasFullMetadata: boolean = false;
+  private volume = 0;
+  private isMuted = false;
+  private isAdPlaying = false;
+  private hasFullMetadata = false;
   private eventEmitter = new EventEmitter();
 
   constructor() {
-    this.eventEmitter.on("error", error => {
+    this.eventEmitter.on("error", (error) => {
       log.error("PlayerStateStore EventEmitter threw an error", error);
     });
   }
@@ -153,9 +145,9 @@ class PlayerStateStore {
       queue: this.queue,
       videoProgress: this.videoProgress,
       volume: this.volume,
-      muted: this.muted,
-      adPlaying: this.adPlaying,
-      hasFullMetadata: this.hasFullMetadata
+      muted: this.isMuted,
+      adPlaying: this.isAdPlaying,
+      hasFullMetadata: this.hasFullMetadata,
     };
   }
 
@@ -172,7 +164,7 @@ class PlayerStateStore {
     this.eventEmitter.emit("stateChanged", this.getState());
   }
 
-  public updateVideoState(state: YTMVideoState) {
+  public updateVideoState(state: number) {
     switch (state) {
       case YTMVideoState.Paused: {
         this.state = VideoState.Paused;
@@ -198,24 +190,24 @@ class PlayerStateStore {
   }
 
   public updateVideoDetails(
-    videoDetails: YTMVideoDetails,
-    playlistId: string,
-    album: { id: string; text: string } | null,
-    likeStatus: YTMLikeStatus,
+    videoDetails: VideoDetailsPayload,
+    playlistId: string | null | undefined,
+    album: { id?: string | null; text?: string | null } | null,
+    likeStatus: string | null | undefined,
     hasFullMetadata: boolean
   ) {
     this.videoDetails = {
-      author: videoDetails.author,
-      channelId: videoDetails.channelId,
-      title: videoDetails.title,
+      author: videoDetails.author ?? "",
+      channelId: videoDetails.channelId ?? "",
+      title: videoDetails.title ?? "",
       album: album?.text ?? null,
       albumId: album?.id ?? null,
       likeStatus: transformLikeStatus(likeStatus),
-      thumbnails: videoDetails.thumbnail ? videoDetails.thumbnail.thumbnails.map(mapYTMThumbnails) : [], // There are cases where the thumbnails simply don't exist on the videoDetails but can be found via other means. Podcasts notably can do this
-      durationSeconds: parseInt(videoDetails.lengthSeconds),
+      thumbnails: videoDetails.thumbnail ? videoDetails.thumbnail.thumbnails.flatMap(mapYTMThumbnails) : [],
+      durationSeconds: readIntegerPrefix(String(videoDetails.lengthSeconds)),
       id: videoDetails.videoId,
       videoType: transformVideoType(videoDetails.musicVideoType),
-      isLive: !!videoDetails.isLive
+      isLive: !!videoDetails.isLive,
     };
     this.playlistId = playlistId;
     this.hasFullMetadata = hasFullMetadata;
@@ -225,28 +217,32 @@ class PlayerStateStore {
   public updateQueue(queue: ProjectedQueue | null) {
     this.queue = queue
       ? {
-          // automixItems comes from an autoplay queue that isn't pushed yet to the main queue. A radio will never have automixItems (weird YTM distinction from autoplay vs radio)
           automixItems: queue.automixItems,
           autoplay: queue.autoplay,
           isGenerating: queue.isGenerating,
-          // Observed state seems to be a radio having infinite true while an autoplay queue has infinite false
+
           isInfinite: queue.isInfinite,
           items: queue.items,
-          repeatMode: transformRepeatMode(queue.repeatMode as YTMRepeatMode),
-          // YTM has a native selectedItemIndex property but that isn't updated correctly so we calculate it ourselves
-          selectedItemIndex: queue.items.findIndex(item => item?.selected)
+          repeatMode: transformRepeatMode(queue.repeatMode),
+
+          selectedItemIndex: queue.items.findIndex((item) => item?.selected),
         }
       : null;
     this.eventEmitter.emit("stateChanged", this.getState());
   }
 
-  public updateFromStore(likeStatus: YTMLikeStatus | null, volume: number | null, muted: boolean | null, adPlaying: boolean | null) {
+  public updateFromStore(
+    likeStatus: string | null | undefined,
+    volume: number | null | undefined,
+    isMuted: boolean | null | undefined,
+    isAdPlaying: boolean | null | undefined
+  ) {
     if (this.videoDetails) {
       const nextLikeStatus = transformLikeStatus(likeStatus);
       if (nextLikeStatus !== this.videoDetails.likeStatus) this.videoDetails = { ...this.videoDetails, likeStatus: nextLikeStatus };
     }
-    this.adPlaying = adPlaying === true;
-    this.muted = muted === true;
+    this.isAdPlaying = isAdPlaying === true;
+    this.isMuted = isMuted === true;
     if (typeof volume === "number" && volume >= 0) this.volume = volume;
 
     this.eventEmitter.emit("stateChanged", this.getState());
@@ -263,13 +259,11 @@ class PlayerStateStore {
 
 const playerStateStore = new PlayerStateStore();
 
-/** Granular events derived once from the snapshot stream; every consumer
- *  shares this one subscription. Event names and payloads: PlayerEventMap. */
 export const playerEvents = new EventEmitter();
 playerEvents.setMaxListeners(100);
 {
   const deriver = createPlayerEventDeriver((event, payload) => playerEvents.emit(event, payload));
-  playerStateStore.addEventListener(state => deriver.next(state));
+  playerStateStore.addEventListener((state) => deriver.next(state));
 }
 
-export default playerStateStore;
+export { playerStateStore };

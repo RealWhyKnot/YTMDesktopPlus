@@ -100,7 +100,7 @@ describe("bundleThemeCss", () => {
     ["a custom property image-set", ':root{--img:image-set("https://evil.example/p" 1x)}'],
     ["an unterminated url at the end", "a{background:url(https://evil.example/p"],
     ["javascript scheme", 'a{background:url("javascript:alert(1)")}'],
-    ["file scheme", "a{background:url(file:///C:/evil.example/p)}"]
+    ["file scheme", "a{background:url(file:///C:/evil.example/p)}"],
   ])("strips a remote fetch written as %s", (_label, css) => {
     const result = bundleThemeCss(css, tempDir());
     expect(result.css).not.toMatch(/evil\.example|javascript|file:/i);
@@ -114,7 +114,7 @@ describe("bundleThemeCss", () => {
     ["escaped upper case name", "@\\49 MPORT url(https://evil.example/x.css);a{color:red}"],
     ["layer and supports", '@import url("https://evil.example/x.css") layer(base) supports(display:grid);a{color:red}'],
     ["a comment inside", '@import /* hi */ "https://evil.example/x.css" /* there */;a{color:red}'],
-    ["a block", '@import "https://evil.example/x.css" { b{color:blue} } a{color:red}']
+    ["a block", '@import "https://evil.example/x.css" { b{color:blue} } a{color:red}'],
   ])("strips @import written in %s", (_label, css) => {
     const result = bundleThemeCss(css, tempDir());
     expect(result.css).not.toContain("evil.example");

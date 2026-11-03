@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { computed, inject } from "vue";
+import { computed } from "vue";
 import AddonCard from "../AddonCard.vue";
-import { settingsShellKey } from "../context";
+import { useSettingsShell } from "../context";
 
-const shell = inject(settingsShellKey);
+const shell = useSettingsShell();
 const addons = shell.addons;
 
-const hasExternal = computed(() => addons.value.some(addon => addon.origin === "external"));
+const hasExternal = computed(() => addons.value.some((addon) => addon.origin === "external"));
 
-function toggleAddon(id: string, enabled: boolean) {
-  shell.setAddonEnabled(id, enabled);
+function toggleAddon(id: string, isEnabled: boolean) {
+  shell.setAddonEnabled(id, isEnabled);
 }
 </script>
 
@@ -28,7 +28,7 @@ function toggleAddon(id: string, enabled: boolean) {
       <p>No addons installed</p>
       <p class="hint">Drop an addon folder into the addons directory and restart the app.</p>
     </div>
-    <AddonCard v-for="addon in addons" :key="addon.manifest.id" :addon="addon" @toggle="enabled => toggleAddon(addon.manifest.id, enabled)" />
+    <AddonCard v-for="addon in addons" :key="addon.manifest.id" :addon="addon" @toggle="(enabled) => toggleAddon(addon.manifest.id, enabled)" />
   </div>
 </template>
 
@@ -40,16 +40,6 @@ function toggleAddon(id: string, enabled: boolean) {
   gap: var(--space-sm);
   flex-wrap: wrap;
   margin-bottom: var(--space-sm);
-}
-
-.addons-header .count {
-  margin: 0;
-  color: var(--text-muted);
-}
-
-.addons-header button .material-symbols-outlined {
-  margin-right: 4px;
-  font-size: 18px;
 }
 
 .external-warning {
@@ -64,10 +54,6 @@ function toggleAddon(id: string, enabled: boolean) {
   color: var(--text-muted);
 }
 
-.external-warning .material-symbols-outlined {
-  color: var(--accent);
-}
-
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -76,17 +62,31 @@ function toggleAddon(id: string, enabled: boolean) {
   padding: var(--space-lg) 0;
 }
 
-.empty-state .material-symbols-outlined {
-  font-size: 48px;
-  margin-bottom: var(--space-sm);
-}
-
 .empty-state p {
   margin: 0;
 }
 
+.addons-header .count {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.external-warning .material-symbols-outlined {
+  color: var(--accent);
+}
+
+.empty-state .material-symbols-outlined {
+  font-size: calc(48rem / var(--font-size-reference));
+  margin-bottom: var(--space-sm);
+}
+
 .empty-state .hint {
   margin-top: 4px;
-  font-size: 14px;
+  font-size: calc(14rem / var(--font-size-reference));
+}
+
+.addons-header button .material-symbols-outlined {
+  margin-right: 4px;
+  font-size: calc(18rem / var(--font-size-reference));
 }
 </style>

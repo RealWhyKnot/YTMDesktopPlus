@@ -5,26 +5,37 @@ import { writeFile } from "atomically";
 import { getProperty } from "dot-prop";
 import log from "electron-log";
 import { stallTasks } from "../stall-watch";
+import { isRecord } from "~shared/unknown";
 
-const confWrite = Conf.prototype["_write"];
+const confMethods = { write: "_write", get: "_get", serialize: "_serialize", deserialize: "_deserialize" } as const;
+const confWrite: unknown = Reflect.get(Conf.prototype, confMethods.write);
+
+function invokeConf(method: unknown, target: object, ...args: unknown[]): unknown {
+  if (typeof method !== "function") throw new TypeError("Config method is unavailable");
+  return Reflect.apply(method, target, args);
+}
 
 export class CachedConf<T extends Record<string, unknown>> extends Conf<T> {
   private cached: T | undefined;
   private pending: string | undefined;
   private written: fs.Stats | undefined;
   private writing: Promise<void> | undefined;
-  private deferWrites = false;
+  private isDeferWrites = false;
 
   static {
-    this.prototype["_write"] = function (this: CachedConf<Record<string, unknown>>, value: unknown) {
+    this.prototype[confMethods.write] = function (this: CachedConf<Record<string, unknown>>, value: unknown) {
       stallTasks.timeSync("conf write", () => {
-        this.pending = this["_serialize"](value);
-        this.cached = this["_deserialize"](this.pending);
+        const serialized = invokeConf(Reflect.get(this, confMethods.serialize), this, value);
+        if (typeof serialized !== "string") throw new TypeError("Config serialization did not return text");
+        this.pending = serialized;
+        const deserialized = invokeConf(Reflect.get(this, confMethods.deserialize), this, this.pending);
+        if (!isRecord(deserialized)) throw new TypeError("Config deserialization did not return an object");
+        this.cached = deserialized;
       });
-      if (!this.deferWrites) this.flushSync();
+      if (!this.isDeferWrites) this.flushSync();
       else this.writing ??= this.drain();
     };
-    this.prototype["_get"] = function (this: CachedConf<Record<string, unknown>>, key: string, defaultValue: unknown) {
+    this.prototype[confMethods.get] = function (this: CachedConf<Record<string, unknown>>, key: string, defaultValue: unknown) {
       return structuredClone(getProperty(this.current, key, defaultValue));
     };
   }
@@ -34,18 +45,23 @@ export class CachedConf<T extends Record<string, unknown>> extends Conf<T> {
     setMaxListeners(64, this.events);
     this.events.addEventListener("change", () => {
       if (this.pending !== undefined) return;
-      const file = this.written && fs.statSync(this.path, { throwIfNoEntry: false });
-      if (file && file.ino === this.written.ino && file.size === this.written.size && file.mtimeMs === this.written.mtimeMs) return;
+      const written = this.written;
+      if (written !== undefined) {
+        const file = fs.statSync(this.path, { throwIfNoEntry: false });
+        if (file?.ino === written.ino && file.size === written.size && file.mtimeMs === written.mtimeMs) return;
+      }
       this.cached = undefined;
     });
-    this.deferWrites = true;
+    this.isDeferWrites = true;
   }
 
-  get store(): T {
-    return Object.assign(Object.create(null), structuredClone(this.current));
+  override get store(): T {
+    const value = structuredClone(this.current);
+    Object.setPrototypeOf(value, null);
+    return value;
   }
 
-  set store(value: T) {
+  override set store(value: T) {
     super.store = value;
   }
 
@@ -54,9 +70,9 @@ export class CachedConf<T extends Record<string, unknown>> extends Conf<T> {
   }
 
   flushSync() {
-    this.deferWrites = false;
+    this.isDeferWrites = false;
     if (this.pending === undefined) return;
-    stallTasks.timeSync("conf flush", () => confWrite.call(this, this.cached));
+    stallTasks.timeSync("conf flush", () => invokeConf(confWrite, this, this.cached));
     if (!this.writing) this.pending = undefined;
   }
 
@@ -66,7 +82,7 @@ export class CachedConf<T extends Record<string, unknown>> extends Conf<T> {
 
   private async drain() {
     try {
-      while (this.pending !== undefined && this.deferWrites) {
+      while (this.pending !== undefined && this.isDeferWrites) {
         const data = this.pending;
         await writeFile(this.path, data);
         this.written = await fs.promises.stat(this.path);
@@ -76,6 +92,6 @@ export class CachedConf<T extends Record<string, unknown>> extends Conf<T> {
       log.error("Failed to write config file", error);
     }
     this.writing = undefined;
-    if (!this.deferWrites) this.flushSync();
+    if (!this.isDeferWrites) this.flushSync();
   }
 }

@@ -1,0 +1,18 @@
+:root {
+  --color-millennium-ytm-border-top-1: #fff;
+  --color-millennium-ytm-border-bottom-2: #404040;
+  --font-millennium-ytm-font-family-3: "Pixelify Sans", tahoma, sans-serif;
+}
+
+ytmusic-player-bar {
+  border-top: 2px solid var(--color-millennium-ytm-border-top-1) !important;
+  border-bottom: 2px solid var(--color-millennium-ytm-border-bottom-2) !important;
+}
+
+ytmusic-player-bar .title {
+  font-family: var(--font-millennium-ytm-font-family-3) !important;
+}
+
+ytmusic-player-bar #sliderBar #primaryProgress {
+  border-radius: 0 !important;
+}

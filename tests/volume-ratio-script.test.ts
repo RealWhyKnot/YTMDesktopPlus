@@ -1,13 +1,10 @@
-import { readFileSync } from "node:fs";
+import { readPageScript, runPageScript } from "./helpers/page-script";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The enable script rewrites HTMLMediaElement.prototype.volume in terms of the
-// descriptor it finds there. Running it a second time in one document would
-// wrap its own wrapper, so the guard it carries is what makes a redundant
-// injection safe.
-
-const enableSource = readFileSync("src/main/integrations/volume-ratio/script/enable.script.js", "utf8").trim();
-const disableSource = readFileSync("src/main/integrations/volume-ratio/script/disable.script.js", "utf8").trim();
+const [enableSource, disableSource] = await Promise.all([
+  readPageScript("src/main/integrations/volume-ratio/script/enable.script.ts"),
+  readPageScript("src/main/integrations/volume-ratio/script/disable.script.ts"),
+]);
 
 const EXPONENT = 3;
 
@@ -15,30 +12,30 @@ let media: { volume: number };
 let nativeVolume: number;
 
 function run(source: string) {
-  return new Function(`return (${source.replace(/;$/, "")})`)()();
+  return runPageScript(source);
 }
 
 beforeEach(() => {
   nativeVolume = 0;
 
-  class HTMLMediaElement {}
-  Object.defineProperty(HTMLMediaElement.prototype, "volume", {
-    configurable: true,
-    get: () => nativeVolume,
-    set: (value: number) => {
+  class HTMLMediaElement {
+    get volume() {
+      return nativeVolume;
+    }
+    set volume(value: number) {
       nativeVolume = value;
     }
-  });
+  }
 
   const globals = globalThis as Record<string, unknown>;
   globals.window = {};
   globals.HTMLMediaElement = HTMLMediaElement;
-  media = Object.create(HTMLMediaElement.prototype) as { volume: number };
+  media = new HTMLMediaElement();
 });
 
 afterEach(() => {
   for (const key of ["window", "HTMLMediaElement"]) {
-    delete (globalThis as Record<string, unknown>)[key];
+    Reflect.deleteProperty(globalThis, key);
   }
 });
 
@@ -66,8 +63,8 @@ describe("volume ratio enable script", () => {
     try {
       run(enableSource);
       media.volume = 0.5;
-      void media.volume;
-      void media.volume;
+      expect(media.volume).toBeCloseTo(0.5, 10);
+      expect(media.volume).toBeCloseTo(0.5, 10);
 
       expect(Object.prototype.hasOwnProperty.call(globalThis, "get")).toBe(false);
       expect(Object.prototype.hasOwnProperty.call(globalThis, "set")).toBe(false);

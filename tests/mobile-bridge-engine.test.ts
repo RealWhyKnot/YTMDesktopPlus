@@ -3,24 +3,20 @@ import {
   EXPIRY_SLACK_MS,
   LOCAL_RING_SIZE,
   MIRROR_EXPIRY_MS,
-  Mirror,
+  type Mirror,
   MirrorEngine,
   POLL_INTERVAL_MS,
-  RemoteTrack,
+  type RemoteTrack,
   SLOW_AFTER_QUIET_MS,
-  SLOW_POLL_INTERVAL_MS
+  SLOW_POLL_INTERVAL_MS,
 } from "../src/addons/bundled/mobile-bridge/mirror-engine";
-
-// The engine follows the account history head: the head is the remote
-// now-playing signal, local plays are never mirrored, and silence expires the
-// mirror. Timers and the clock are injected, so time is simulated directly.
 
 const track = (videoId: string, durationSeconds: number | null = null): RemoteTrack => ({
   videoId,
   title: `title-${videoId}`,
   author: "author",
   thumbnailUrl: null,
-  durationSeconds
+  durationSeconds,
 });
 
 function makeHarness(durations: Record<string, number | null> = {}) {
@@ -31,41 +27,39 @@ function makeHarness(durations: Record<string, number | null> = {}) {
   const durationLookups: string[] = [];
   let head: RemoteTrack[] = [];
   let fetches = 0;
-  let failNextFetch = false;
+  let isFailNextFetch = false;
 
   const engine = new MirrorEngine({
-    fetchHead: async () => {
+    fetchHead: () => {
       fetches++;
-      if (failNextFetch) {
-        failNextFetch = false;
-        throw new Error("network down");
+      if (isFailNextFetch) {
+        isFailNextFetch = false;
+        return Promise.reject(new Error("network down"));
       }
-      return head;
+      return Promise.resolve(head);
     },
-    fetchDuration: async videoId => {
+    fetchDuration: (videoId) => {
       durationLookups.push(videoId);
-      return durations[videoId] ?? null;
+      return Promise.resolve(durations[videoId] ?? null);
     },
-    onChange: mirror => changes.push(mirror),
+    onChange: (mirror) => changes.push(mirror),
     now: () => now,
     setTimer: (fn, ms) => {
       const id = nextTimerId++;
       timers.push({ id, at: now + ms, fn });
       return id;
     },
-    clearTimer: handle => {
-      const index = timers.findIndex(timer => timer.id === handle);
+    clearTimer: (handle) => {
+      const index = timers.findIndex((timer) => timer.id === handle);
       if (index >= 0) timers.splice(index, 1);
-    }
+    },
   });
 
-  // Runs due timers in order, flushing microtasks so the async poll body
-  // (fetch, state updates, rescheduling) completes before the next timer.
   const advance = async (ms: number) => {
     const target = now + ms;
     for (;;) {
       timers.sort((a, b) => a.at - b.at);
-      const due = timers.find(timer => timer.at <= target);
+      const due = timers.find((timer) => timer.at <= target);
       if (!due) break;
       timers.splice(timers.indexOf(due), 1);
       now = Math.max(now, due.at);
@@ -81,8 +75,8 @@ function makeHarness(durations: Record<string, number | null> = {}) {
     advance,
     durationLookups,
     setHead: (items: RemoteTrack[]) => (head = items),
-    failNext: () => (failNextFetch = true),
-    fetchCount: () => fetches
+    failNext: () => (isFailNextFetch = true),
+    fetchCount: () => fetches,
   };
 }
 
@@ -133,7 +127,8 @@ describe("mirror engine", () => {
     h.setHead([track("phone1")]);
     h.engine.noteLocalState(idle);
     await h.advance(0);
-    expect(h.changes.at(-1)).toEqual({ track: track("phone1"), firstSeenMs: expect.any(Number) });
+    const firstSeenMs: unknown = expect.any(Number);
+    expect(h.changes.at(-1)).toEqual({ track: track("phone1"), firstSeenMs });
   });
 
   it("follows the current head, including a head that reverts after a quick skip", async () => {
@@ -145,11 +140,10 @@ describe("mirror engine", () => {
     await h.advance(POLL_INTERVAL_MS);
     h.setHead([track("a")]);
     await h.advance(POLL_INTERVAL_MS);
-    expect(h.changes.map(change => change?.track.videoId)).toEqual(["a", "b", "a"]);
+    expect(h.changes.map((change) => change?.track.videoId)).toEqual(["a", "b", "a"]);
   });
 
   it("uses the track duration plus slack as the expiry when the history row carries one", async () => {
-    // 10 minutes: longer than the flat fallback, so a mix does not drop early
     const h = makeHarness();
     h.setHead([track("longmix", 600)]);
     h.engine.start();
@@ -170,11 +164,9 @@ describe("mirror engine", () => {
     await h.advance(0);
     expect(h.durationLookups).toEqual(["shortsong"]);
 
-    // 2 minutes plus slack, well before the flat fallback
     await h.advance(120_000 + EXPIRY_SLACK_MS + POLL_INTERVAL_MS * 2);
     expect(h.changes.at(-1)).toBeNull();
 
-    // The same track coming back (a skip-revert) reuses the cached answer
     h.setHead([track("other", 300)]);
     await h.advance(POLL_INTERVAL_MS);
     h.setHead([track("shortsong")]);
@@ -220,7 +212,8 @@ describe("mirror engine", () => {
     await h.advance(0);
     expect(h.changes).toEqual([]);
     await h.advance(POLL_INTERVAL_MS);
-    expect(h.changes.at(-1)).toEqual({ track: track("phone1"), firstSeenMs: expect.any(Number) });
+    const firstSeenMs: unknown = expect.any(Number);
+    expect(h.changes.at(-1)).toEqual({ track: track("phone1"), firstSeenMs });
   });
 
   it("slows the poll cadence after a long quiet stretch", async () => {

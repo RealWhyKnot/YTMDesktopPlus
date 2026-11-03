@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
+import { requireValue } from "./helpers/require-value";
+import { isRecord } from "../src/shared/unknown";
 
-import blendAddon from "../src/addons/bundled/blend";
+import { blendAddon } from "../src/addons/bundled/blend";
 import { fakeAddonContext, makePlayerState } from "./helpers/fake-addon-context";
-import { RepeatMode, type AddonInstance, type PlayerQueue, type PlayerQueueItem } from "../src/shared/addons/sdk";
+import { RepeatMode, type PlayerQueue, type PlayerQueueItem } from "../src/shared/addons/sdk";
 
 function makeQueue(overrides: Partial<PlayerQueue> = {}): PlayerQueue {
-  const item = { thumbnails: [], title: "t", author: "a", duration: "0:00", selected: true, videoId: "v", counterparts: null } as PlayerQueueItem;
+  const item: PlayerQueueItem = { thumbnails: [], title: "t", author: "a", duration: "0:00", selected: true, videoId: "v", counterparts: null };
   return {
     automixItems: [],
     autoplay: true,
@@ -14,7 +16,7 @@ function makeQueue(overrides: Partial<PlayerQueue> = {}): PlayerQueue {
     items: [item, { ...item, selected: false, videoId: "w" }],
     repeatMode: RepeatMode.None,
     selectedItemIndex: 0,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -25,7 +27,10 @@ function harness(options: { settings?: Record<string, unknown>; queue?: PlayerQu
   return bag;
 }
 
-const lastArg = (bag: ReturnType<typeof harness>) => bag.captured.invocations.at(-1)?.arg as Record<string, unknown> | undefined;
+const lastArg = (bag: ReturnType<typeof harness>) => {
+  const arg = bag.captured.invocations.at(-1)?.arg;
+  return isRecord(arg) ? arg : undefined;
+};
 
 describe("blend bundled addon", () => {
   it("ships disabled, like every other bundled addon", () => {
@@ -33,81 +38,81 @@ describe("blend bundled addon", () => {
     expect(blendAddon.manifest.id).toBe("blend");
   });
 
-  it("exposes the length slider and the skip toggle", async () => {
+  it("exposes the length slider and the skip toggle", () => {
     const bag = harness();
-    await blendAddon.activate(bag.ctx);
-    const fields = bag.captured.sections.flatMap(section => section.fields);
+    blendAddon.activate(bag.ctx);
+    const fields = bag.captured.sections.flatMap((section) => section.fields);
     expect(fields).toHaveLength(2);
     expect(fields[0]).toMatchObject({ key: "seconds", type: "number", display: "slider", min: 1, max: 12 });
     expect(fields[1]).toMatchObject({ key: "blendSkips", type: "toggle" });
-    expect(bag.settings.seconds).toBe(5);
-    expect(bag.settings.blendSkips).toBe(false);
+    expect(bag.settings.get("seconds")).toBe(5);
+    expect(bag.settings.get("blendSkips")).toBe(false);
   });
 
-  it("registers the engine and its teardown script", async () => {
+  it("registers the engine and its teardown script", () => {
     const bag = harness();
-    await blendAddon.activate(bag.ctx);
+    blendAddon.activate(bag.ctx);
     expect(Object.keys(bag.captured.scripts).sort()).toEqual(["blend", "blend-disable"]);
   });
 
-  it("reads hasNext off the real queue at activate instead of assuming one", async () => {
+  it("reads hasNext off the real queue at activate instead of assuming one", () => {
     const onLastItem = makeQueue({ selectedItemIndex: 1 });
     const bag = harness({ queue: onLastItem });
-    await blendAddon.activate(bag.ctx);
+    blendAddon.activate(bag.ctx);
     bag.fireLoaded();
-    await vi.waitFor(() => expect(bag.captured.invocations.length).toBeGreaterThan(0));
+    expect(bag.captured.invocations.length).toBeGreaterThan(0);
     expect(lastArg(bag)?.hasNext).toBe(false);
   });
 
-  it("counts automix and infinite queues as having a next track", async () => {
+  it("counts automix and infinite queues as having a next track", () => {
     const bag = harness({ queue: makeQueue({ selectedItemIndex: 1, isInfinite: true }) });
-    await blendAddon.activate(bag.ctx);
+    blendAddon.activate(bag.ctx);
     bag.fireLoaded();
-    await vi.waitFor(() => expect(lastArg(bag)?.hasNext).toBe(true));
+    expect(lastArg(bag)?.hasNext).toBe(true);
   });
 
-  it("sends the settings and player state the page cannot see", async () => {
+  it("sends the settings and player state the page cannot see", () => {
     const bag = harness({ settings: { seconds: 8 }, adPlaying: true });
-    await blendAddon.activate(bag.ctx);
+    blendAddon.activate(bag.ctx);
     bag.fireLoaded();
-    await vi.waitFor(() => expect(lastArg(bag)).toBeDefined());
+    expect(lastArg(bag)).toBeDefined();
     expect(lastArg(bag)).toEqual({ seconds: 8, blendSkips: false, repeatOne: false, adPlaying: true, hasNext: true });
   });
 
-  it("re-applies when the setting, the ads, the repeat mode or the queue change", async () => {
+  it("re-applies when the setting, the ads, the repeat mode or the queue change", () => {
     const bag = harness();
-    await blendAddon.activate(bag.ctx);
+    blendAddon.activate(bag.ctx);
 
-    bag.settings.seconds = 7;
-    await bag.captured.settingsListeners.seconds?.(7, 5);
-    await vi.waitFor(() => expect(lastArg(bag)?.seconds).toBe(7));
+    bag.settings.set("seconds", 7);
+    bag.captured.settingsListeners.seconds?.(7, 5);
+    expect(lastArg(bag)?.seconds).toBe(7);
 
-    bag.settings.blendSkips = true;
-    await bag.captured.settingsListeners.blendSkips?.(true, false);
-    await vi.waitFor(() => expect(lastArg(bag)?.blendSkips).toBe(true));
+    bag.settings.set("blendSkips", true);
+    bag.captured.settingsListeners.blendSkips?.(true, false);
+    expect(lastArg(bag)?.blendSkips).toBe(true);
 
     bag.emitPlayerEvent("adStateChanged", { adPlaying: true });
-    await vi.waitFor(() => expect(lastArg(bag)?.adPlaying).toBe(true));
+    expect(lastArg(bag)?.adPlaying).toBe(true);
 
     bag.emitPlayerEvent("repeatModeChanged", { repeatMode: RepeatMode.One });
-    await vi.waitFor(() => expect(lastArg(bag)?.repeatOne).toBe(true));
+    expect(lastArg(bag)?.repeatOne).toBe(true);
 
     bag.emitPlayerEvent("queueChanged", { queue: makeQueue({ selectedItemIndex: 1 }) });
-    await vi.waitFor(() => expect(lastArg(bag)?.hasNext).toBe(false));
+    expect(lastArg(bag)?.hasNext).toBe(false);
   });
 
-  it("ignores a queue change that leaves hasNext alone", async () => {
+  it("ignores a queue change that leaves hasNext alone", () => {
     const bag = harness();
-    await blendAddon.activate(bag.ctx);
+    blendAddon.activate(bag.ctx);
     bag.fireLoaded();
-    await vi.waitFor(() => expect(bag.captured.invocations.length).toBe(1));
+    expect(bag.captured.invocations.length).toBe(1);
     bag.emitPlayerEvent("queueChanged", { queue: makeQueue() });
     expect(bag.captured.invocations).toHaveLength(1);
   });
 
-  it("logs what the engine decided", async () => {
+  it("logs what the engine decided", () => {
     const bag = harness();
-    await blendAddon.activate(bag.ctx);
+    blendAddon.activate(bag.ctx);
     bag.emitViewMessage("diag", { event: "blend", kind: "skip", blends: 3 });
     expect(bag.ctx.log.info).toHaveBeenCalledWith(expect.stringContaining("blend blend"));
     expect(bag.ctx.log.info).toHaveBeenCalledWith(expect.stringContaining("kind=skip"));
@@ -115,17 +120,17 @@ describe("blend bundled addon", () => {
   });
 
   it("says so when the page has no audio graph yet", async () => {
-    const bag = fakeAddonContext({ manifest: blendAddon.manifest, settings: { seconds: 5 }, invokeScript: async () => false });
+    const bag = fakeAddonContext({ manifest: blendAddon.manifest, settings: { seconds: 5 }, invokeScript: () => Promise.resolve(false) });
     bag.ctx.player.getQueue = vi.fn(() => makeQueue());
-    await blendAddon.activate(bag.ctx);
-    bag.fireLoaded();
-    await vi.waitFor(() => expect(bag.ctx.log.info).toHaveBeenCalledWith(expect.stringContaining("no audio graph")));
+    blendAddon.activate(bag.ctx);
+    await requireValue(bag.captured.loadedCallbacks[0])();
+    expect(bag.ctx.log.info).toHaveBeenCalledWith(expect.stringContaining("no audio graph"));
   });
 
-  it("unsubscribes and tears the engine down on destroy", async () => {
+  it("unsubscribes and tears the engine down on destroy", () => {
     const bag = harness();
-    const instance = await blendAddon.activate(bag.ctx);
-    await (instance as AddonInstance).destroy?.();
+    const instance = blendAddon.activate(bag.ctx);
+    instance.destroy();
     expect(bag.unsubscribe).toHaveBeenCalled();
     expect(bag.ctx.ytmview.runScript).toHaveBeenCalledWith("blend-disable");
   });

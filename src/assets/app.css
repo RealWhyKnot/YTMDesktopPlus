@@ -1,20 +1,23 @@
 @import "../themes/_base/app.css";
+@import "./reduced-motion.css";
 
 @font-face {
-  font-family: 'Open Sans';
-  src: url("./fonts/OpenSans-VariableFont_wdth,wght.ttf") format('truetype');
+  font-family: "Open Sans";
+  src: url("./fonts/OpenSans-VariableFont_wdth,wght.ttf") format("truetype");
   font-weight: 100 900;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Work Sans';
-  src: url("./fonts/WorkSans-VariableFont_wght.ttf") format('truetype');
+  font-family: "Work Sans";
+  src: url("./fonts/WorkSans-VariableFont_wght.ttf") format("truetype");
   font-weight: 100 900;
   font-display: swap;
 }
 
-html, body, #app {
+html,
+body,
+.app-root {
   margin: 0;
   height: 100%;
   color: var(--text);
@@ -22,7 +25,6 @@ html, body, #app {
   overflow: hidden;
 }
 
-/* Root element of a window's body inside WindowShell. */
 .window-content {
   border-top: 1px solid var(--border);
   background-color: var(--bg);

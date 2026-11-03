@@ -1,16 +1,18 @@
 export function installExperimentFlagPins(pins: Readonly<Record<string, boolean>>): void {
   type YtConfig = { get?: (key: string, fallback?: unknown) => unknown; set?: (...args: unknown[]) => unknown };
-  const pinWindow = window as typeof window & {
+  type PinWindow = {
     ytcfg?: YtConfig;
     __ytmdFlagPins?: true;
     ytmd?: { reportContractMiss?: (what: string, detail?: unknown) => void };
   };
+  const pinWindow: PinWindow = window as typeof window & PinWindow;
 
   if (pinWindow.__ytmdFlagPins) return;
   pinWindow.__ytmdFlagPins = true;
 
   const reported: string[] = [];
   const wrapped = new WeakSet<object>();
+  const flagText = (value: unknown) => String(value);
 
   const applyPins = (config: YtConfig) => {
     let flags: unknown;
@@ -20,13 +22,12 @@ export function installExperimentFlagPins(pins: Readonly<Record<string, boolean>
       return;
     }
     if (!flags || typeof flags !== "object") return;
-    const record = flags as Record<string, unknown>;
     for (const name of Object.keys(pins)) {
-      const served = record[name];
-      record[name] = pins[name];
-      if (served === undefined || String(served) === String(pins[name]) || reported.includes(name)) continue;
+      const served: unknown = Reflect.get(flags, name);
+      if (!Reflect.set(flags, name, pins[name])) throw new TypeError(`Cannot set experiment flag ${name}`);
+      if (served === undefined || flagText(served) === String(pins[name]) || reported.includes(name)) continue;
       reported.push(name);
-      pinWindow.ytmd?.reportContractMiss?.(`experiment flag ${name} pinned to ${pins[name]}`, String(served));
+      pinWindow.ytmd?.reportContractMiss?.(`experiment flag ${name} pinned to ${pins[name]}`, flagText(served));
     }
   };
 
@@ -44,15 +45,15 @@ export function installExperimentFlagPins(pins: Readonly<Record<string, boolean>
     applyPins(target);
   };
 
-  let current = pinWindow.ytcfg;
+  let current: unknown = pinWindow.ytcfg;
   wrap(current);
   Object.defineProperty(pinWindow, "ytcfg", {
     configurable: true,
     enumerable: true,
     get: () => current,
-    set: value => {
+    set: (value: unknown) => {
       current = value;
       wrap(value);
-    }
+    },
   });
 }

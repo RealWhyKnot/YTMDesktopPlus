@@ -1,9 +1,25 @@
+:root {
+  --font-size-reference: 17;
+  --color-cathode-app-text-shadow-1: rgb(51 255 136 / 30%);
+  --layer-cathode-app-z-index-2: 9999;
+  --color-cathode-app-background-3: rgb(0 0 0 / 0%);
+  --color-cathode-app-background-4: rgb(0 0 0 / 16%);
+}
+
 html,
 body,
-#app {
-  font-size: 17px;
+.app-root {
   letter-spacing: 0.02em;
-  text-shadow: 0 0 6px rgba(51, 255, 136, 0.3);
+  text-shadow: 0 0 6px var(--color-cathode-app-text-shadow-1);
+}
+
+html {
+  font-size: 106.25%;
+}
+
+body,
+.app-root {
+  font-size: 1rem;
 }
 
 body::after {
@@ -11,6 +27,6 @@ body::after {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 9999;
-  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0) 0 2px, rgba(0, 0, 0, 0.16) 2px 3px);
+  z-index: var(--layer-cathode-app-z-index-2);
+  background: repeating-linear-gradient(to bottom, var(--color-cathode-app-background-3) 0 2px, var(--color-cathode-app-background-4) 2px 3px);
 }

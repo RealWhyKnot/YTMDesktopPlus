@@ -1,19 +1,15 @@
-import { Notification, NotificationConstructorOptions, nativeImage } from "electron";
-import playerStateStore, { playerEvents, Thumbnail, VideoDetails, VideoState } from "../../player-state-store";
-import IIntegration from "../integration";
+import { Notification, type NotificationConstructorOptions, nativeImage } from "electron";
+import { playerStateStore, playerEvents, type Thumbnail, type VideoDetails, VideoState } from "../../player-state-store";
+import type { Integration } from "../integration";
 import { launchPauseArmedFor } from "../../playback/launch-pause";
 import log from "electron-log";
 import https from "https";
-
-// Visualiser - https://apps.microsoft.com/store/detail/notifications-visualizer/9NBLGGH5XSL1?hl=en-gb&gl=gb&rtc=1
-// Documentation / Examples - https://learn.microsoft.com/en-us/windows/apps/design/shell/tiles-and-notifications/adaptive-interactive-toasts?tabs=xml
 
 function getLowestResThumbnail(thumbnails: Thumbnail[]) {
   let currentWidth = 1024;
   let currentHeight = 1024;
   let url = null;
   for (const thumbnail of thumbnails) {
-    // If the thumbnail is smaller than the current one, but bigger than 100x100
     if (thumbnail.width < currentWidth && thumbnail.height < currentHeight && thumbnail.width > 100 && thumbnail.height > 100) {
       currentWidth = thumbnail.width;
       currentHeight = thumbnail.height;
@@ -23,12 +19,12 @@ function getLowestResThumbnail(thumbnails: Thumbnail[]) {
   return url;
 }
 
-function displayNotification(videoDetails: VideoDetails, imageData: string) {
+function displayNotification(videoDetails: VideoDetails, imageData: string | null) {
   const notificationData: NotificationConstructorOptions = {
     title: videoDetails.title,
     body: videoDetails.author,
     silent: true,
-    urgency: "low" // Linux only
+    urgency: "low",
   };
 
   if (imageData !== null) {
@@ -44,23 +40,26 @@ function displayNotification(videoDetails: VideoDetails, imageData: string) {
   }, 5 * 1000);
 }
 
-/**
- *
- * @param url
- * @returns Promise<string>
- */
-function getUrlContents(url: string) {
-  return new Promise((resolve, reject) => {
-    const request = https.get(url, res => {
-      const data: Array<Buffer> = [];
-      res.on("data", chunk => {
+function getUrlContents(url: string | null) {
+  return new Promise<string>((resolve, reject) => {
+    if (url === null) {
+      reject(new Error("Notification thumbnail is unavailable"));
+      return;
+    }
+    const request = https.get(url, (res) => {
+      const data: Buffer[] = [];
+      res.on("data", (chunk: unknown) => {
+        if (!Buffer.isBuffer(chunk)) {
+          reject(new TypeError("Notification thumbnail response contained a non-buffer chunk"));
+          return;
+        }
         data.push(chunk);
       });
 
       res.on("end", () => {
         resolve(Buffer.concat(data).toString("base64"));
       });
-      res.on("error", err => {
+      res.on("error", (err) => {
         reject(err);
       });
     });
@@ -71,12 +70,10 @@ function getUrlContents(url: string) {
   });
 }
 
-export default class NowPlayingNotifications implements IIntegration {
+export class NowPlayingNotifications implements Integration {
   private isEnabled = false;
-  private lastDetails: VideoDetails = null;
+  private lastDetails: VideoDetails | null = null;
 
-  // Derived events fire only on track or play-state transitions, so this runs
-  // a handful of times per song instead of on every progress tick.
   private evaluate = (): void => {
     try {
       this.showIfNewTrack();
@@ -91,27 +88,28 @@ export default class NowPlayingNotifications implements IIntegration {
     }
 
     const state = playerStateStore.getState();
-    if (state.videoDetails && state.trackState === VideoState.Playing) {
-      if (this.lastDetails && this.lastDetails.id === state.videoDetails.id) {
+    const details = state.videoDetails;
+    if (details && state.trackState === VideoState.Playing) {
+      if (this.lastDetails?.id === details.id) {
         return;
       }
-      if (launchPauseArmedFor() === state.videoDetails.id) {
+      if (launchPauseArmedFor() === details.id) {
         return;
       }
 
-      this.lastDetails = state.videoDetails;
+      this.lastDetails = details;
 
-      if (state.videoDetails.thumbnails && state.videoDetails.thumbnails.length > 0) {
-        getUrlContents(getLowestResThumbnail(state.videoDetails.thumbnails))
+      if (details.thumbnails.length > 0) {
+        getUrlContents(getLowestResThumbnail(details.thumbnails))
           .then(function (data: string) {
-            displayNotification(state.videoDetails, data);
+            displayNotification(details, data);
           })
           .catch(function () {
-            displayNotification(state.videoDetails, null);
+            displayNotification(details, null);
           })
-          .catch(error => log.error("Now playing notification failed", error));
+          .catch((error: unknown) => log.error("Now playing notification failed", error));
       } else {
-        displayNotification(state.videoDetails, null);
+        displayNotification(details, null);
       }
     }
   }

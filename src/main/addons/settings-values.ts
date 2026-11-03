@@ -8,7 +8,9 @@ export const BADGE_ICON_LIMIT = 64;
 
 const finiteOrUndefined = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
 
-export function numberFieldBounds(sections: AddonSettingsSection[]): Map<string, NumberBounds> {
+type SettingsSectionInput = { fields?: (AddonSettingsSection["fields"][number] | null | undefined)[] } | null | undefined;
+
+export function numberFieldBounds(sections: SettingsSectionInput[]): Map<string, NumberBounds> {
   const bounds = new Map<string, NumberBounds>();
   for (const section of Array.isArray(sections) ? sections : []) {
     for (const field of Array.isArray(section?.fields) ? section.fields : []) {
@@ -31,7 +33,7 @@ export function correctNumberSetting(value: unknown, bounds: NumberBounds, fallb
     return { changed: !Object.is(clamped, value), value: clamped };
   }
   if (value !== null && typeof value !== "number") return { changed: false, value };
-  const fallback = fallbacks.find(candidate => typeof candidate === "number" && Number.isFinite(candidate)) as number | undefined;
+  const fallback = fallbacks.find((candidate): candidate is number => typeof candidate === "number" && Number.isFinite(candidate));
   if (fallback === undefined) return { changed: false, value };
   return { changed: true, value: clampNumberSetting(fallback, bounds) };
 }
@@ -48,6 +50,6 @@ export function clampBadge(badge: Omit<AddonTitlebarBadge, "addonId"> | null): O
     icon: clampText(badge.icon, BADGE_ICON_LIMIT) ?? "",
     text: clampText(badge.text, BADGE_TEXT_LIMIT),
     tooltip: clampText(badge.tooltip, BADGE_TOOLTIP_LIMIT),
-    active: badge.active === true
+    active: badge.active === true,
   };
 }

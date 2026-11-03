@@ -1,3 +1,4 @@
+import { runPageScript } from "./helpers/page-script";
 import fs from "fs";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,10 +15,10 @@ describe("validateRemoteCommand", () => {
     ["repeatMode", "ALL"],
     ["playQueueIndex", 3],
     ["navigate", { watchEndpoint: { videoId: "abc" } }],
-    // Unknown names pass: the page-side switch ignores what it does not know.
-    ["futureCommand", undefined]
+
+    ["futureCommand", undefined],
   ])("accepts %s with %o", (command, value) => {
-    expect(validateRemoteCommand(command as string, value)).toBeNull();
+    expect(validateRemoteCommand(command, value)).toBeNull();
   });
 
   it.each([
@@ -32,31 +33,29 @@ describe("validateRemoteCommand", () => {
     ["playQueueIndex", 1.5],
     ["playQueueIndex", -1],
     ["navigate", {}],
-    ["navigate", null]
+    ["navigate", null],
   ])("rejects %s with %o", (command, value) => {
-    expect(validateRemoteCommand(command as string, value)).not.toBeNull();
+    expect(validateRemoteCommand(command, value)).not.toBeNull();
   });
 });
 
 describe("remote command vocabulary", () => {
   it("matches the player page's switch exactly", () => {
-    const source = fs.readFileSync(path.resolve("src/renderer/ytmview/preload.ts"), "utf8");
-    const start = source.indexOf(`ipcRenderer.on("remoteControl:execute"`);
+    const source = fs.readFileSync(path.resolve("src/renderer/ytmview/remote-control.ts"), "utf8");
+    const start = source.indexOf("export async function executeRemoteCommand(");
     expect(start).toBeGreaterThan(-1);
 
-    const rest = source.slice(start + 1);
-    const nextHandler = rest.indexOf("ipcRenderer.on(");
-    const body = nextHandler === -1 ? rest : rest.slice(0, nextHandler);
-    const cases = [...body.matchAll(/case "([A-Za-z]+)"/g)].map(match => match[1]);
+    const body = source.slice(start);
+    const cases = [...body.matchAll(/case "([A-Za-z]+)"/g)].map((match) => match[1]);
 
     expect(new Set(cases)).toEqual(new Set(REMOTE_COMMAND_NAMES));
   });
 });
 
 describe("next command", () => {
-  const preload = fs.readFileSync(path.resolve("src/renderer/ytmview/preload.ts"), "utf8");
-  const scriptStart = preload.indexOf("executeJavaScript(`", preload.indexOf(`case "next"`)) + "executeJavaScript(`".length;
-  const script = preload.slice(scriptStart, preload.indexOf("`)", scriptStart)).replaceAll("${PLAYER_BAR_SELECTOR}", PLAYER_BAR_SELECTOR);
+  const remoteControl = fs.readFileSync(path.resolve("src/renderer/ytmview/remote-control.ts"), "utf8");
+  const scriptStart = remoteControl.indexOf("executePageScript(`", remoteControl.indexOf(`case "next"`)) + "executePageScript(`".length;
+  const script = remoteControl.slice(scriptStart, remoteControl.indexOf("`)", scriptStart)).replaceAll("${PLAYER_BAR_SELECTOR}", PLAYER_BAR_SELECTOR);
 
   let nextButton: { click: ReturnType<typeof vi.fn> } | null;
   let nextVideo: ReturnType<typeof vi.fn>;
@@ -69,7 +68,9 @@ describe("next command", () => {
     vi.stubGlobal("window", { ytmd: { reportContractMiss: (what: string) => misses.push(what) } });
     vi.stubGlobal("document", {
       querySelector: (selector: string) =>
-        selector === PLAYER_BAR_SELECTOR ? { playerApi: { nextVideo }, querySelector: (inner: string) => (inner === ".next-button" ? nextButton : null) } : null
+        selector === PLAYER_BAR_SELECTOR
+          ? { playerApi: { nextVideo }, querySelector: (inner: string) => (inner === ".next-button" ? nextButton : null) }
+          : null,
     });
   });
 
@@ -77,7 +78,7 @@ describe("next command", () => {
     vi.unstubAllGlobals();
   });
 
-  const run = () => (new Function(`return (${script});`)() as () => void)();
+  const run = () => runPageScript(script);
 
   it("clicks the player bar's Next button instead of calling the player API", () => {
     const button = nextButton;

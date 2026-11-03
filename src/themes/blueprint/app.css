@@ -25,7 +25,7 @@
   transition: transform var(--motion-base) var(--ease);
 }
 
-.sidebar li.active::after,
+.sidebar li[aria-selected="true"]::after,
 .sidebar li:hover::after {
   transform: scaleX(1);
 }

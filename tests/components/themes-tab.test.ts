@@ -25,16 +25,16 @@ describe("ThemesTab", () => {
   });
 
   it("formats broken theme errors the same way", () => {
-    const broken = {
+    const broken: ThemeDescriptor = {
       manifest: { id: "bad", name: "Bad theme", version: "1.0.0", author: "a", description: "d" },
-      origin: "external",
+      origin: "user",
       active: false,
       state: "error",
       error: "theme.json is invalid: name is missing",
       warnings: [],
       swatch: [],
-      watching: false
-    } as unknown as ThemeDescriptor;
+      watching: false,
+    };
     expect(mountTab(null, [broken]).find(".broken-text").text()).toBe("Bad theme Theme.json is invalid: name is missing.");
   });
 });

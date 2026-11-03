@@ -1,54 +1,47 @@
-// IMPORTANT NOTES ABOUT THIS FILE
-//
-// This file contains all logic related to interacting with YTM itself and works under the assumption of a trusted environment and data.
-// Anything passed to this file does not necessarily need to be or will be validated.
-//
-// If adding new things to this file ensure best security practices are followed.
-// - executeJavaScript is used to enter the main world when you need to interact with YTM APIs or anything from YTM that would otherwise need the prototypes or events from YTM.
-//   - Always wrap your executeJavaScript code in an IIFE calling it from outside executeJavaScript when it returns
-// - Add functions to exposeInMainWorld when you need to call back to the main program. By nature you should not trust data coming from this.
-
+import type { AppWindow } from "../app-window";
+declare const window: AppWindow;
+import { executeRemoteCommand } from "./remote-control";
+import { executePageScript, readPageValue, onAsyncMessage } from "./execute-page-script";
+import { isArray, isRecord } from "~shared/unknown";
+import { arrayOf, isBoolean, isString, objectOf, recordOf } from "~shared/validation";
+import { invokeValue } from "../ipc-values";
+import { storeGuards } from "~shared/store/validate-settings";
+import { installMainWorldHooks } from "./main-world";
+import {
+  createThemeStyleSheet,
+  createStyleSheet,
+  createMaterialSymbolsLink,
+  createNavigationMenuArrows,
+  createKeyboardNavigation,
+  createAdditionalPlayerBarControls,
+  hideChromecastButton,
+  hookPlayerApiEvents,
+  overrideHistoryButtonDisplay,
+  getYTMTextRun,
+} from "./page-controls";
 import { contextBridge, ipcRenderer, webFrame } from "electron";
-import Store from "../store-ipc/store";
-import { AD_PRUNE_CONTRACT } from "~shared/ad-contract";
-import { PINNED_EXPERIMENT_FLAGS } from "~shared/ytm-contract";
-import { StoreSchema } from "~shared/store/schema";
+import { Store } from "../store-ipc/store";
+import { type StoreSchema } from "~shared/store/schema";
 import {
   HOOK_POLL_INTERVAL,
   HOOK_POLL_MAX_ATTEMPTS,
   PLAYER_BAR_SELECTOR,
-  PlayerBarProbeSnapshot,
+  type PlayerBarProbeSnapshot,
+  isPlayerBarProbeSnapshot,
   playerBarProbeSource,
   pollUntil,
-  storeHookProbeSource
+  storeHookProbeSource,
 } from "~shared/hook-probes";
 import { mergeScript, type ScriptTable } from "./script-table";
-import { installAdPrune } from "./ad-prune";
-import { installExperimentFlagPins } from "./experiment-flags";
-import { installIntentionalPause } from "./intentional-pause";
-import { steppedVolume, VOLUME_STEP } from "./volume-step";
-import { installQueueProjection } from "~shared/queue-projection";
 
-import playerBarControlsScript from "./scripts/playerbarcontrols.script?raw";
-import hookPlayerApiEventsScript from "./scripts/hookplayerapievents.script?raw";
 import getPlaylistsScript from "./scripts/getplaylists.script?raw";
-import toggleRatingScript from "./scripts/togglerating.script?raw";
 import devProbeScript from "./scripts/devprobe.script?raw";
 
-const toggleLikeScript = toggleRatingScript.replaceAll("__RATING__", "LIKE").replaceAll("__OPPOSITE__", "DISLIKE");
-const toggleDislikeScript = toggleRatingScript.replaceAll("__RATING__", "DISLIKE").replaceAll("__OPPOSITE__", "LIKE");
+declare const isYtmdDevTools: boolean;
 
-// Compiled to a literal by Vite: true in development and local sideload builds,
-// false (so the branches below are dropped) in published beta and release
-// builds.
-declare const YTMD_DEV_TOOLS: boolean;
+const store = new Store<StoreSchema>(storeGuards);
 
-const store = new Store<StoreSchema>();
-
-// Test seam: force a hook stage to fail so the failure path can be exercised
-// deterministically. Asked from the main process per view creation because
-// renderer processes (and their argv) can be reused across view recreations.
-const brokenHookStage: string | null = process.argv.includes("--ytmd-test") ? ipcRenderer.sendSync("ytmdTest:getBrokenHookStage") : null;
+const brokenHookStage: unknown = process.argv.includes("--ytmd-test") ? ipcRenderer.sendSync("ytmdTest:getBrokenHookStage") : null;
 const failingBooleanProbeSource = `(function() { return false; })`;
 const failingPlayerBarProbeSource = `(function() { return { playerBarPresent: false, miniplayerPresent: false, playerApiPresent: false, playerApiReady: false, resolverPresent: false, resolveError: null, resolvedVia: null, candidateKeys: [], missingMembers: [] }; })`;
 
@@ -56,10 +49,11 @@ const MAX_CONTRACT_MISSES = 50;
 const reportedContractMisses = new Set<string>();
 
 const reportContractMiss = (what: string, detail?: unknown) => {
-  const key = String(what);
+  const key = what;
   if (reportedContractMisses.has(key) || reportedContractMisses.size >= MAX_CONTRACT_MISSES) return;
   reportedContractMisses.add(key);
-  ipcRenderer.send("ytmView:contractMiss", key, detail === undefined ? undefined : String(detail));
+  const detailText = String(detail);
+  ipcRenderer.send("ytmView:contractMiss", key, detail === undefined ? undefined : detailText);
 };
 
 contextBridge.exposeInMainWorld("ytmd", {
@@ -68,283 +62,25 @@ contextBridge.exposeInMainWorld("ytmd", {
   sendVideoData: (videoDetails: unknown, playlistId: string, album: { id: string; text: string }, likeStatus: unknown, hasFullMetadata: boolean) =>
     ipcRenderer.send("ytmView:videoDataChanged", videoDetails, playlistId, album, likeStatus, hasFullMetadata),
   sendQueueUpdate: (queue: unknown) => ipcRenderer.send("ytmView:queueChanged", queue),
-  sendStoreUpdate: (likeStatus: string, volume: number, muted: boolean, adPlaying: boolean) =>
-    ipcRenderer.send("ytmView:storeStateChanged", likeStatus, volume, muted, adPlaying),
+  sendStoreUpdate: (likeStatus: string, volume: number, isMuted: boolean, isAdPlaying: boolean) =>
+    ipcRenderer.send("ytmView:storeStateChanged", likeStatus, volume, isMuted, isAdPlaying),
   sendCreatePlaylistObservation: (playlist: unknown) => ipcRenderer.send("ytmView:createPlaylistObserved", playlist),
   sendDeletePlaylistObservation: (playlistId: string) => ipcRenderer.send("ytmView:deletePlaylistObserved", playlistId),
-  // Page scripts push to their addon's main-process half; delivery lands on
-  // the addon's ctx.ytmview.onMessage(name) callbacks.
+
   postAddonMessage: (addonId: string, name: string, payload?: unknown) => ipcRenderer.send("ytmView:addonMessage", addonId, name, payload),
   sendAdBlockEvent: (kind: string, detail?: unknown) => ipcRenderer.send("ytmView:adBlockEvent", kind, detail),
   reportContractMiss: (what: string, detail?: unknown) => reportContractMiss(what, detail),
-  ...(YTMD_DEV_TOOLS ? { sendDevProbe: (batch: unknown[]) => ipcRenderer.send("ytmView:devProbe", batch) } : {})
+  ...(isYtmdDevTools ? { sendDevProbe: (batch: unknown[]) => ipcRenderer.send("ytmView:devProbe", batch) } : {}),
 });
 
-window.addEventListener("message", event => {
+window.addEventListener("message", (event: MessageEvent<unknown>) => {
   if (event.source !== window || event.origin !== "https://music.youtube.com") return;
-  if (event.data?.type !== "ytmd-room-capture-port" || !event.ports[0]) return;
+  if (!isRecord(event.data) || event.data.type !== "ytmd-room-capture-port" || !event.ports[0]) return;
   ipcRenderer.postMessage("ytmView:roomCapturePort", null, [event.ports[0]]);
 });
 
-const THEME_STYLE_ID = "ytmd-theme";
+installMainWorldHooks();
 
-function applyThemeStyle(css: string) {
-  let element = document.getElementById(THEME_STYLE_ID);
-  if (element === null) {
-    element = document.createElement("style");
-    element.id = THEME_STYLE_ID;
-    document.head.appendChild(element);
-  }
-  element.textContent = css;
-}
-
-function createThemeStyleSheet() {
-  const css = ipcRenderer.sendSync("themes:getActiveCss") as { ytm: string };
-  applyThemeStyle(css.ytm);
-  ipcRenderer.on("themes:changed", (_event, next: { ytm: string }) => applyThemeStyle(next.ytm));
-}
-
-function createStyleSheet() {
-  const css = document.createElement("style");
-  css.appendChild(
-    document.createTextNode(`
-      .ytmd-history-back, .ytmd-history-forward {
-        cursor: pointer;
-        margin: 0 18px 0 2px;
-        font-size: 24px;
-        color: var(--ytmd-nav-icon, rgba(255, 255, 255, 0.5));
-      }
-
-      .ytmd-history-back.pivotbar, .ytmd-history-forward.pivotbar {
-        padding-top: 12px;
-      }
-
-      .ytmd-history-back.disabled, .ytmd-history-forward.disabled {
-        cursor: not-allowed;
-      }
-
-      .ytmd-history-back:hover:not(.disabled), .ytmd-history-forward:hover:not(.disabled) {
-        color: var(--ytmd-nav-icon-hover, #ffffff);
-      }
-
-      .ytmd-hidden {
-        display: none;
-      }
-
-      .ytmd-persist-volume-slider {
-        opacity: 1 !important;
-        pointer-events: initial !important;
-      }
-      
-      .ytmd-player-bar-control.library-button {
-        margin-left: 8px;
-      }
-
-      .ytmd-player-bar-control.library-button.hidden {
-        display: none;
-      }
-
-      .ytmd-player-bar-control.playlist-button {
-        margin-left: 8px;
-      }
-
-      .ytmd-player-bar-control.playlist-button.hidden {
-        display: none;
-      }
-
-      .ytmd-player-bar-control.sleep-timer-button.active {
-        color: var(--ytmd-control-active, #ffffff);
-      }
-    `)
-  );
-  document.head.appendChild(css);
-}
-
-function createMaterialSymbolsLink() {
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,100,0,0";
-  return link;
-}
-
-function createNavigationMenuArrows() {
-  // Go back in history
-  const historyBackElement = document.createElement("span");
-  historyBackElement.classList.add("material-symbols-outlined", "ytmd-history-back", "disabled");
-  historyBackElement.innerText = "west";
-
-  historyBackElement.addEventListener("click", function () {
-    if (!historyBackElement.classList.contains("disabled")) {
-      history.back();
-    }
-  });
-
-  // Go forward in history
-  const historyForwardElement = document.createElement("span");
-  historyForwardElement.classList.add("material-symbols-outlined", "ytmd-history-forward", "disabled");
-  historyForwardElement.innerText = "east";
-
-  historyForwardElement.addEventListener("click", function () {
-    if (!historyForwardElement.classList.contains("disabled")) {
-      history.forward();
-    }
-  });
-
-  ipcRenderer.on("ytmView:navigationStateChanged", (event, state) => {
-    if (state.canGoBack) {
-      historyBackElement.classList.remove("disabled");
-    } else {
-      historyBackElement.classList.add("disabled");
-    }
-
-    if (state.canGoForward) {
-      historyForwardElement.classList.remove("disabled");
-    } else {
-      historyForwardElement.classList.add("disabled");
-    }
-  });
-
-  const pivotBar = document.querySelector("ytmusic-pivot-bar-renderer");
-  if (!pivotBar) {
-    // New YTM UI
-    const searchBar = document.querySelector("ytmusic-search-box");
-    const navBar = searchBar.parentNode;
-    navBar.insertBefore(historyForwardElement, searchBar);
-    navBar.insertBefore(historyBackElement, historyForwardElement);
-  } else {
-    historyForwardElement.classList.add("pivotbar");
-    historyBackElement.classList.add("pivotbar");
-    pivotBar.prepend(historyForwardElement);
-    pivotBar.prepend(historyBackElement);
-  }
-}
-
-function createKeyboardNavigation() {
-  const keyboardNavigation = document.createElement("div");
-  keyboardNavigation.tabIndex = 32767;
-  keyboardNavigation.onfocus = () => {
-    keyboardNavigation.blur();
-    ipcRenderer.send("ytmView:switchFocus", "main");
-  };
-  document.body.appendChild(keyboardNavigation);
-}
-
-async function createAdditionalPlayerBarControls() {
-  (await webFrame.executeJavaScript(playerBarControlsScript))();
-}
-
-async function hideChromecastButton() {
-  (
-    await webFrame.executeJavaScript(`
-      (function() {
-        window.__YTMD_HOOK__.ytmStore.dispatch({ type: 'SET_CAST_AVAILABLE', payload: false });
-      })
-    `)
-  )();
-}
-
-async function hookPlayerApiEvents() {
-  (await webFrame.executeJavaScript(hookPlayerApiEventsScript))();
-}
-
-function overrideHistoryButtonDisplay() {
-  document.querySelector<HTMLElement>("#history-link .history-button").style = "display: inline-block !important;";
-}
-
-function getYTMTextRun(runs: { text: string }[]) {
-  let final = "";
-  for (const run of runs) {
-    final += run.text;
-  }
-  return final;
-}
-
-// Read synchronously: resolving the store over ipcRenderer.invoke is the race
-// this install exists to avoid.
-const adBlockEnabled: boolean = ipcRenderer.sendSync("ytmView:adBlockEnabled") === true;
-contextBridge.executeInMainWorld({ func: installAdPrune, args: [adBlockEnabled, AD_PRUNE_CONTRACT] });
-contextBridge.executeInMainWorld({ func: installQueueProjection });
-contextBridge.executeInMainWorld({ func: installExperimentFlagPins, args: [PINNED_EXPERIMENT_FLAGS] });
-contextBridge.executeInMainWorld({ func: installIntentionalPause });
-
-// This hooks YTM's internal store. YouTube Music defines
-// PolymerFakeBaseClassWithoutHtml itself, so whichever side defines the
-// property first wins. executeInMainWorld runs synchronously during preload,
-// before the page can execute anything, which webFrame.executeJavaScript does
-// not guarantee: with the service worker serving the page from cache, YTM's
-// scripts could win that race and the store hook would never install.
-contextBridge.executeInMainWorld({
-  func: () => {
-    type YTMStore = { getState: () => unknown; dispatch: (action: unknown) => unknown; subscribe: (callback: () => void) => unknown };
-    const hookWindow = window as typeof window & { __YTMD_HOOK__?: Readonly<{ ytmStore: YTMStore }> };
-    const fakeBaseClass = function (this: { store?: YTMStore }) {
-      try {
-        if (!hookWindow.__YTMD_HOOK__) {
-          if (this.store && !!this.store.getState && !!this.store.dispatch && !!this.store.subscribe) {
-            const ytmdHook = {
-              ytmStore: this.store
-            };
-            Object.freeze(ytmdHook);
-            hookWindow.__YTMD_HOOK__ = ytmdHook;
-          }
-        }
-      } catch {
-        // Never let the trap break YTM's own bootstrap.
-      }
-    };
-    Object.defineProperty(window, "PolymerFakeBaseClassWithoutHtml", {
-      set: () => undefined,
-      get: () => fakeBaseClass
-    });
-  }
-});
-
-// One Web Audio graph for the whole page. createMediaElementSource permanently
-// reroutes the element and may only be called once, so every feature that wants
-// the audio shares this and none of them may build their own.
-//
-//   source -> out -> destination
-//
-// `out` is the junction everything on the ear path terminates into, and nothing
-// but its owner ever disconnects it. Room capture splices its own node in ahead
-// of `out`, so anything hanging off the far side of it, such as the volume
-// boost, survives a room starting or stopping. Page scripts cannot import each
-// other, so the graph is built here rather than copied into each of them.
-contextBridge.executeInMainWorld({
-  func: () => {
-    type AudioGraph = { context: AudioContext; source: MediaElementAudioSourceNode; out: GainNode };
-    const graphWindow = window as typeof window & { __ytmdAudioGraph?: AudioGraph; __ytmdEnsureAudioGraph?: () => AudioGraph | null };
-
-    graphWindow.__ytmdEnsureAudioGraph = () => {
-      let graph = graphWindow.__ytmdAudioGraph;
-      if (!graph) {
-        const video = document.querySelector("video");
-        if (!video) return null;
-
-        const context = new AudioContext();
-        const source = context.createMediaElementSource(video);
-        const out = context.createGain();
-        source.connect(out);
-        out.connect(context.destination);
-
-        graph = { context, source, out };
-        graphWindow.__ytmdAudioGraph = graph;
-      }
-      // Routing an element into a suspended context silences it outright.
-      if (graph.context.state === "suspended") graph.context.resume();
-      return graph;
-    };
-  }
-});
-
-// Hook setup starts at DOMContentLoaded rather than the load event: a watch
-// page with paused media can hold the load event open indefinitely, and the
-// polls below already wait for everything they need.
-
-// Runs one optional setup module. The loading overlay waits on ytmView:loaded,
-// so a throw between the essential hook stages and that signal would leave the
-// whole app on the spinner over a single broken module; these fail alone,
-// loudly, and let the rest of the setup finish.
 const optionalModule = async (name: string, fn: () => void | Promise<void>) => {
   try {
     await fn();
@@ -364,8 +100,8 @@ const startHooking = async () => {
   }
 
   const storeHook = await pollUntil<boolean>(
-    async () => (await webFrame.executeJavaScript(brokenHookStage === "store-hook" ? failingBooleanProbeSource : storeHookProbeSource))(),
-    hooked => hooked,
+    () => readPageValue(brokenHookStage === "store-hook" ? failingBooleanProbeSource : storeHookProbeSource, isBoolean),
+    (isHooked) => isHooked,
     HOOK_POLL_INTERVAL,
     HOOK_POLL_MAX_ATTEMPTS
   );
@@ -375,17 +111,17 @@ const startHooking = async () => {
     return;
   }
 
-  let materialSymbolsLoaded = false;
+  let isMaterialSymbolsLoaded = false;
 
   const materialSymbols = createMaterialSymbolsLink();
   materialSymbols.onload = () => {
-    materialSymbolsLoaded = true;
+    isMaterialSymbolsLoaded = true;
   };
   document.head.appendChild(materialSymbols);
 
   const playerBar = await pollUntil<PlayerBarProbeSnapshot>(
-    async () => (await webFrame.executeJavaScript(brokenHookStage === "player-api" ? failingPlayerBarProbeSource : playerBarProbeSource))(),
-    snapshot => snapshot.playerApiReady,
+    () => readPageValue(brokenHookStage === "player-api" ? failingPlayerBarProbeSource : playerBarProbeSource, isPlayerBarProbeSnapshot),
+    (snapshot) => snapshot.playerApiReady,
     HOOK_POLL_INTERVAL,
     HOOK_POLL_MAX_ATTEMPTS
   );
@@ -404,33 +140,29 @@ const startHooking = async () => {
     reportContractMiss(`playerApi missing ${playerBar.last.missingMembers.join(",")}`);
   }
 
-  // Serving scripts has to be ready before hookPlayerApiEvents starts feeding
-  // player state to the main process: the first state push makes addons invoke
-  // scripts, and an invoke that lands before this listener exists is dropped
-  // and left to time out.
   const integrationScripts: ScriptTable = {};
-  // Scripts registered after this page load arrive as pushes. The listener
-  // attaches before the snapshot so a registration in flight is never lost;
-  // merging the same script twice is idempotent.
+
   ipcRenderer.on("ytmView:scriptRegistered", (_event, namespace: string, name: string, script: string) => {
     mergeScript(integrationScripts, namespace, name, script);
   });
-  const scriptSnapshot: ScriptTable = await ipcRenderer.invoke("ytmView:getIntegrationScripts");
+  const scriptSnapshot = await invokeValue("ytmView:getIntegrationScripts", recordOf(recordOf(isString)));
   for (const [namespace, scripts] of Object.entries(scriptSnapshot)) {
     for (const [name, script] of Object.entries(scripts)) mergeScript(integrationScripts, namespace, name, script);
   }
 
-  ipcRenderer.on("ytmView:executeScript", async (_event, integrationName, scriptName) => {
+  onAsyncMessage("ytmView:executeScript", async (_event, integrationName, scriptName) => {
+    if (typeof integrationName !== "string" || typeof scriptName !== "string") return;
     const scripts = integrationScripts[integrationName];
     if (scripts) {
       const script = scripts[scriptName];
       if (script) {
-        (await webFrame.executeJavaScript(script))();
+        (await executePageScript(script))();
       }
     }
   });
 
-  ipcRenderer.on("ytmView:invokeScript", async (_event, integrationName, scriptName, requestId, arg) => {
+  onAsyncMessage("ytmView:invokeScript", async (_event, integrationName, scriptName, requestId, arg) => {
+    if (typeof integrationName !== "string" || typeof scriptName !== "string" || (typeof requestId !== "string" && typeof requestId !== "number")) return;
     const respond = (payload: { ok: boolean; value?: unknown; error?: string }) => ipcRenderer.send(`ytmView:invokeScript:response:${requestId}`, payload);
     try {
       const script = integrationScripts[integrationName]?.[scriptName];
@@ -438,18 +170,16 @@ const startHooking = async () => {
         respond({ ok: false, error: `unknown script ${integrationName}/${scriptName}` });
         return;
       }
-      const value = await (await webFrame.executeJavaScript(script))(arg);
+      const value = await (await executePageScript(script))(arg);
       respond({ ok: true, value });
     } catch (error) {
       respond({ ok: false, error: String(error) });
     }
   });
 
-  // The icon font is cosmetic: give it a bounded grace period but never let it
-  // block the app from finishing setup.
   await pollUntil<boolean>(
-    async () => materialSymbolsLoaded,
-    loaded => loaded,
+    () => Promise.resolve(isMaterialSymbolsLoaded),
+    (isLoaded) => isLoaded,
     HOOK_POLL_INTERVAL,
     40
   );
@@ -466,15 +196,12 @@ const startHooking = async () => {
   await optionalModule("continue-where-you-left-off", async () => {
     const state = await store.get("state");
     const playbackSettings = await store.get("playback");
-    const continueWhereYouLeftOff = playbackSettings.continueWhereYouLeftOff;
+    const isContinueWhereYouLeftOff = playbackSettings.continueWhereYouLeftOff;
 
-    if (continueWhereYouLeftOff) {
+    if (isContinueWhereYouLeftOff) {
       if (playbackSettings.continueWhereYouLeftOffPaused && state.lastVideoId) {
-        // The restore is allowed to autoplay so YTM never shows its blocked
-        // autoplay hint. Mute before it starts; the main process pauses it the
-        // moment it reports playing and then restores the mute state.
-        const wasMuted: boolean = (
-          await webFrame.executeJavaScript(`
+        const wasMuted = (
+          await executePageScript(`
           (function() {
             const playerApi = document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi;
             const muted = playerApi.isMuted();
@@ -483,10 +210,10 @@ const startHooking = async () => {
           })
         `)
         )();
+        if (typeof wasMuted !== "boolean") throw new TypeError("Invalid player mute state");
         ipcRenderer.send("ytmView:launchPauseArmed", state.lastVideoId, wasMuted);
       }
 
-      // The last page the user was on is already a page where it will be playing a song from (no point telling YTM to play it again)
       if (!state.lastUrl.startsWith("https://music.youtube.com/watch")) {
         if (state.lastVideoId) {
           document.dispatchEvent(
@@ -495,16 +222,16 @@ const startHooking = async () => {
                 endpoint: {
                   watchEndpoint: {
                     videoId: state.lastVideoId,
-                    playlistId: state.lastPlaylistId
-                  }
-                }
-              }
+                    playlistId: state.lastPlaylistId,
+                  },
+                },
+              },
             })
           );
         }
       } else {
         (
-          await webFrame.executeJavaScript(`
+          await executePageScript(`
           (function() {
             const playerApi = document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi;
             const videoDetails = playerApi.getPlayerResponse()?.videoDetails;
@@ -517,286 +244,42 @@ const startHooking = async () => {
   });
 
   await optionalModule("persist-volume-slider", async () => {
-    const alwaysShowVolumeSlider = (await store.get("appearance")).alwaysShowVolumeSlider;
-    if (alwaysShowVolumeSlider) {
-      document.querySelector(`${PLAYER_BAR_SELECTOR} #volume-slider`).classList.add("ytmd-persist-volume-slider");
+    const isAlwaysShowVolumeSlider = (await store.get("appearance")).alwaysShowVolumeSlider;
+    if (isAlwaysShowVolumeSlider) {
+      document.querySelector(`${PLAYER_BAR_SELECTOR} #volume-slider`)?.classList.add("ytmd-persist-volume-slider");
     }
   });
 
-  ipcRenderer.on("remoteControl:execute", async (_event, command, value) => {
-    switch (command) {
-      case "playPause": {
-        (
-          await webFrame.executeJavaScript(`
-            (function() {
-              const playerBar = document.querySelector("${PLAYER_BAR_SELECTOR}");
-              if (playerBar.playing) {
-                window.__ytmdPause(playerBar.playerApi);
-              } else {
-                playerBar.playerApi.playVideo();
-              }
-            })
-          `)
-        )();
-        break;
-      }
-
-      case "play": {
-        (
-          await webFrame.executeJavaScript(`
-            (function() {
-              document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi.playVideo();
-            })
-          `)
-        )();
-        break;
-      }
-
-      case "pause": {
-        (
-          await webFrame.executeJavaScript(`
-            (function() {
-              window.__ytmdPause(document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi);
-            })
-          `)
-        )();
-        break;
-      }
-
-      case "next": {
-        (
-          await webFrame.executeJavaScript(`
-            (function() {
-              const playerBar = document.querySelector("${PLAYER_BAR_SELECTOR}");
-              const nextButton = playerBar.querySelector(".next-button");
-              if (nextButton) {
-                nextButton.click();
-              } else {
-                window.ytmd.reportContractMiss("${PLAYER_BAR_SELECTOR} .next-button");
-                playerBar.playerApi.nextVideo();
-              }
-            })
-          `)
-        )();
-        break;
-      }
-
-      case "previous": {
-        (
-          await webFrame.executeJavaScript(`
-            (function() {
-              document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi.previousVideo();
-            })
-          `)
-        )();
-        break;
-      }
-
-      case "toggleLike": {
-        (await webFrame.executeJavaScript(toggleLikeScript))();
-        break;
-      }
-
-      case "toggleDislike": {
-        (await webFrame.executeJavaScript(toggleDislikeScript))();
-        break;
-      }
-
-      case "volumeUp": {
-        const currentVolumeUp: number = (
-          await webFrame.executeJavaScript(`
-            (function() {
-              return document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi.getVolume();
-            })
-          `)
-        )();
-
-        const newVolumeUp = steppedVolume(currentVolumeUp, VOLUME_STEP);
-        if (newVolumeUp === null) break;
-        (
-          await webFrame.executeJavaScript(`
-            (function(newVolumeUp) {
-              document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi.setVolume(newVolumeUp);
-              window.__YTMD_HOOK__.ytmStore.dispatch({ type: 'SET_VOLUME', payload: newVolumeUp });
-            })
-          `)
-        )(newVolumeUp);
-        break;
-      }
-
-      case "volumeDown": {
-        const currentVolumeDown: number = (
-          await webFrame.executeJavaScript(`
-            (function() {
-              return document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi.getVolume();
-            })
-          `)
-        )();
-
-        const newVolumeDown = steppedVolume(currentVolumeDown, -VOLUME_STEP);
-        if (newVolumeDown === null) break;
-        (
-          await webFrame.executeJavaScript(`
-            (function(newVolumeDown) {
-              document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi.setVolume(newVolumeDown);
-              window.__YTMD_HOOK__.ytmStore.dispatch({ type: 'SET_VOLUME', payload: newVolumeDown });
-            })
-          `)
-        )(newVolumeDown);
-        break;
-      }
-
-      case "setVolume": {
-        const valueInt: number = parseInt(value);
-        // Check if Volume is a number and between 0 and 100
-        if (isNaN(valueInt) || valueInt < 0 || valueInt > 100) {
-          return;
-        }
-
-        (
-          await webFrame.executeJavaScript(`
-            (function(valueInt) {
-              document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi.setVolume(valueInt);
-              window.__YTMD_HOOK__.ytmStore.dispatch({ type: 'SET_VOLUME', payload: valueInt });
-            })
-          `)
-        )(valueInt);
-        break;
-      }
-
-      case "mute":
-        (
-          await webFrame.executeJavaScript(`
-            (function() {
-              document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi.mute();
-              window.__YTMD_HOOK__.ytmStore.dispatch({ type: 'SET_MUTED', payload: true });
-            })
-          `)
-        )();
-        break;
-
-      case "unmute":
-        (
-          await webFrame.executeJavaScript(`
-            (function() {
-              document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi.unMute();
-              window.__YTMD_HOOK__.ytmStore.dispatch({ type: 'SET_MUTED', payload: false });
-            })
-          `)
-        )();
-        break;
-
-      case "repeatMode":
-        (
-          await webFrame.executeJavaScript(`
-            (function(value) {
-              window.__YTMD_HOOK__.ytmStore.dispatch({ type: 'SET_REPEAT', payload: value });
-            })
-          `)
-        )(value);
-        break;
-
-      case "seekTo":
-        (
-          await webFrame.executeJavaScript(`
-            (function(value) {
-              document.querySelector("${PLAYER_BAR_SELECTOR}").playerApi.seekTo(value);
-            })
-          `)
-        )(value);
-        break;
-
-      case "shuffle":
-        (
-          await webFrame.executeJavaScript(`
-            (function() {
-              document.querySelector("${PLAYER_BAR_SELECTOR}").queue.shuffle();
-            })
-          `)
-        )();
-        break;
-
-      case "playQueueIndex": {
-        const index: number = parseInt(value);
-
-        (
-          await webFrame.executeJavaScript(`
-            (function(index) {
-              const state = window.__YTMD_HOOK__.ytmStore.getState();
-              const queue = state.queue;
-
-              const maxQueueIndex = state.queue.items.length - 1;
-              const maxAutoMixQueueIndex = Math.max(state.queue.automixItems.length - 1, 0);
-
-              let useAutoMix = false;
-              if (index > maxQueueIndex) {
-                index = index - state.queue.items.length;
-                useAutoMix = true;
-              }
-
-              let song = null;
-              if (!useAutoMix) {
-                song = queue.items[index];
-              } else {
-                song = queue.automixItems[index];
-              }
-
-              let playlistPanelVideoRenderer;
-              if (song.playlistPanelVideoRenderer) {
-                playlistPanelVideoRenderer = song.playlistPanelVideoRenderer;
-              } else if (song.playlistPanelVideoWrapperRenderer) {
-                playlistPanelVideoRenderer = song.playlistPanelVideoWrapperRenderer.primaryRenderer.playlistPanelVideoRenderer;
-              }
-
-              document.dispatchEvent(
-                new CustomEvent("yt-navigate", {
-                  detail: {
-                    endpoint: {
-                      watchEndpoint: playlistPanelVideoRenderer.navigationEndpoint.watchEndpoint
-                    }
-                  }
-                })
-              );
-            })
-          `)
-        )(index);
-
-        break;
-      }
-
-      case "navigate": {
-        const endpoint = value;
-        document.dispatchEvent(
-          new CustomEvent("yt-navigate", {
-            detail: {
-              endpoint
-            }
-          })
-        );
-        break;
-      }
-    }
+  onAsyncMessage("remoteControl:execute", async (_event, command, value) => {
+    await executeRemoteCommand(command, value);
   });
 
-  ipcRenderer.on("ytmView:getPlaylists", async (_event, requestId) => {
-    const rawPlaylists = await (await webFrame.executeJavaScript(getPlaylistsScript))();
+  onAsyncMessage("ytmView:getPlaylists", async (_event, requestId) => {
+    if (typeof requestId !== "number" && typeof requestId !== "string") return;
+    const rawPlaylists = await (await executePageScript(getPlaylistsScript))();
 
+    if (!isArray(rawPlaylists)) throw new TypeError("Invalid playlist response");
+    const isPlaylist = objectOf<{ playlistId: string; title: { runs: { text: string }[] } }>({
+      playlistId: isString,
+      title: objectOf({ runs: arrayOf(objectOf({ text: isString })) }),
+    });
     const playlists = [];
     for (const rawPlaylist of rawPlaylists) {
-      const playlist = rawPlaylist.playlistAddToOptionRenderer;
+      const playlist = isRecord(rawPlaylist) ? rawPlaylist.playlistAddToOptionRenderer : undefined;
+      if (!isPlaylist(playlist)) throw new TypeError("Invalid playlist entry");
       playlists.push({
         id: playlist.playlistId,
-        title: getYTMTextRun(playlist.title.runs)
+        title: getYTMTextRun(playlist.title.runs),
       });
     }
     ipcRenderer.send(`ytmView:getPlaylists:response:${requestId}`, playlists);
   });
 
-  store.onDidAnyChange(newState => {
-    // Only the install had to be synchronous; a flag flip can take its time.
-    webFrame
-      .executeJavaScript(`window.__ytmdAdPrune && (window.__ytmdAdPrune.enabled = ${newState.playback.adBlockerEnabled === true});`)
-      .catch((): void => undefined);
+  store.onDidAnyChange((newState) => {
+    webFrame.executeJavaScript(`window.__ytmdAdPrune && (window.__ytmdAdPrune.enabled = ${newState.playback.adBlockerEnabled});`).catch((error: unknown) => {
+      console.warn("preload: operation failed", error);
+      return undefined;
+    });
 
     const volumeSlider = document.querySelector(`${PLAYER_BAR_SELECTOR} #volume-slider`);
     if (!volumeSlider) {
@@ -808,10 +291,10 @@ const startHooking = async () => {
     }
   });
 
-  if (YTMD_DEV_TOOLS) {
+  if (isYtmdDevTools) {
     await optionalModule("dev-probe", async () => {
       if (ipcRenderer.sendSync("ytmView:devProbeEnabled") === true) {
-        (await webFrame.executeJavaScript(devProbeScript))();
+        (await executePageScript(devProbeScript))();
       }
     });
   }
@@ -819,11 +302,8 @@ const startHooking = async () => {
   ipcRenderer.send("ytmView:loaded");
 };
 
-// A crash anywhere in setup must surface as the hook-failure overlay, not an
-// endless loading spinner: the main process only clears loading on
-// ytmView:loaded or ytmView:hookFailed.
 const startHookingSafely = () => {
-  startHooking().catch(error => {
+  void startHooking().catch((error: unknown) => {
     console.error("[ytmd] hook setup crashed", error);
     ipcRenderer.send("ytmView:hookFailed", "unexpected", { error: String(error) });
   });

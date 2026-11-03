@@ -1,18 +1,17 @@
 <script setup lang="ts">
-import { inject } from "vue";
 import YTMDSetting from "../../../components/YTMDSetting.vue";
 import { TrayIconStyle } from "~shared/store/schema";
-import { stagedSettingsKey } from "../useStagedSettings";
-import { settingsShellKey } from "../context";
+import { useStagedSettings } from "../use-staged-settings";
+import { useSettingsShell } from "../context";
 
-const staged = inject(stagedSettingsKey);
-const shell = inject(settingsShellKey);
+const staged = useStagedSettings();
+const shell = useSettingsShell();
 const stageChanged = staged.stageChanged;
 const { isLinux } = shell;
 
-const alwaysShowVolumeSlider = staged.refs["appearance.alwaysShowVolumeSlider"];
-const zoom = staged.refs["appearance.zoom"];
-const trayIconStyle = staged.refs["appearance.trayIconStyle"];
+const alwaysShowVolumeSlider = staged.modelBoolean("appearance.alwaysShowVolumeSlider");
+const zoom = staged.modelNumber("appearance.zoom");
+const trayIconStyle = staged.modelSelection("appearance.trayIconStyle");
 </script>
 
 <template>

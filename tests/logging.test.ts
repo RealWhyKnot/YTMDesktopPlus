@@ -1,13 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupLogging, switchLogFileToSync } from "../src/main/logging";
 import { makeTempDir } from "./helpers/temp-dir";
 
 vi.mock("electron", () => ({ app: { on: vi.fn() } }));
 
 let file: string;
+
+afterEach(() => vi.restoreAllMocks());
 
 beforeEach(() => {
   file = path.join(makeTempDir("ytmd-log-"), "main.log");
@@ -21,11 +23,30 @@ describe("setupLogging", () => {
     setupLogging(false);
     log.transports.file.level = "info";
     const writeSync = vi.spyOn(fs, "writeFileSync");
+    const nativeWrite = fs.writeFile;
+    const written = new Promise<void>((resolve, reject) => {
+      vi.spyOn(fs, "writeFile").mockImplementation((...args) => {
+        const callback = args.at(-1);
+        if (typeof callback !== "function") throw new TypeError("Log write callback is missing");
+        const forwarded: unknown[] = args.slice(0, -1);
+        forwarded.push((error: NodeJS.ErrnoException | null) => {
+          Reflect.apply(callback, undefined, [error]);
+          if (error) reject(error);
+          else resolve();
+        });
+        Reflect.apply(nativeWrite, fs, forwarded);
+      });
+    });
 
     log.info("queued line");
 
-    expect(writeSync.mock.calls.some(([, data]) => String(data).includes("queued line"))).toBe(false);
-    await vi.waitFor(() => expect(fs.readFileSync(file, "utf8")).toContain("queued line"));
+    expect(
+      writeSync.mock.calls.some(([, data]) =>
+        (typeof data === "string" ? data : Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString()).includes("queued line")
+      )
+    ).toBe(false);
+    await written;
+    expect(fs.readFileSync(file, "utf8")).toContain("queued line");
     writeSync.mockRestore();
   });
 });

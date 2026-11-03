@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, inject } from "vue";
-import { settingsShellKey } from "../context";
+import { computed } from "vue";
+import { useSettingsShell } from "../context";
 import logo from "~assets/icons/ytmd.png";
 
-const shell = inject(settingsShellKey);
+const shell = useSettingsShell();
 const {
   ytmdVersion,
   ytmdBranch,
@@ -15,7 +15,7 @@ const {
   updateNotAvailable,
   updateDownloaded,
   checkForUpdates,
-  restartApplicationForUpdate
+  restartApplicationForUpdate,
 } = shell;
 
 const releaseUrl = computed(() => `https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/${updateLatestVersion.value}`);
@@ -64,7 +64,6 @@ const releaseUrl = computed(() => `https://github.com/RealWhyKnot/YTMDesktopPlus
 <style scoped>
 .about-tab {
   display: flex;
-  /* safe keeps the top reachable when the window is shorter than the content */
   justify-content: safe center;
   align-items: center;
   flex-direction: column;
@@ -130,7 +129,7 @@ const releaseUrl = computed(() => `https://github.com/RealWhyKnot/YTMDesktopPlus
   display: flex;
   align-items: center;
   color: var(--text-faint);
-  margin: 0 0 8px 0;
+  margin: 0 0 8px;
 }
 
 .update-link {
@@ -152,7 +151,7 @@ const releaseUrl = computed(() => `https://github.com/RealWhyKnot/YTMDesktopPlus
   display: flex;
   align-items: center;
   color: var(--text-faint);
-  margin: 0 0 8px 0;
+  margin: 0 0 8px;
 }
 
 .updating .material-symbols-outlined {
@@ -163,6 +162,7 @@ const releaseUrl = computed(() => `https://github.com/RealWhyKnot/YTMDesktopPlus
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(359deg);
   }

@@ -6,7 +6,7 @@ import {
   MIN_SEEK_INTERVAL_MS,
   SEEK_SETTLE_MS,
   decide,
-  projectProgress
+  projectProgress,
 } from "../src/main/integrations/listen-along/sync-engine";
 import type { Sample, SyncContext } from "../src/main/integrations/listen-along/types";
 import { VideoState } from "../src/main/player-state-store";
@@ -21,7 +21,7 @@ function sample(overrides: Partial<Sample> = {}): Sample {
     trackState: VideoState.Playing,
     adPlaying: false,
     asOfMs: NOW,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -36,14 +36,12 @@ function context(overrides: Partial<SyncContext> = {}): SyncContext {
     lastRemoteUpdateMs: NOW,
     seekTimestamps: [],
     expectations: [],
-    ...overrides
+    ...overrides,
   };
 }
 
-const kinds = (result: { decisions: { kind: string }[] }) => result.decisions.map(decision => decision.kind);
+const kinds = (result: { decisions: { kind: string }[] }) => result.decisions.map((decision) => decision.kind);
 
-// The settle blackout runs before the jump check, so a lower jump floor would
-// never be reachable.
 it("keeps the jump floor above the settle window", () => {
   expect(JUMP_MIN_SEEK_INTERVAL_MS).toBeGreaterThan(SEEK_SETTLE_MS);
 });
@@ -67,23 +65,22 @@ describe("decide", () => {
     expect(kinds(decide(context()))).toEqual([]);
   });
 
-  // Both sides quantize progress to about a second, so only projecting both
-  // onto one clock exposes the real difference.
   it("measures drift from both projections, not raw progress", () => {
     const result = decide(
       context({
         remote: sample({ progress: 60, asOfMs: NOW - 4000 }),
-        local: sample({ progress: 60, asOfMs: NOW })
+        local: sample({ progress: 60, asOfMs: NOW }),
       })
     );
-    expect(result.decisions).toEqual([{ kind: "seek", seconds: expect.closeTo(64.3, 1) }]);
+    const seconds: unknown = expect.closeTo(64.3, 1);
+    expect(result.decisions).toEqual([{ kind: "seek", seconds }]);
   });
 
   it("ignores drift inside the dead band", () => {
     const result = decide(
       context({
         remote: sample({ progress: 60 + DRIFT_DEADBAND_S - 0.1 }),
-        local: sample({ progress: 60 })
+        local: sample({ progress: 60 }),
       })
     );
     expect(kinds(result)).toEqual([]);
@@ -107,21 +104,19 @@ describe("decide", () => {
     const result = decide(
       context({
         remote: sample({ progress: 400, durationSeconds: 400 }),
-        local: sample({ progress: 60, durationSeconds: 200 })
+        local: sample({ progress: 60, durationSeconds: 200 }),
       })
     );
     expect(result.decisions).toEqual([{ kind: "seek", seconds: 199 }]);
   });
 
-  // The regression guard for the seek/rebuffer feedback loop: a correction
-  // stalls local progress, which would otherwise read as fresh drift.
   it("issues nothing inside the settle window whatever the drift", () => {
     for (const progress of [62, 90, 180]) {
       const result = decide(
         context({
           remote: sample({ progress }),
           local: sample({ progress: 60 }),
-          lastSeekAtMs: NOW - SEEK_SETTLE_MS + 1
+          lastSeekAtMs: NOW - SEEK_SETTLE_MS + 1,
         })
       );
       expect(kinds(result)).toEqual([]);
@@ -132,7 +127,7 @@ describe("decide", () => {
     const result = decide(
       context({
         remote: sample({ progress: 120 }),
-        local: sample({ progress: 60, trackState: VideoState.Buffering })
+        local: sample({ progress: 60, trackState: VideoState.Buffering }),
       })
     );
     expect(kinds(result)).toEqual([]);
@@ -142,7 +137,7 @@ describe("decide", () => {
     const result = decide(
       context({
         remote: sample({ progress: 120 }),
-        local: sample({ progress: 199 })
+        local: sample({ progress: 199 }),
       })
     );
     expect(kinds(result)).toEqual([]);
@@ -153,7 +148,7 @@ describe("decide", () => {
       context({
         remote: sample({ progress: 120, asOfMs: NOW - 30000 }),
         local: sample({ progress: 60 }),
-        lastRemoteUpdateMs: NOW - 30000
+        lastRemoteUpdateMs: NOW - 30000,
       })
     );
     expect(kinds(result)).toEqual([]);
@@ -164,7 +159,7 @@ describe("decide", () => {
       context({
         remote: sample({ progress: 120, asOfMs: NOW - 30000, anchored: true }),
         local: sample({ progress: 60 }),
-        lastRemoteUpdateMs: NOW - 30000
+        lastRemoteUpdateMs: NOW - 30000,
       })
     );
     expect(kinds(result)).toEqual(["seek"]);
@@ -175,7 +170,7 @@ describe("decide", () => {
       context({
         remote: sample({ videoId: "new456", progress: 10 }),
         local: sample({ videoId: "abc123" }),
-        previousLocal: sample({ videoId: "abc123" })
+        previousLocal: sample({ videoId: "abc123" }),
       })
     );
     expect(result.phase).toBe("loading");
@@ -189,7 +184,7 @@ describe("decide", () => {
         local: sample({ videoId: "abc123" }),
         previousLocal: sample({ videoId: "abc123" }),
         phase: "loading",
-        expectations: [{ kind: "navigate", target: "new456", expiresAtMs: NOW + 1000 }]
+        expectations: [{ kind: "navigate", target: "new456", expiresAtMs: NOW + 1000 }],
       })
     );
     expect(kinds(result)).toEqual([]);
@@ -200,7 +195,7 @@ describe("decide", () => {
       context({
         remote: sample({ progress: 120 }),
         local: sample({ progress: 60 }),
-        phase: "loading"
+        phase: "loading",
       })
     );
     expect(kinds(result)).toEqual([]);
@@ -210,7 +205,7 @@ describe("decide", () => {
     const paused = decide(
       context({
         remote: sample({ trackState: VideoState.Paused }),
-        local: sample({ trackState: VideoState.Playing })
+        local: sample({ trackState: VideoState.Playing }),
       })
     );
     expect(kinds(paused)).toEqual(["pause"]);
@@ -219,7 +214,7 @@ describe("decide", () => {
       context({
         remote: sample({ trackState: VideoState.Playing }),
         local: sample({ trackState: VideoState.Paused }),
-        previousLocal: sample({ trackState: VideoState.Paused })
+        previousLocal: sample({ trackState: VideoState.Paused }),
       })
     );
     expect(kinds(resumed)).toEqual(["play"]);
@@ -229,7 +224,7 @@ describe("decide", () => {
     const result = decide(
       context({
         remote: sample({ videoId: "advert", progress: 5, adPlaying: true }),
-        local: sample({ videoId: "abc123", trackState: VideoState.Playing })
+        local: sample({ videoId: "abc123", trackState: VideoState.Playing }),
       })
     );
     expect(result.decisions).toEqual([{ kind: "pause" }]);
@@ -240,7 +235,7 @@ describe("decide", () => {
     const result = decide(
       context({
         remote: sample({ videoId: "new456", progress: 120 }),
-        local: sample({ videoId: "abc123", progress: 60, adPlaying: true })
+        local: sample({ videoId: "abc123", progress: 60, adPlaying: true }),
       })
     );
     expect(kinds(result)).toEqual([]);
@@ -251,7 +246,7 @@ describe("decide", () => {
       context({
         remote: sample({ progress: 120 }),
         local: sample({ progress: 60 }),
-        lastSeekAtMs: NOW - JUMP_MIN_SEEK_INTERVAL_MS
+        lastSeekAtMs: NOW - JUMP_MIN_SEEK_INTERVAL_MS,
       })
     );
     expect(kinds(result)).toEqual(["seek"]);
@@ -261,7 +256,7 @@ describe("decide", () => {
     const result = decide(
       context({
         remote: sample({ videoId: null }),
-        local: sample({ trackState: VideoState.Playing })
+        local: sample({ trackState: VideoState.Playing }),
       })
     );
     expect(result.decisions).toEqual([{ kind: "pause" }]);
@@ -270,7 +265,7 @@ describe("decide", () => {
     const settled = decide(
       context({
         remote: sample({ videoId: null }),
-        local: sample({ trackState: VideoState.Paused })
+        local: sample({ trackState: VideoState.Paused }),
       })
     );
     expect(kinds(settled)).toEqual([]);
@@ -281,7 +276,7 @@ describe("decide", () => {
       context({
         remote: sample({ trackState: VideoState.Playing }),
         local: sample({ trackState: VideoState.Paused }),
-        previousLocal: sample({ trackState: VideoState.Playing })
+        previousLocal: sample({ trackState: VideoState.Playing }),
       })
     );
     expect(result.phase).toBe("suspended");
@@ -294,7 +289,7 @@ describe("decide", () => {
         remote: sample({ trackState: VideoState.Playing }),
         local: sample({ trackState: VideoState.Paused }),
         previousLocal: sample({ trackState: VideoState.Playing }),
-        expectations: [{ kind: "pause", expiresAtMs: NOW + 1000 }]
+        expectations: [{ kind: "pause", expiresAtMs: NOW + 1000 }],
       })
     );
     expect(kinds(result)).toEqual(["play"]);
@@ -305,7 +300,7 @@ describe("decide", () => {
       context({
         remote: sample({ videoId: "abc123" }),
         local: sample({ videoId: "other99" }),
-        previousLocal: sample({ videoId: "abc123" })
+        previousLocal: sample({ videoId: "abc123" }),
       })
     );
     expect(result.phase).toBe("suspended");
@@ -316,7 +311,7 @@ describe("decide", () => {
       context({
         remote: sample({ videoId: "other99" }),
         local: sample({ videoId: "other99" }),
-        previousLocal: sample({ videoId: "abc123" })
+        previousLocal: sample({ videoId: "abc123" }),
       })
     );
     expect(kinds(result)).toEqual([]);
@@ -327,7 +322,7 @@ describe("decide", () => {
       context({
         remote: sample({ progress: 180 }),
         local: sample({ progress: 10 }),
-        phase: "suspended"
+        phase: "suspended",
       })
     );
     expect(kinds(result)).toEqual([]);
@@ -340,7 +335,7 @@ describe("decide", () => {
         remote: sample({ progress: 120 }),
         local: sample({ progress: 10, trackState: VideoState.Playing }),
         previousLocal: sample({ progress: 10, trackState: VideoState.Paused }),
-        phase: "suspended"
+        phase: "suspended",
       })
     );
     expect(result.phase).toBe("synced");
@@ -353,15 +348,13 @@ describe("decide", () => {
         remote: sample({ videoId: "new456" }),
         local: sample({ videoId: "abc123", trackState: VideoState.Playing }),
         previousLocal: sample({ videoId: "abc123", trackState: VideoState.Paused }),
-        phase: "suspended"
+        phase: "suspended",
       })
     );
     expect(result.phase).toBe("loading");
     expect(result.decisions).toEqual([{ kind: "navigate", videoId: "new456" }]);
   });
 
-  // The backstop for a sync that will not settle, including two instances
-  // following each other.
   it("suspends rather than seeking forever", () => {
     const seekTimestamps = Array.from({ length: BREAKER_SEEKS }, (_, index) => NOW - index * 1000);
     const result = decide(
@@ -369,7 +362,7 @@ describe("decide", () => {
         remote: sample({ progress: 120 }),
         local: sample({ progress: 60 }),
         lastSeekAtMs: NOW - JUMP_MIN_SEEK_INTERVAL_MS,
-        seekTimestamps
+        seekTimestamps,
       })
     );
     expect(result.phase).toBe("suspended");
@@ -383,7 +376,7 @@ describe("decide", () => {
         remote: sample({ progress: 120 }),
         local: sample({ progress: 60 }),
         lastSeekAtMs: NOW - JUMP_MIN_SEEK_INTERVAL_MS,
-        seekTimestamps
+        seekTimestamps,
       })
     );
     expect(kinds(result)).toEqual(["seek"]);

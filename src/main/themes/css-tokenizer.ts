@@ -36,6 +36,18 @@ export type CssToken = {
 
 const EOF = -1;
 
+const punctuationTokens = new Map<number, CssTokenType>([
+  [0x28, "("],
+  [0x29, ")"],
+  [0x5b, "["],
+  [0x5d, "]"],
+  [0x7b, "{"],
+  [0x7d, "}"],
+  [0x3b, ";"],
+  [0x3a, ":"],
+  [0x2c, ","],
+]);
+
 const isDigit = (c: number) => c >= 0x30 && c <= 0x39;
 const isHexDigit = (c: number) => isDigit(c) || (c >= 0x41 && c <= 0x46) || (c >= 0x61 && c <= 0x66);
 const isLetter = (c: number) => (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a);
@@ -56,7 +68,8 @@ export function tokenizeCss(input: string): CssToken[] {
   const codes: number[] = [];
   const offsets: number[] = [];
   for (let i = 0; i < input.length;) {
-    const code = input.codePointAt(i)!;
+    const code = input.codePointAt(i);
+    if (code === undefined) throw new Error(`Missing CSS code point at ${i}`);
     codes.push(code);
     offsets.push(i);
     i += code > 0xffff ? 2 : 1;
@@ -64,7 +77,7 @@ export function tokenizeCss(input: string): CssToken[] {
   offsets.push(input.length);
 
   let pos = 0;
-  const at = (n = 0) => (pos + n < codes.length ? codes[pos + n] : EOF);
+  const at = (n = 0) => codes[pos + n] ?? EOF;
   const validEscape = (a: number, b: number) => a === 0x5c && !isNewline(b);
   const startsIdent = (a: number, b: number, c: number) => {
     if (a === 0x2d) return isIdentStart(b) || b === 0x2d || validEscape(b, c);
@@ -265,9 +278,10 @@ export function tokenizeCss(input: string): CssToken[] {
       pos++;
       return { type: "delim", value: "#" };
     }
-    if (c === 0x28 || c === 0x29 || c === 0x5b || c === 0x5d || c === 0x7b || c === 0x7d || c === 0x3b || c === 0x3a || c === 0x2c) {
+    const punctuation = punctuationTokens.get(c);
+    if (punctuation !== undefined) {
       pos++;
-      return { type: String.fromCodePoint(c) as CssTokenType, value: "" };
+      return { type: punctuation, value: "" };
     }
     if (c === 0x2b || c === 0x2e) {
       if (startsNumber(c, at(1), at(2))) return consumeNumeric();
@@ -315,7 +329,10 @@ export function tokenizeCss(input: string): CssToken[] {
   while (pos < codes.length) {
     const start = pos;
     const token = consumeToken();
-    tokens.push({ ...token, start: offsets[start], end: offsets[pos] });
+    const startOffset = offsets[start];
+    const endOffset = offsets[pos];
+    if (startOffset === undefined || endOffset === undefined) throw new Error(`Missing CSS token offset at ${pos}`);
+    tokens.push({ ...token, start: startOffset, end: endOffset });
   }
   return tokens;
 }

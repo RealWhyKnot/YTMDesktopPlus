@@ -1,3 +1,4 @@
+import { requireValue } from "./helpers/require-value";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -5,15 +6,15 @@ import { PLAYER_API_DUCK_TYPE, PLAYER_API_MEMBERS, PLAYER_API_RESOLVER_PATTERN, 
 
 const sourceFiles = readdirSync("src", { recursive: true })
   .map(String)
-  .filter(name => /\.(ts|js|vue)$/.test(name))
-  .map(name => join("src", name));
+  .filter((name) => /\.(ts|js|vue)$/.test(name))
+  .map((name) => join("src", name));
 
 const used = new Map<string, string[]>();
 for (const path of sourceFiles) {
   for (const match of readFileSync(path, "utf8").matchAll(/playerApi\.([A-Za-z_$][A-Za-z0-9_$]*)/g)) {
     const member = match[1];
-    if (!used.has(member)) used.set(member, []);
-    used.get(member)?.push(path);
+    if (!used.has(requireValue(member))) used.set(requireValue(member), []);
+    used.get(requireValue(member))?.push(path);
   }
 }
 
@@ -38,14 +39,14 @@ describe("player api contract", () => {
 
 describe("missingPlayerApiMembers", () => {
   it("returns nothing for a complete api", () => {
-    const api = Object.fromEntries(PLAYER_API_MEMBERS.map(name => [name, (): void => undefined]));
+    const api: Record<string, unknown> = Object.fromEntries(PLAYER_API_MEMBERS.map((name) => [name, (): void => undefined]));
     expect(missingPlayerApiMembers(api)).toEqual([]);
   });
 
   it("names the members that are not functions", () => {
-    const api = Object.fromEntries(PLAYER_API_MEMBERS.map(name => [name, (): void => undefined]));
+    const api: Record<string, unknown> = Object.fromEntries(PLAYER_API_MEMBERS.map((name) => [name, (): void => undefined]));
     delete api.getVolume;
-    api.seekTo = 3 as unknown as () => void;
+    api.seekTo = 3;
     expect(missingPlayerApiMembers(api)).toEqual(["getVolume", "seekTo"]);
   });
 

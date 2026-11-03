@@ -1,0 +1,22 @@
+:root {
+  --color-cassette-ytm-background-1: #262321;
+  --color-cassette-ytm-background-2: #1a1918;
+  --color-cassette-ytm-border-top-3: #0d0c0b;
+  --font-cassette-ytm-font-family-4: oswald, "Arial Narrow", sans-serif;
+  --color-cassette-ytm-box-shadow-5: rgb(255 179 71 / 55%);
+}
+
+ytmusic-player-bar {
+  background: linear-gradient(to bottom, var(--color-cassette-ytm-background-1) 0%, var(--color-cassette-ytm-background-2) 100%) !important;
+  border-top: 1px solid var(--color-cassette-ytm-border-top-3) !important;
+}
+
+ytmusic-player-bar .title,
+ytmusic-nav-bar .title {
+  font-family: var(--font-cassette-ytm-font-family-4) !important;
+  letter-spacing: 0.06em;
+}
+
+ytmusic-player-bar #sliderBar #primaryProgress {
+  box-shadow: 0 0 8px var(--color-cassette-ytm-box-shadow-5) !important;
+}

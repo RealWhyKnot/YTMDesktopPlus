@@ -2,28 +2,28 @@ import EventEmitter from "events";
 import log from "electron-log";
 import { stallTasks } from "../stall-watch";
 
-export default class MemoryStore<T extends Record<string, unknown>> {
-  private state: Record<string, unknown>;
+export class MemoryStore<T extends Record<string, unknown>> {
+  private state: Partial<T>;
   private eventEmitter = new EventEmitter();
 
   constructor() {
     this.state = {};
-    this.eventEmitter.on("error", error => {
+    this.eventEmitter.on("error", (error) => {
       log.error("MemoryStore EventEmitter threw an error", error);
     });
   }
 
   public get(key: string): unknown {
-    return this.state[key as string];
+    return Reflect.get(this.state, key);
   }
 
-  public getState(): T {
-    return this.state as T;
+  public getState(): Partial<T> {
+    return this.state;
   }
 
-  public set(key: string, value: unknown) {
+  public set<K extends keyof T & string>(key: K, value: T[K]) {
     stallTasks.timeSync(`MemoryStore.set ${key}`, () => {
-      this.state[key as string] = value;
+      this.state[key] = value;
       this.eventEmitter.emit("stateChanged", key, value);
     });
   }

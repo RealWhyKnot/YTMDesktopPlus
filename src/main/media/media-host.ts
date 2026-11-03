@@ -30,12 +30,15 @@ export type MediaHostConsumer = {
 export class MediaHost {
   private createWindow: (() => MediaHostWindow) | null = null;
   private window: MediaHostWindow | null = null;
-  private loaded = false;
+  private isLoaded = false;
   private pendingPort: MessagePortMain | null = null;
   private consumer: MediaHostConsumer | null = null;
   private uplink: ((port: MessagePortMain) => void) | null = null;
 
-  constructor(private readonly createChannel: () => { port1: MessagePortMain; port2: MessagePortMain }) {}
+  private readonly createChannel: () => { port1: MessagePortMain; port2: MessagePortMain };
+  constructor(createChannel: () => { port1: MessagePortMain; port2: MessagePortMain }) {
+    this.createChannel = createChannel;
+  }
 
   provide(createWindow: () => MediaHostWindow) {
     this.createWindow = createWindow;
@@ -48,10 +51,10 @@ export class MediaHost {
 
     const window = this.createWindow();
     this.window = window;
-    this.loaded = false;
+    this.isLoaded = false;
     window.webContents.once("did-finish-load", () => {
       if (this.window !== window) return;
-      this.loaded = true;
+      this.isLoaded = true;
       this.pairUplink();
       if (this.pendingPort) this.deliver(this.pendingPort);
       this.pendingPort = null;
@@ -67,7 +70,7 @@ export class MediaHost {
     this.pendingPort = null;
     const window = this.window;
     this.window = null;
-    this.loaded = false;
+    this.isLoaded = false;
     if (window && !window.isDestroyed()) window.destroy();
   }
 
@@ -76,7 +79,7 @@ export class MediaHost {
       port.close();
       return;
     }
-    if (this.loaded) {
+    if (this.isLoaded) {
       this.deliver(port);
       return;
     }
@@ -90,7 +93,7 @@ export class MediaHost {
   }
 
   private pairUplink() {
-    if (!this.uplink || !this.window || !this.loaded) return;
+    if (!this.uplink || !this.window || !this.isLoaded) return;
     const { port1, port2 } = this.createChannel();
     this.window.webContents.postMessage("mediaHost:uplinkPort", null, [port1]);
     this.uplink(port2);

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+shopt -s inherit_errexit
+
+git_command=(git)
+if [[ -f .git ]] && command -v wslpath >/dev/null 2>&1; then
+  IFS= read -r git_pointer <.git
+  git_directory=${git_pointer#gitdir: }
+  if [[ ${git_directory} =~ ^[A-Za-z]:[/\\] ]]; then
+    git_command+=(--git-dir="$(wslpath -u "${git_directory}")" --work-tree="${PWD}")
+  fi
+fi
+
+tracked=$("${git_command[@]}" -c core.quotepath=off ls-files)
+found=$(awk -f .github/lint/shell-files.awk .github/lint/vendored-paths.txt - <<<"${tracked}")
+mapfile -t all <<<"${found}"
+files=()
+for file in "${all[@]}"; do
+  [[ -z ${file} ]] || files+=("${file}")
+done
+modes=$("${git_command[@]}" ls-files -s -- "${files[@]}")
+eols=$("${git_command[@]}" ls-files --eol -- "${files[@]}")
+shellcheck -f gcc "${files[@]}"
+shfmt -d "${files[@]}"
+awk -v modes="${modes}" -v eols="${eols}" -f .github/lint/shell-style.awk "${files[@]}"

@@ -1,13 +1,15 @@
 import { fileURLToPath } from "node:url";
 import vue from "@vitejs/plugin-vue";
 import { defineConfig } from "vitest/config";
+import { pageScripts } from "./viteconfig/page-scripts.mts";
 
 export default defineConfig({
+  plugins: [pageScripts()],
   resolve: {
     alias: {
       "~shared": fileURLToPath(new URL("./src/shared", import.meta.url)),
-      "~assets": fileURLToPath(new URL("./src/assets", import.meta.url))
-    }
+      "~assets": fileURLToPath(new URL("./src/assets", import.meta.url)),
+    },
   },
   test: {
     setupFiles: ["tests/setup.ts"],
@@ -18,8 +20,8 @@ export default defineConfig({
           name: "node",
           include: ["tests/**/*.test.ts"],
           exclude: ["tests/components/**"],
-          environment: "node"
-        }
+          environment: "node",
+        },
       },
       {
         extends: true,
@@ -27,9 +29,9 @@ export default defineConfig({
         test: {
           name: "components",
           include: ["tests/components/**/*.test.ts"],
-          environment: "happy-dom"
-        }
-      }
-    ]
-  }
+          environment: "happy-dom",
+        },
+      },
+    ],
+  },
 });

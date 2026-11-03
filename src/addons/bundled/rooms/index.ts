@@ -1,8 +1,8 @@
 import { isRoomId, isRoomLive, otherListenerCount, relayUrlFor, type RoomSnapshot } from "~shared/room-protocol";
-import type { BundledAddonDefinition } from "../../../main/addons/manager";
+import { isRecord } from "~shared/unknown";
+import type { BundledAddonDefinition } from "../../../main/addons/managed-addon";
 import type { AddonWindowHandle } from "~shared/addons/sdk";
-import AudioStreamCapture from "./audio-capture";
-import type { AudioCaptureStatus } from "../../../main/integrations/listen-along/audio-publisher";
+import { AudioStreamCapture } from "./audio-capture";
 import { AutoRoom } from "../../../main/integrations/listen-along/auto-room";
 import { RelayClient } from "../../../main/integrations/listen-along/relay-client";
 import { RoomSession } from "../../../main/integrations/listen-along/room-session";
@@ -12,18 +12,14 @@ import { AudioUplink, forkAudioUplink } from "../../../main/media/audio-uplink";
 import { onSystemResume } from "../../../main/integrations/listen-along/system-resume";
 import { cancelCue } from "../../../main/playback";
 
-// Listen Along rooms as a bundled addon: hosting and joining relay rooms, the
-// audio stream to browser listeners, the automatic room that follows Discord
-// presence, and the room window. Disabling the addon means none of this is
-// constructed, so the app never touches the relay.
-const roomsAddon: BundledAddonDefinition = {
+const roomsAddon = {
   manifest: {
     id: "rooms",
     name: "Listen Along rooms",
     version: "1.0.0",
     author: "WhyKnot",
     description: "Host or join Listen Along rooms so friends can hear your playback live, in the app or in a browser.",
-    defaultEnabled: true
+    defaultEnabled: true,
   },
 
   activate(ctx) {
@@ -37,30 +33,28 @@ const roomsAddon: BundledAddonDefinition = {
             label: "Room display name",
             maxlength: 24,
             placeholder: "Not set",
-            description: "Shown to people in your rooms. You choose it; it is never taken from your account"
+            description: "Shown to people in your rooms. You choose it; it is never taken from your account",
           },
           {
             key: "audioStreamEnabled",
             type: "toggle",
             label: "Stream audio to web listeners",
-            description: "While you host a room, people who open your room link in a browser hear your playback live. Uses some upload bandwidth"
+            description: "While you host a room, people who open your room link in a browser hear your playback live. Uses some upload bandwidth",
           },
           {
             key: "autoRoomEnabled",
             type: "toggle",
             label: "Open a room automatically with Discord presence",
             description:
-              "While your presence is on, a room stays open so anyone who sees your profile can listen along, with your audio if web streaming is on. Turn off to only share rooms you start yourself"
-          }
-        ]
-      }
+              "While your presence is on, a room stays open so anyone who sees your profile can listen along, with your audio if web streaming is on. Turn off to only share rooms you start yourself",
+          },
+        ],
+      },
     ]);
 
-    // The capture scripts live under this addon's script namespace; the
-    // capture class runs them through the same channel it registered on.
-    const audioStreamCapture = new AudioStreamCapture(name => ctx.ytmview.runScript(name), {
-      start: () => mediaHost.start({ onStatus: status => audioUplink.handleCaptureStatus(status) }),
-      stop: () => mediaHost.stop()
+    const audioStreamCapture = new AudioStreamCapture((name) => ctx.ytmview.runScript(name), {
+      start: () => mediaHost.start({ onStatus: (status) => audioUplink.handleCaptureStatus(status) }),
+      stop: () => mediaHost.stop(),
     });
     for (const { name, script } of audioStreamCapture.getYTMScripts()) {
       ctx.ytmview.registerScript(name, script);
@@ -75,8 +69,6 @@ const roomsAddon: BundledAddonDefinition = {
       windowHandle = ctx.windows.create({ entry: "room", width: 400, height: 600 });
     };
 
-    // The title bar indicator mirrors the room state; identical states are
-    // not republished so snapshots do not spam every window.
     let lastBadgeJson = "null";
     const updateBadge = (snapshot: RoomSnapshot) => {
       let badge: { icon: string; text?: string; tooltip?: string; active?: boolean } | null = null;
@@ -86,7 +78,7 @@ const roomsAddon: BundledAddonDefinition = {
           icon: "headphones",
           text: count > 0 ? String(count) : undefined,
           tooltip: count === 0 ? "Room is open, nobody listening yet" : count === 1 ? "1 person listening along" : `${count} people listening along`,
-          active: count > 0
+          active: count > 0,
         };
       }
       const json = JSON.stringify(badge);
@@ -95,50 +87,46 @@ const roomsAddon: BundledAddonDefinition = {
       ctx.titlebar.setBadge(badge);
     };
 
-    // One relay room at a time, hosted or joined. Opens a connection only
-    // when the user starts or joins a room.
     const roomSession = new RoomSession({
       createClient: (handlers, roomId) => new RelayClient(handlers, relayUrlFor(roomId)),
-      cueTrack: request => ctx.playback.cueTrack(request),
+      cueTrack: (request) => ctx.playback.cueTrack(request),
       sendCommand: (command, value) => ctx.playback.sendPlaybackCommand(command, value),
-      publish: snapshot => {
+      publish: (snapshot) => {
         ctx.memory.set("room", snapshot);
-        // The Join Room presence button follows the hosting state.
+
         ctx.discord.refreshActivity();
         syncAudioUplink();
-        // A left or expired room grows back while presence is shared.
+
         autoRoom.evaluate();
         updateBadge(snapshot);
       },
       getPlayerState: () => ctx.player.getState(),
       now: () => Date.now(),
-      log: message => ctx.log.info(message),
-      cancelCue: () => cancelCue()
+      log: (message) => ctx.log.info(message),
+      cancelCue: () => cancelCue(),
     });
     ctx.memory.set("room", roomSession.snapshot);
 
-    // Streams the host's audio to browser listeners while a room is hosted.
     const audioUplink = new AudioUplink({
       fork: forkAudioUplink,
-      connectMediaHost: send => mediaHost.connectUplink(send),
-      setCapture: on => (on ? audioStreamCapture.enable() : audioStreamCapture.disable()),
+      connectMediaHost: (send) => mediaHost.connectUplink(send),
+      setCapture: (isOn) => (isOn ? audioStreamCapture.enable() : audioStreamCapture.disable()),
       onUpdate: ({ streaming, webListeners, issue }) => {
         audioStreamCapture.setListening(streaming && webListeners > 0);
         roomSession.setAudioStreamState(streaming, webListeners, issue);
       },
       now: () => Date.now(),
-      log: (message, ...args) => ctx.log.info(message, ...args)
+      log: (message, ...args) => ctx.log.info(message, ...args),
     });
 
-    // Idempotent: called on every room snapshot and on the toggle changing.
     let wasHosting = false;
     function syncAudioUplink() {
-      const enabled = ctx.settings.get<boolean>("audioStreamEnabled");
+      const isEnabled = Boolean(ctx.settings.get("audioStreamEnabled"));
       audioUplink.setClockOffset(roomSession.serverClockOffsetMs);
-      audioUplink.setCredentials(enabled ? roomSession.hostCredentials : null);
-      const hosting = roomSession.snapshot.phase === "hosting";
-      if (hosting && !wasHosting) audioUplink.rearm();
-      wasHosting = hosting;
+      audioUplink.setCredentials(isEnabled ? roomSession.hostCredentials : null);
+      const isHosting = roomSession.snapshot.phase === "hosting";
+      if (isHosting && !wasHosting) audioUplink.rearm();
+      wasHosting = isHosting;
     }
 
     const stopResumeWatch = onSystemResume(() => {
@@ -147,37 +135,37 @@ const roomsAddon: BundledAddonDefinition = {
       audioUplink.reconnectNow();
     });
 
-    // While Discord presence is shared, a room exists without being started,
-    // so the presence link always has somewhere to land.
-    let autoRoomNotified = false;
+    let isAutoRoomNotified = false;
     const autoRoom = new AutoRoom({
-      enabled: () => ctx.discord.isEnabled() && ctx.settings.get<boolean>("autoRoomEnabled"),
+      enabled: () => ctx.discord.isEnabled() && Boolean(ctx.settings.get("autoRoomEnabled")),
       phase: () => roomSession.snapshot.phase,
       isHost: () => roomSession.snapshot.isHost,
-      savedDisplayName: () => ctx.settings.get<string | null>("displayName") ?? null,
-      host: displayName => {
+      savedDisplayName: () => {
+        const name = ctx.settings.get("displayName");
+        return typeof name === "string" ? name : null;
+      },
+      host: (displayName) => {
         roomSession.host(displayName);
-        // Said out loud once per session: a shareable live surface just opened
-        // without a click, and that should never be a surprise.
-        if (!autoRoomNotified) {
-          autoRoomNotified = true;
+
+        if (!isAutoRoomNotified) {
+          isAutoRoomNotified = true;
           ctx.notifications.show({
             title: "Listen Along room opened",
             body: "Discord presence is on, so your room link is live. Anyone with it can listen along, including in a browser. Manage this in Settings.",
-            onClick: () => openOrShowWindow()
+            onClick: () => openOrShowWindow(),
           });
         }
       },
       leave: () => roomSession.leave(),
-      log: message => ctx.log.info(message)
+      log: (message) => ctx.log.info(message),
     });
 
-    ctx.player.onStateChanged(state => {
+    ctx.player.onStateChanged((state) => {
       roomSession.updateLocalState(state);
       audioUplink.updateLocalState(state);
     });
 
-    ctx.settings.onDidChange("audioStreamEnabled", next => {
+    ctx.settings.onDidChange("audioStreamEnabled", (next) => {
       syncAudioUplink();
       ctx.log.info(`Audio stream ${next ? "enabled" : "disabled"}`);
     });
@@ -185,12 +173,12 @@ const roomsAddon: BundledAddonDefinition = {
     ctx.discord.onEnabledChanged(() => autoRoom.syncToggles());
 
     ctx.discord.registerButtonsProvider(() => {
-      const room = ctx.memory.get<RoomSnapshot | null>("room");
-      if (!room || room.phase !== "hosting" || !room.shareUrl) return undefined;
+      const room = ctx.memory.get("room");
+      if (!isRecord(room) || room.phase !== "hosting" || typeof room.shareUrl !== "string" || !room.shareUrl) return undefined;
       return [{ label: "Listen Along", url: room.shareUrl }];
     });
 
-    ctx.deepLinks.register("room", segments => {
+    ctx.deepLinks.register("room", (segments) => {
       if (segments.length !== 1 || !isRoomId(segments[0])) return;
       ctx.memory.set("joinPrompt", segments[0]);
       openOrShowWindow();
@@ -201,21 +189,20 @@ const roomsAddon: BundledAddonDefinition = {
 
     ctx.ytmview.onLoaded(() => {
       audioStreamCapture.ytmViewLoaded();
-      // A room opens with the app while presence is shared, so the profile
-      // buttons and the web link work without anyone touching the room window.
+
       autoRoom.evaluate();
     });
 
-    ctx.ytmview.onMessage("captureStatus", status => {
+    ctx.ytmview.onMessage("captureStatus", (status) => {
       if (typeof status !== "object" || status === null) return;
-      audioUplink.handleCaptureStatus(status as AudioCaptureStatus);
+      audioUplink.handleCaptureStatus(status);
     });
 
     registerRoomIpc(ctx.ipc, {
       roomWindowContents: () => windowHandle?.webContents() ?? null,
       openWindow: openOrShowWindow,
       closeWindow: () => windowHandle?.close(),
-      host: name => {
+      host: (name) => {
         ctx.settings.set("displayName", name);
         autoRoom.noteManualSession();
         roomSession.host(name);
@@ -227,15 +214,13 @@ const roomsAddon: BundledAddonDefinition = {
         roomSession.join(roomId, name);
       },
       leave: () => {
-        // Leaving a room you host is a choice; automation respects it for
-        // the rest of the session instead of instantly reopening one.
         autoRoom.noteManualLeave(roomSession.snapshot.isHost);
         roomSession.leave();
       },
       dismissJoinPrompt: () => ctx.memory.set("joinPrompt", null),
       grant: (memberId, role) => roomSession.grant(memberId, role),
       control: (action, value) => roomSession.control(action, value),
-      resume: () => roomSession.resume()
+      resume: () => roomSession.resume(),
     });
 
     return {
@@ -244,9 +229,9 @@ const roomsAddon: BundledAddonDefinition = {
         autoRoom.dispose();
         roomSession.leave();
         windowHandle?.close();
-      }
+      },
     };
-  }
-};
+  },
+} satisfies BundledAddonDefinition;
 
-export default roomsAddon;
+export { roomsAddon };

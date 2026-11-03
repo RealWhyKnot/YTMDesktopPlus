@@ -1,147 +1,172 @@
 import { EventEmitter } from "events";
 import { vi } from "vitest";
-import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import { makeTempDir } from "./temp-dir";
 import type { AddonHostServices, AddonHostWindow } from "../../src/main/addons/context";
 import type { StoreSchema } from "../../src/shared/store/schema";
-import type { CueResult } from "../../src/shared/addons/sdk";
+import type { AddonIpcEvent, AddonIpcInvokeEvent, AddonWebContents, CueResult } from "../../src/shared/addons/sdk";
 import { makePlayerState } from "./fake-addon-context";
 
-/** A complete, compiler-checked services bag for AddonManager tests. The
- *  object is typed against the real AddonHostServices with no whole-object
- *  cast, so a new required service breaks this file at compile time. */
-export function fakeServices(persistedStates: Record<string, { enabled: boolean }> = {}, appVersion = "2026.811.0") {
-  const stored: Record<string, unknown> = { addons: { states: persistedStates, settings: {} } };
-  const storeListeners: ((newValue: unknown, oldValue: unknown) => void)[] = [];
-  const memory = new Map<string, unknown>();
-  const ipcHandlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
-  const ipcListeners = new Map<string, (event: unknown, ...args: unknown[]) => void>();
-  const registeredScripts: Record<string, Record<string, string>> = {};
-  const windows: AddonHostWindow[] = [];
-  const playerEvents = new EventEmitter();
-  let appSender = true;
+export function fakeAddonContents(id = 0) {
+  return { id, send: vi.fn<AddonWebContents["send"]>(), isDestroyed: () => false };
+}
 
-  function fakeWindow(): AddonHostWindow {
-    let destroyed = false;
+export function fakeAddonEvent(sender: AddonWebContents = fakeAddonContents()) {
+  return { sender, reply: vi.fn<AddonIpcEvent["reply"]>() };
+}
+
+export function fakeAddonView() {
+  return {
+    webContents: {
+      send: vi.fn<AddonWebContents["send"]>(),
+      insertCSS: vi.fn(() => Promise.resolve("fixture-css")),
+      removeInsertedCSS: vi.fn(() => Promise.resolve()),
+    },
+  };
+}
+
+export function fakeServices(persistedStates: StoreSchema["addons"]["states"] = {}, appVersion = "2026.811.0") {
+  const stored: Pick<StoreSchema, "addons"> = { addons: { states: persistedStates, settings: {} } };
+  const storeListeners: ((newValue?: StoreSchema["addons"], oldValue?: StoreSchema["addons"]) => void)[] = [];
+  const memory = new Map<string, unknown>();
+  const ipcHandlers = new Map<string, (event: AddonIpcInvokeEvent, ...args: unknown[]) => unknown>();
+  const ipcListeners = new Map<string, (event: AddonIpcEvent, ...args: unknown[]) => void>();
+  const registeredScripts = new Map<string, Map<string, string>>();
+  const windows: ReturnType<typeof fakeWindow>[] = [];
+  const playerEvents = new EventEmitter();
+  let isAppSender = true;
+
+  function fakeWindow(id: number) {
+    let isDestroyed = false;
     const closedCallbacks: (() => void)[] = [];
-    const window: AddonHostWindow = {
+    const window = {
       show: vi.fn(),
       focus: vi.fn(),
       close: vi.fn(() => {
-        destroyed = true;
+        isDestroyed = true;
         for (const callback of closedCallbacks) callback();
       }),
-      isDestroyed: () => destroyed,
+      isDestroyed: () => isDestroyed,
       once: (_event, callback) => {
         closedCallbacks.push(callback);
       },
-      webContents: { id: windows.length + 1, send: vi.fn(), isDestroyed: () => destroyed } as unknown as Electron.WebContents
-    };
+      webContents: { ...fakeAddonContents(id), isDestroyed: () => isDestroyed },
+    } satisfies AddonHostWindow;
     return window;
   }
 
-  const services: AddonHostServices = {
+  const services = {
     store: {
-      // Like conf, reads hand out copies: mutating a get() result never
-      // changes stored state until it is set() back.
-      get: <K extends keyof StoreSchema>(key: K) => structuredClone(stored[key]) as StoreSchema[K],
-      set: (key: string, value: unknown) => {
+      get: (key: "addons") => structuredClone(stored[key]),
+      set: (key: "addons", value: StoreSchema["addons"]) => {
         const old = structuredClone(stored[key]);
         stored[key] = structuredClone(value);
-        if (key === "addons") for (const listener of storeListeners) listener(stored[key], old);
+        for (const listener of storeListeners) listener(stored[key], old);
       },
-      onDidChange: <K extends keyof StoreSchema>(_key: K, callback: (newValue?: StoreSchema[K], oldValue?: StoreSchema[K]) => void) => {
-        const listener = callback as (newValue: unknown, oldValue: unknown) => void;
+      onDidChange: (_key: "addons", listener: (newValue?: StoreSchema["addons"], oldValue?: StoreSchema["addons"]) => void) => {
         storeListeners.push(listener);
         return () => {
           storeListeners.splice(storeListeners.indexOf(listener), 1);
         };
       },
       get store() {
-        return structuredClone(stored) as StoreSchema;
-      }
+        return structuredClone(stored);
+      },
     },
     memoryStore: {
       get: (key: string) => memory.get(key),
-      set: (key: string, value: unknown) => memory.set(key, value)
+      set: (key: string, value: unknown) => memory.set(key, value),
     },
     appVersion,
     userDataPath: makeTempDir("ytmd-addon-test-"),
-    getYtmView: () => null,
+    getYtmView: (): ReturnType<AddonHostServices["getYtmView"]> => null,
     registerYtmScript: (namespace: string, name: string, script: string) => {
-      if (!registeredScripts[namespace]) registeredScripts[namespace] = {};
-      registeredScripts[namespace][name] = script;
+      let scripts = registeredScripts.get(namespace);
+      if (scripts === undefined) {
+        scripts = new Map<string, string>();
+        registeredScripts.set(namespace, scripts);
+      }
+      scripts.set(name, script);
     },
-    invokeYtmScript: vi.fn(async () => undefined),
+    invokeYtmScript: vi.fn(() => Promise.resolve(undefined)),
     player: {
       getState: () => makePlayerState(),
       getQueue: () => null,
       getPlaylistId: () => null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
+      addEventListener: vi.fn<AddonHostServices["player"]["addEventListener"]>(),
+      removeEventListener: vi.fn<AddonHostServices["player"]["removeEventListener"]>(),
       events: {
         on: (event, listener) => {
           playerEvents.on(event, listener);
         },
         off: (event, listener) => {
           playerEvents.off(event, listener);
-        }
-      }
+        },
+      },
     },
     playback: {
-      cueTrack: vi.fn(async (): Promise<CueResult> => "no-view"),
+      cueTrack: vi.fn((): Promise<CueResult> => Promise.resolve("no-view")),
       sendPlaybackCommand: vi.fn(() => true),
-      getPlaylists: vi.fn(async () => [])
+      getPlaylists: vi.fn(() => Promise.resolve([])),
     },
     ipc: {
-      handle: (channel: string, listener: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => {
-        ipcHandlers.set(channel, listener as (event: unknown, ...args: unknown[]) => unknown);
+      handle: (channel: string, listener: (event: AddonIpcInvokeEvent, ...args: unknown[]) => unknown) => {
+        ipcHandlers.set(channel, listener);
       },
       removeHandler: (channel: string) => {
         ipcHandlers.delete(channel);
       },
-      on: (channel: string, listener: (event: IpcMainEvent, ...args: unknown[]) => void) => {
-        ipcListeners.set(channel, listener as (event: unknown, ...args: unknown[]) => void);
+      on: (channel: string, listener: (event: AddonIpcEvent, ...args: unknown[]) => void) => {
+        ipcListeners.set(channel, listener);
       },
       removeListener: (channel: string) => {
         ipcListeners.delete(channel);
-      }
+      },
     },
-    isAppSender: () => appSender,
+    isAppSender: () => isAppSender,
     notify: vi.fn(),
     refreshTrayMenu: vi.fn(),
-    createWindow: vi.fn(() => {
-      const window = fakeWindow();
+    createWindow: vi.fn<(options: Parameters<AddonHostServices["createWindow"]>[0]) => ReturnType<typeof fakeWindow>>(() => {
+      const window = fakeWindow(windows.length + 1);
       windows.push(window);
       return window;
     }),
     discord: {
       isEnabled: vi.fn(() => false),
-      onEnabledChanged: vi.fn(() => () => {}),
-      registerButtonsProvider: vi.fn(() => () => {}),
-      registerRemoteActivityProvider: vi.fn(() => () => {}),
-      refreshActivity: vi.fn()
+      onEnabledChanged: vi.fn(() => () => {
+        return undefined;
+      }),
+      registerButtonsProvider: vi.fn(() => () => {
+        return undefined;
+      }),
+      registerRemoteActivityProvider: vi.fn<AddonHostServices["discord"]["registerRemoteActivityProvider"]>(() => () => {
+        return undefined;
+      }),
+      refreshActivity: vi.fn(),
     },
     deepLinks: {
-      register: vi.fn(() => () => {})
+      register: vi.fn(() => () => {
+        return undefined;
+      }),
     },
     theme: {
-      get: vi.fn(() => ({ id: null, name: "None", tokens: {} })),
-      subscribe: vi.fn(() => () => {})
-    }
-  };
+      get: vi.fn<AddonHostServices["theme"]["get"]>(() => ({ id: null, name: "None", tokens: {} })),
+      subscribe: vi.fn<AddonHostServices["theme"]["subscribe"]>(() => () => {
+        return undefined;
+      }),
+    },
+  } satisfies AddonHostServices;
 
   return {
     services,
-    stored: stored as { addons: { states: Record<string, { enabled: boolean }>; settings: Record<string, Record<string, unknown>> } },
+    stored,
     memory,
     ipcHandlers,
     ipcListeners,
     registeredScripts,
     windows,
     playerEvents,
-    setAppSender: (value: boolean) => {
-      appSender = value;
-    }
+    setAppSender: (isValue: boolean) => {
+      isAppSender = isValue;
+    },
   };
 }

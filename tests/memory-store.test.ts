@@ -1,5 +1,6 @@
+import { requireValue } from "./helpers/require-value";
 import { describe, expect, it } from "vitest";
-import MemoryStore from "../src/main/memory-store";
+import { MemoryStore } from "../src/main/memory-store";
 
 describe("MemoryStore", () => {
   it("reports only the changed key and value, without copying the state", () => {
@@ -13,9 +14,9 @@ describe("MemoryStore", () => {
 
     expect(changes).toEqual([
       ["themesRuntime", runtime],
-      ["ytmViewLoadingStatus", "Loaded"]
+      ["ytmViewLoadingStatus", "Loaded"],
     ]);
-    expect(changes[0][1]).toBe(runtime);
+    expect(requireValue(changes[0])[1]).toBe(runtime);
   });
 
   it("hands out the full state for a window that subscribes late", () => {

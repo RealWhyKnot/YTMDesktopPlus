@@ -1,3 +1,4 @@
+import { requireRecord } from "./helpers/require-value";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -7,13 +8,13 @@ import { makeTempDir } from "./helpers/temp-dir";
 const electronApp = vi.hoisted(() => ({ userData: "" }));
 
 vi.mock("electron", () => ({
-  app: { getPath: () => electronApp.userData, getVersion: () => "2.0.11" }
+  app: { getPath: () => electronApp.userData, getVersion: () => "2.0.11" },
 }));
 
 describe("createAppStore", () => {
   it.each([
     ["settings", { states: { rooms: { enabled: true } } }],
-    ["states", { settings: { rooms: { autoJoin: true } } }]
+    ["states", { settings: { rooms: { autoJoin: true } } }],
   ])("backfills addons.%s when a stored addons section lacks it", async (_, addons) => {
     electronApp.userData = makeTempDir("ytmd-store-");
     const file = path.join(electronApp.userData, "config.json");
@@ -24,7 +25,7 @@ describe("createAppStore", () => {
 
     expect(store.get("addons")).toEqual({ states: {}, settings: {}, ...addons });
     await store.flush();
-    expect(JSON.parse(fs.readFileSync(file, "utf8")).addons).toEqual({ states: {}, settings: {}, ...addons });
+    expect(requireRecord(JSON.parse(fs.readFileSync(file, "utf8"))).addons).toEqual({ states: {}, settings: {}, ...addons });
   });
 
   it("takes more than ten change listeners without a leak warning", async () => {
@@ -36,11 +37,11 @@ describe("createAppStore", () => {
       const store = createAppStore();
       store._closeWatcher();
       const unsubscribers = Array.from({ length: 40 }, () => store.onDidChange("addons", () => undefined));
-      await new Promise(resolve => setImmediate(resolve));
-      unsubscribers.forEach(unsubscribe => unsubscribe());
+      await new Promise<void>((resolve) => process.nextTick(resolve));
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
     } finally {
       process.off("warning", onWarning);
     }
-    expect(warnings.filter(warning => warning.name === "MaxListenersExceededWarning")).toEqual([]);
+    expect(warnings.filter((warning) => warning.name === "MaxListenersExceededWarning")).toEqual([]);
   });
 });

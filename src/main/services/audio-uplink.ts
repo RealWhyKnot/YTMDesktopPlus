@@ -1,4 +1,5 @@
 import type { BatchPacket } from "~shared/audio-protocol";
+import { isArray, isRecord } from "~shared/unknown";
 import {
   AudioPublisher,
   AudioRelayClient,
@@ -6,7 +7,7 @@ import {
   type AudioCredentials,
   type AudioFault,
   type AudioPublisherDeps,
-  type UplinkState
+  type UplinkState,
 } from "../integrations/listen-along/audio-publisher";
 
 export type UplinkCommand =
@@ -35,10 +36,10 @@ export type ParentPort = {
 };
 
 export function cleanAudioPackets(payload: unknown): BatchPacket[] {
-  if (!Array.isArray(payload)) return [];
+  if (!isArray(payload)) return [];
   const cleaned: BatchPacket[] = [];
-  for (const packet of payload as { t?: unknown; d?: unknown }[]) {
-    if (typeof packet?.t !== "number" || !(packet.d instanceof ArrayBuffer)) continue;
+  for (const packet of payload) {
+    if (!isRecord(packet) || typeof packet.t !== "number" || !(packet.d instanceof ArrayBuffer)) continue;
     cleaned.push({ timestampUs: packet.t, payload: new Uint8Array(packet.d) });
   }
   return cleaned;
@@ -50,16 +51,17 @@ export function createAudioUplinkService(parent: ParentPort, createTransport: Au
     startCapture: () => parent.postMessage({ t: "capture", on: true }),
     stopCapture: () => parent.postMessage({ t: "capture", on: false }),
     onUpdate: ({ streaming, webListeners }) => parent.postMessage({ t: "update", streaming, webListeners }),
-    onFault: fault => parent.postMessage({ t: "fault", fault }),
+    onFault: (fault) => parent.postMessage({ t: "fault", fault }),
     now: () => Date.now(),
-    log: (message, ...args) => parent.postMessage({ t: "log", message, args: args.map(String) })
+    log: (message, ...args) => parent.postMessage({ t: "log", message, args: args.map(String) }),
   });
 
   let media: MediaPort | null = null;
   const onMedia = (data: unknown) => {
-    const { packets, status } = (data ?? {}) as { packets?: unknown; status?: unknown };
+    const packets = isRecord(data) ? data.packets : undefined;
+    const status = isRecord(data) ? data.status : undefined;
     publisher.handleChunks(cleanAudioPackets(packets));
-    if (typeof status === "object" && status !== null) publisher.handleCaptureStatus(status as AudioCaptureStatus);
+    if (typeof status === "object" && status !== null) publisher.handleCaptureStatus(status);
   };
 
   parent.on("message", ({ data, ports }) => {
@@ -82,10 +84,11 @@ export function createAudioUplinkService(parent: ParentPort, createTransport: Au
       case "port":
         media?.close();
         media = ports[0] ?? null;
-        media?.on("message", event => onMedia(event.data));
+        media?.on("message", (event) => onMedia(event.data));
         media?.start();
     }
   });
 }
 
-if (process.parentPort) createAudioUplinkService(process.parentPort, (url, handlers) => new AudioRelayClient(url, handlers));
+const serviceProcess: { parentPort?: Parameters<typeof createAudioUplinkService>[0] } = process;
+if (serviceProcess.parentPort) createAudioUplinkService(serviceProcess.parentPort, (url, handlers) => new AudioRelayClient(url, handlers));

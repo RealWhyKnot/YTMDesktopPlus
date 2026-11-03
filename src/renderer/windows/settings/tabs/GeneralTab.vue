@@ -1,23 +1,22 @@
 <script setup lang="ts">
-import { inject } from "vue";
 import YTMDSetting from "../../../components/YTMDSetting.vue";
 import { UpdateChannel } from "~shared/store/schema";
-import { stagedSettingsKey } from "../useStagedSettings";
-import { settingsShellKey } from "../context";
+import { useStagedSettings } from "../use-staged-settings";
+import { useSettingsShell } from "../context";
 
-const staged = inject(stagedSettingsKey);
-const shell = inject(settingsShellKey);
+const staged = useStagedSettings();
+const shell = useSettingsShell();
 const stageChanged = staged.stageChanged;
 const { isDarwin, isLinux, autoUpdaterDisabled } = shell;
 
-const hideToTrayOnClose = staged.refs["general.hideToTrayOnClose"];
-const showNotificationOnSongChange = staged.refs["general.showNotificationOnSongChange"];
-const startOnBoot = staged.refs["general.startOnBoot"];
-const startMinimized = staged.refs["general.startMinimized"];
-const disableHardwareAcceleration = staged.refs["general.disableHardwareAcceleration"];
-const debugLogging = staged.refs["developer.debugLogging"];
-const autoUpdateEnabled = staged.refs["updates.autoUpdateEnabled"];
-const updateChannel = staged.refs["updates.channel"];
+const hideToTrayOnClose = staged.modelBoolean("general.hideToTrayOnClose");
+const showNotificationOnSongChange = staged.modelBoolean("general.showNotificationOnSongChange");
+const startOnBoot = staged.modelBoolean("general.startOnBoot");
+const startMinimized = staged.modelBoolean("general.startMinimized");
+const disableHardwareAcceleration = staged.modelBoolean("general.disableHardwareAcceleration");
+const debugLogging = staged.modelBoolean("developer.debugLogging");
+const autoUpdateEnabled = staged.modelBoolean("updates.autoUpdateEnabled");
+const updateChannel = staged.modelSelection("updates.channel");
 </script>
 
 <template>

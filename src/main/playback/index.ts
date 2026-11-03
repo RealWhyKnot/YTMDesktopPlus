@@ -1,28 +1,28 @@
-import { BrowserView, ipcMain } from "electron";
+import { WebContentsView, ipcMain } from "electron";
 import log from "electron-log";
 import crypto from "crypto";
 
-import playerStateStore from "../player-state-store";
+import { playerStateStore } from "../player-state-store";
 import { validateRemoteCommand } from "~shared/remote-commands";
-import type { RemoteCommandName } from "~shared/addons/sdk";
-import { createTrackCue, type CueRequest, type CueResult } from "./cue-track";
+import type { RemoteCommandName, CueRequest, CueResult } from "~shared/addons/sdk";
+import { createTrackCue } from "./cue-track";
 
-let getYtmView: () => BrowserView | null = () => null;
+let getYtmView: () => WebContentsView | null = () => null;
 
 const trackCue = createTrackCue({
   getState: () => playerStateStore.getState(),
-  addEventListener: listener => playerStateStore.addEventListener(listener),
-  removeEventListener: listener => playerStateStore.removeEventListener(listener),
+  addEventListener: (listener) => playerStateStore.addEventListener(listener),
+  removeEventListener: (listener) => playerStateStore.removeEventListener(listener),
   send: (command, value) => {
     const view = getYtmView();
     if (!view || view.webContents.isDestroyed()) return false;
     view.webContents.send("remoteControl:execute", command, value);
     return true;
   },
-  now: () => Date.now()
+  now: () => Date.now(),
 });
 
-export function providePlaybackView(getter: () => BrowserView | null) {
+export function providePlaybackView(getter: () => WebContentsView | null) {
   getYtmView = getter;
 }
 
@@ -35,7 +35,6 @@ export function sendPlaybackCommand(command: RemoteCommandName, value?: unknown)
   return true;
 }
 
-/** The signed-in account's playlists, fetched live from the page. */
 export function getPlaylists(): Promise<{ id: string; title: string }[]> {
   return new Promise((resolve, reject) => {
     const view = getYtmView();

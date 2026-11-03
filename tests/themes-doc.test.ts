@@ -1,3 +1,4 @@
+import { requireValue } from "./helpers/require-value";
 import fs from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
@@ -7,24 +8,24 @@ import { BASE_LAYER_FOLDER } from "../src/main/themes/loader";
 const BASE_DIR = path.resolve(__dirname, "../src/themes", BASE_LAYER_FOLDER);
 const doc = fs.readFileSync(path.resolve(__dirname, "../docs/themes.md"), "utf8");
 
-const documented = new Set((doc.match(/`--[a-zA-Z0-9-]+`/g) ?? []).map(match => match.slice(1, -1)));
+const documented = new Set((doc.match(/`--[a-zA-Z0-9-]+`/g) ?? []).map((match) => match.slice(1, -1)));
 
 const REFERENCED_TOKEN = /var\(\s*(--[a-zA-Z0-9-]+)/g;
 
 const OWN_FILES = ["app.css", "ytm-tokens.css"];
-const PAINT_FILES = ["ytm.css", "addon-ui.css"];
+const PAINT_FILES = ["ytm.user.css", "addon-ui.css"];
 
 function baseVocabulary(): Set<string> {
   const tokens = new Set<string>();
   for (const file of OWN_FILES) {
     const css = fs.readFileSync(path.join(BASE_DIR, file), "utf8");
     for (const token of Object.keys(parseTokens(css))) tokens.add(token);
-    for (const match of css.matchAll(REFERENCED_TOKEN)) tokens.add(match[1]);
+    for (const match of css.matchAll(REFERENCED_TOKEN)) tokens.add(requireValue(match[1]));
   }
   for (const file of PAINT_FILES) {
     const css = fs.readFileSync(path.join(BASE_DIR, file), "utf8");
     for (const match of css.matchAll(REFERENCED_TOKEN)) {
-      if (tokens.has(match[1]) || match[1].startsWith("--ytmd-")) tokens.add(match[1]);
+      if (tokens.has(requireValue(match[1])) || requireValue(match[1]).startsWith("--ytmd-")) tokens.add(requireValue(match[1]));
     }
   }
   return tokens;
@@ -34,12 +35,12 @@ const vocabulary = baseVocabulary();
 
 describe("themes documentation", () => {
   it("documents every token the base layer defines", () => {
-    const missing = [...vocabulary].filter(token => !documented.has(token));
+    const missing = [...vocabulary].filter((token) => !documented.has(token));
     expect(missing).toEqual([]);
   });
 
   it("does not document tokens the base layer no longer defines", () => {
-    const stale = [...documented].filter(token => !vocabulary.has(token));
+    const stale = [...documented].filter((token) => !vocabulary.has(token));
     expect(stale).toEqual([]);
   });
 
@@ -57,7 +58,7 @@ describe("themes documentation", () => {
       "appStyles",
       "ytmStyles",
       "titleBarOverlay",
-      "preview"
+      "preview",
     ]) {
       expect(doc, `${field} is missing from docs/themes.md`).toContain(`\`${field}\``);
     }

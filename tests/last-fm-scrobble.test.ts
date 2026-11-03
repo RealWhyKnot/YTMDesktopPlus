@@ -1,33 +1,48 @@
+import { requireValue, requireStringArray } from "./helpers/require-value";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const electronMock = vi.hoisted(() => ({
-  openExternal: vi.fn(async () => {})
+  openExternal: vi.fn(() => Promise.resolve(undefined)),
 }));
 
 vi.mock("electron", () => ({
   shell: { openExternal: electronMock.openExternal },
   safeStorage: {
     decryptString: (buffer: Buffer) => buffer.toString(),
-    encryptString: (value: string) => Buffer.from(value)
-  }
+    encryptString: (value: string) => Buffer.from(value),
+  },
 }));
 
-import LastFM from "../src/main/integrations/last-fm";
+import { LastFM } from "../src/main/integrations/last-fm";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
 import { createLaunchPause } from "../src/main/playback/launch-pause";
 import type { PlayerQueue, PlayerQueueItem } from "~shared/addons/sdk";
 import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
 
 type Internals = {
-  isEnabled: boolean;
   possibleVideoIds: string[] | null;
-  updatePlayerState(state: PlayerState): Promise<void>;
+  updatePlayerState(state: PlayerState): Promise<unknown>;
 };
 
+function inspectLastfm(instance: LastFM): Internals {
+  return {
+    get possibleVideoIds() {
+      const value: unknown = Reflect.get(instance, "possibleVideoIds");
+      return value === null ? null : requireStringArray(value);
+    },
+    updatePlayerState(state) {
+      const update: unknown = Reflect.get(instance, "updatePlayerState");
+      if (typeof update !== "function") throw new TypeError("Expected the player state handler");
+      const result: unknown = Reflect.apply(update, instance, [state]);
+      return Promise.resolve(result);
+    },
+  };
+}
+
 function enabledInstance() {
-  const instance = new LastFM() as unknown as Internals;
-  instance.isEnabled = true;
-  return instance;
+  const instance = new LastFM();
+  Reflect.set(instance, "isEnabled", true);
+  return inspectLastfm(instance);
 }
 
 function queueItem(overrides: Partial<PlayerQueueItem> = {}): PlayerQueueItem {
@@ -39,7 +54,7 @@ function queueItem(overrides: Partial<PlayerQueueItem> = {}): PlayerQueueItem {
     selected: true,
     videoId: "vid",
     counterparts: null,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -50,9 +65,9 @@ function queue(overrides: Partial<PlayerQueue> = {}): PlayerQueue {
     isGenerating: false,
     isInfinite: false,
     items: [queueItem()],
-    repeatMode: 0 as PlayerQueue["repeatMode"],
+    repeatMode: 0,
     selectedItemIndex: 0,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -87,7 +102,7 @@ describe("updatePlayerState with a queue", () => {
   });
 });
 
-type ApiReply = { status?: number; body?: unknown; network?: boolean };
+type ApiReply = { status?: number; body?: unknown; network?: boolean; isPending?: boolean };
 type ApiCall = { method: string; params: URLSearchParams };
 type Details = Parameters<typeof makeVideoDetails>[0];
 type StartOptions = { sessionKey?: string | null; token?: string | null; scrobblePercent?: number };
@@ -96,48 +111,59 @@ const hex = (value: string) => Buffer.from(value).toString("hex");
 
 function fakeLastfm(replies: (call: ApiCall) => ApiReply) {
   const calls: ApiCall[] = [];
-  const fetchMock = vi.fn(async (url: string, init?: { body?: URLSearchParams }) => {
+  const fetchMock = vi.fn((url: string, init?: { body?: URLSearchParams; signal?: AbortSignal }) => {
     const params = init?.body ? new URLSearchParams(init.body) : new URL(url).searchParams;
     const call = { method: params.get("method") ?? "", params };
     calls.push(call);
     const reply = replies(call);
-    if (reply.network) throw new TypeError("fetch failed");
+    if (reply.isPending) {
+      const signal = requireValue(init?.signal);
+      return new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener("abort", () => {
+          const reason: unknown = signal.reason;
+          reject(reason instanceof Error ? reason : new Error("Last.fm request aborted", { cause: reason }));
+        });
+      });
+    }
+    if (reply.network) return Promise.reject(new TypeError("fetch failed"));
     const status = reply.status ?? 200;
-    return {
+    return Promise.resolve({
       ok: status >= 200 && status < 300,
       status,
-      json: async () => {
-        if (reply.body === undefined) throw new SyntaxError("Unexpected token <");
-        return reply.body;
-      }
-    };
+      json: () => (reply.body === undefined ? Promise.reject(new SyntaxError("Unexpected token <")) : Promise.resolve(reply.body)),
+    });
   });
   vi.stubGlobal("fetch", fetchMock);
   return {
     calls,
-    count: (method: string) => calls.filter(call => call.method === method).length
+    count: (method: string) => calls.filter((call) => call.method === method).length,
   };
 }
 
 function connectedLastfm(options: StartOptions = {}) {
-  const sets: Array<[string, unknown]> = [];
+  const sets: [string, unknown][] = [];
   const lastfm = {
     api_key: "key",
     secret: "secret",
     sessionKey: options.sessionKey === undefined ? hex("session") : options.sessionKey,
     token: options.token ?? null,
-    scrobblePercent: options.scrobblePercent ?? 50
+    scrobblePercent: options.scrobblePercent ?? 50,
   };
+  function get(key: "lastfm"): typeof lastfm;
+  function get(key: "lastfm.scrobblePercent"): unknown;
+  function get(key: string) {
+    return key === "lastfm" ? { ...lastfm } : key === "lastfm.scrobblePercent" ? lastfm.scrobblePercent : undefined;
+  }
   const store = {
-    get: (key: string) => (key === "lastfm" ? { ...lastfm } : key === "lastfm.scrobblePercent" ? lastfm.scrobblePercent : undefined),
+    get,
     set: (key: string, value: unknown) => {
       sets.push([key, value]);
-    }
+    },
   };
   const memoryStore = { get: (key: string) => key === "safeStorageAvailable" };
   const lastFm = new LastFM();
-  lastFm.provide(store as never, memoryStore as never);
-  return { lastFm, internals: lastFm as unknown as Internals, sets };
+  lastFm.provide(store, memoryStore);
+  return { lastFm, internals: inspectLastfm(lastFm), sets };
 }
 
 const track = (overrides: Partial<PlayerState> = {}, details: Details = {}) =>
@@ -145,7 +171,7 @@ const track = (overrides: Partial<PlayerState> = {}, details: Details = {}) =>
     videoDetails: makeVideoDetails({ id: "vid", durationSeconds: 180, ...details }),
     trackState: VideoState.Playing,
     queue: queue(),
-    ...overrides
+    ...overrides,
   });
 
 async function playThrough(internals: Internals, from: number, to: number, overrides: Partial<PlayerState> = {}, details: Details = {}) {
@@ -163,12 +189,23 @@ const okReply = (call: ApiCall): ApiReply => {
 
 const unauthorized: ApiReply = { status: 403, body: { error: 14, message: "Unauthorized Token" } };
 
+function fakeTimeouts() {
+  const controllers: AbortController[] = [];
+  const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+    const controller = new AbortController();
+    controllers.push(controller);
+    return controller.signal;
+  });
+  return { controllers, timeout };
+}
+
 describe("Last.fm with a fake API", () => {
   let active: LastFM[] = [];
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-25T12:00:00Z"));
+    fakeTimeouts();
     electronMock.openExternal.mockClear();
     active = [];
   });
@@ -176,6 +213,7 @@ describe("Last.fm with a fake API", () => {
   afterEach(() => {
     for (const lastFm of active) lastFm.disable();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -287,8 +325,18 @@ describe("Last.fm with a fake API", () => {
     it("does not count the paused restore at launch", async () => {
       const api = fakeLastfm(okReply);
       const { internals } = start();
-      const launchPause = createLaunchPause({ addEventListener: () => {}, removeEventListener: () => {}, send: () => {} });
-      void launchPause.arm("vid", true);
+      const launchPause = createLaunchPause({
+        addEventListener: () => {
+          return undefined;
+        },
+        removeEventListener: () => {
+          return undefined;
+        },
+        send: () => {
+          return undefined;
+        },
+      });
+      void launchPause.arm("vid", true).catch((error: unknown) => console.warn("last-fm-scrobble.test: operation failed", error));
 
       await playThrough(internals, 0, 100);
       launchPause.cancel();
@@ -305,8 +353,58 @@ describe("Last.fm with a fake API", () => {
   });
 
   describe("errors", () => {
+    it("backs off after a hanging scrobble times out and retries the same play", async () => {
+      const { controllers, timeout } = fakeTimeouts();
+      let scrobbleTries = 0;
+      const api = fakeLastfm((call) => {
+        if (call.method === "track.scrobble" && scrobbleTries++ === 0) return { isPending: true };
+        return okReply(call);
+      });
+      const { internals, sets } = start();
+      await playThrough(internals, 0, 89);
+      await internals.updatePlayerState(track({ videoProgress: 90 }));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.count("track.scrobble")).toBe(1);
+      expect(timeout).toHaveBeenLastCalledWith(30_000);
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(api.count("track.scrobble")).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      requireValue(controllers.at(-1)).abort(new DOMException("Request timed out", "TimeoutError"));
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(api.count("track.scrobble")).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      const scrobbles = api.calls.filter((call) => call.method === "track.scrobble");
+      expect(scrobbles).toHaveLength(2);
+      expect(requireValue(controllers.at(-1)).signal.aborted).toBe(false);
+      expect(requireValue(scrobbles[1]).params.toString()).toBe(requireValue(scrobbles[0]).params.toString());
+      expect(sets).not.toContainEqual(["lastfm.sessionKey", null]);
+    });
+
+    it("backs off after a hanging now-playing request times out", async () => {
+      const { controllers, timeout } = fakeTimeouts();
+      let nowPlayingTries = 0;
+      const api = fakeLastfm((call) => {
+        if (call.method === "track.updateNowPlaying" && nowPlayingTries++ === 0) return { isPending: true };
+        return okReply(call);
+      });
+      const { internals } = start();
+      await playThrough(internals, 0, 1);
+      expect(timeout).toHaveBeenLastCalledWith(30_000);
+      await vi.advanceTimersByTimeAsync(29_000);
+      requireValue(controllers.at(-1)).abort(new DOMException("Request timed out", "TimeoutError"));
+      await vi.advanceTimersByTimeAsync(0);
+      await playThrough(internals, 0, 1, {}, { id: "during-backoff" });
+      expect(api.count("track.updateNowPlaying")).toBe(1);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await playThrough(internals, 0, 1, {}, { id: "after-backoff" });
+      expect(api.count("track.updateNowPlaying")).toBe(2);
+    });
+
     it("clears the session on error 9 without opening the browser", async () => {
-      const api = fakeLastfm(call => (call.method.startsWith("track.") ? { status: 403, body: { error: 9, message: "Invalid session key" } } : okReply(call)));
+      const api = fakeLastfm((call) =>
+        call.method.startsWith("track.") ? { status: 403, body: { error: 9, message: "Invalid session key" } } : okReply(call)
+      );
       const { internals, sets } = start();
 
       await playThrough(internals, 0, 120);
@@ -318,7 +416,7 @@ describe("Last.fm with a fake API", () => {
 
     it("backs off on rate limits and retries the scrobble later", async () => {
       let scrobbleTries = 0;
-      const api = fakeLastfm(call => {
+      const api = fakeLastfm((call) => {
         if (call.method === "track.scrobble" && scrobbleTries++ === 0) return { body: { error: 29, message: "Rate limit exceeded" } };
         return okReply(call);
       });
@@ -336,7 +434,7 @@ describe("Last.fm with a fake API", () => {
 
     it("handles a server error page that is not JSON", async () => {
       let scrobbleTries = 0;
-      const api = fakeLastfm(call => {
+      const api = fakeLastfm((call) => {
         if (call.method === "track.scrobble" && scrobbleTries++ === 0) return { status: 503 };
         return okReply(call);
       });
@@ -366,9 +464,28 @@ describe("Last.fm with a fake API", () => {
   });
 
   describe("connecting", () => {
+    it("retries a hanging session poll after its 30-second timeout", async () => {
+      const { controllers, timeout } = fakeTimeouts();
+      let polls = 0;
+      const api = fakeLastfm((call) => (call.method === "auth.getSession" && polls++ === 0 ? { isPending: true } : okReply(call)));
+      const { sets } = start({ sessionKey: null, token: hex("stored") });
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(api.count("auth.getSession")).toBe(1);
+      expect(timeout).toHaveBeenLastCalledWith(30_000);
+      await vi.advanceTimersByTimeAsync(1);
+      requireValue(controllers.at(-1)).abort(new DOMException("Request timed out", "TimeoutError"));
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(2_999);
+      expect(api.count("auth.getSession")).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(api.count("auth.getSession")).toBe(2);
+      expect(sets).toContainEqual(["lastfm.sessionKey", hex("session")]);
+      expect(electronMock.openExternal).not.toHaveBeenCalled();
+    });
+
     it("opens the sign in page once and stops polling once signed in", async () => {
       let polls = 0;
-      const api = fakeLastfm(call => (call.method === "auth.getSession" && polls++ < 3 ? unauthorized : okReply(call)));
+      const api = fakeLastfm((call) => (call.method === "auth.getSession" && polls++ < 3 ? unauthorized : okReply(call)));
       const { lastFm, internals, sets } = start({ sessionKey: null });
 
       lastFm.connect();
@@ -384,7 +501,7 @@ describe("Last.fm with a fake API", () => {
     });
 
     it("stops when the token expires", async () => {
-      const api = fakeLastfm(call => (call.method === "auth.getSession" ? { status: 403, body: { error: 15, message: "Token expired" } } : okReply(call)));
+      const api = fakeLastfm((call) => (call.method === "auth.getSession" ? { status: 403, body: { error: 15, message: "Token expired" } } : okReply(call)));
       start({ sessionKey: null });
 
       await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
@@ -393,7 +510,7 @@ describe("Last.fm with a fake API", () => {
     });
 
     it("gives up after an hour without approval", async () => {
-      const api = fakeLastfm(call => (call.method === "auth.getSession" ? unauthorized : okReply(call)));
+      const api = fakeLastfm((call) => (call.method === "auth.getSession" ? unauthorized : okReply(call)));
       start({ sessionKey: null });
 
       await vi.advanceTimersByTimeAsync(61 * 60 * 1000);
@@ -406,7 +523,7 @@ describe("Last.fm with a fake API", () => {
     });
 
     it("stops polling when turned off", async () => {
-      const api = fakeLastfm(call => (call.method === "auth.getSession" ? unauthorized : okReply(call)));
+      const api = fakeLastfm((call) => (call.method === "auth.getSession" ? unauthorized : okReply(call)));
       const { lastFm } = start({ sessionKey: null });
 
       await vi.advanceTimersByTimeAsync(4 * 1000);
@@ -423,7 +540,7 @@ describe("Last.fm with a fake API", () => {
 
       await vi.advanceTimersByTimeAsync(1000);
       expect(api.count("auth.gettoken")).toBe(0);
-      expect(api.calls[0].params.get("token")).toBe("stored");
+      expect(requireValue(api.calls[0]).params.get("token")).toBe("stored");
       expect(electronMock.openExternal).not.toHaveBeenCalled();
       expect(sets).toContainEqual(["lastfm.sessionKey", hex("session")]);
     });

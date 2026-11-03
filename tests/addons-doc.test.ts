@@ -1,11 +1,9 @@
+import { requireRecord } from "./helpers/require-value";
 import fs from "fs";
 import { describe, expect, it } from "vitest";
 import { ADDON_SETTINGS_FIELD_TYPES } from "../src/shared/addons/sdk";
 import { fakeAddonContext } from "./helpers/fake-addon-context";
 
-// The doc is held to the real surface: a context namespace, settings field
-// type or manifest field that the code grows must show up in docs/addons.md
-// before this suite goes green again.
 const doc = fs.readFileSync("docs/addons.md", "utf8");
 
 describe("docs/addons.md", () => {
@@ -23,7 +21,7 @@ describe("docs/addons.md", () => {
   });
 
   it("documents every manifest field", () => {
-    const manifest = JSON.parse(fs.readFileSync("examples/addon-template/manifest.json", "utf8")) as Record<string, unknown>;
+    const manifest = requireRecord(JSON.parse(fs.readFileSync("examples/addon-template/manifest.json", "utf8")));
     for (const key of [...Object.keys(manifest), "minAppVersion", "defaultEnabled"]) {
       expect(doc, `manifest field ${key} is missing from the doc`).toContain(`\`${key}\``);
     }

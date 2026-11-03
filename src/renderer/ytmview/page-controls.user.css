@@ -1,0 +1,12 @@
+.ytmd-hidden {
+  display: none;
+}
+
+.ytmd-persist-volume-slider {
+  opacity: 1 !important;
+  pointer-events: initial !important;
+}
+
+#history-link .history-button.ytmd-history-button {
+  display: inline-block !important;
+}

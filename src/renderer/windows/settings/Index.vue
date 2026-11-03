@@ -1,4 +1,5 @@
 <script setup lang="ts">
+defineOptions({ name: "SettingsWindow" });
 import WindowShell from "../../components/WindowShell.vue";
 import Settings from "./Settings.vue";
 </script>

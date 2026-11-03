@@ -1,21 +1,40 @@
 import { describe, expect, it, vi } from "vitest";
+import { requireValue } from "./helpers/require-value";
 import { createAddonContext, type AddonHostBridge } from "../src/main/addons/context";
 import { makeManifest as manifest } from "./helpers/fake-addon-context";
 import { fakeServices } from "./helpers/fake-services";
 
 function bridge(cleanups: (() => void)[], errors: string[]): AddonHostBridge {
   return {
-    setSettingsSections: () => {},
-    addLoadedCallback: () => () => {},
-    addCssHandle: () => {},
-    addCleanup: cleanup => cleanups.push(cleanup),
-    setTitlebarBadge: () => {},
-    addBadgeClickCallback: () => () => {},
-    addActionCallback: () => () => {},
-    addMessageCallback: () => () => {},
-    setTrayMenuItems: () => {},
-    addWindow: () => {},
-    reportError: (scope: string) => errors.push(scope)
+    setSettingsSections: () => {
+      return undefined;
+    },
+    addLoadedCallback: () => () => {
+      return undefined;
+    },
+    addCssHandle: () => {
+      return undefined;
+    },
+    addCleanup: (cleanup) => cleanups.push(cleanup),
+    setTitlebarBadge: () => {
+      return undefined;
+    },
+    addBadgeClickCallback: () => () => {
+      return undefined;
+    },
+    addActionCallback: () => () => {
+      return undefined;
+    },
+    addMessageCallback: () => () => {
+      return undefined;
+    },
+    setTrayMenuItems: () => {
+      return undefined;
+    },
+    addWindow: () => {
+      return undefined;
+    },
+    reportError: (scope: string) => errors.push(scope),
   };
 }
 
@@ -39,7 +58,9 @@ describe("ctx.theme", () => {
     const { ctx, services, cleanups } = context();
     const before = cleanups.length;
 
-    ctx.theme.onChanged(() => {});
+    ctx.theme.onChanged(() => {
+      return undefined;
+    });
 
     expect(services.theme.subscribe).toHaveBeenCalled();
     expect(cleanups.length).toBe(before + 1);
@@ -47,17 +68,19 @@ describe("ctx.theme", () => {
 
   it("contains a throwing callback instead of taking the addon down", () => {
     const { ctx, services, errors } = context();
-    let deliver: ((theme: { id: string | null; name: string; tokens: Record<string, string> }) => void) | null = null;
-    services.theme.subscribe = vi.fn(listener => {
-      deliver = listener;
-      return () => {};
+    const deliveries: ((theme: { id: string | null; name: string; tokens: Record<string, string> }) => void)[] = [];
+    services.theme.subscribe = vi.fn((listener) => {
+      deliveries.push(listener);
+      return () => {
+        return undefined;
+      };
     });
 
     ctx.theme.onChanged(() => {
       throw new Error("boom");
     });
-    expect(deliver).not.toBeNull();
-    deliver!({ id: "ember", name: "Ember", tokens: {} });
+    expect(deliveries).toHaveLength(1);
+    requireValue(deliveries[0])({ id: "ember", name: "Ember", tokens: {} });
 
     expect(errors).toContain("theme.onChanged");
   });

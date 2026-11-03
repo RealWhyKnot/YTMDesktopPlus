@@ -1,6 +1,4 @@
-// Globals available inside the YouTube Music page, for page scripts.
-declare interface Window {
-  /** The page's own store, frozen and read-safe: getState, dispatch, subscribe. */
+export type PageWindow = {
   __YTMD_HOOK__?: {
     ytmStore: {
       getState(): unknown;
@@ -8,9 +6,8 @@ declare interface Window {
       subscribe(listener: () => void): () => void;
     };
   };
-  /** The app's page bridge; the part meant for addons. */
+
   ytmd?: {
-    /** Posts to the addon's main-process half: ctx.ytmview.onMessage(name). */
     postAddonMessage(addonId: string, name: string, payload?: unknown): void;
   };
-}
+};

@@ -1,22 +1,9 @@
-// Probes for the hooks this app grafts onto YouTube Music's internals.
-//
-// The YTM view preload polls these until the page is ready to be driven. They
-// are also the health checks used to detect when YouTube Music changes its
-// internals out from under us, so keep them in sync with the selectors and
-// APIs used by the ytmview scripts.
-//
-// Probe sources are evaluated in the YTM page's main world via
-// webFrame.executeJavaScript. They must never throw: they report what they
-// observe, and repair what they can, so a failure can be logged with enough
-// detail to act on.
-
 import { KNOWN_PLAYER_API_RESOLVER, PLAYER_API_DUCK_TYPE, PLAYER_API_MEMBERS, PLAYER_API_RESOLVER_PATTERN } from "./ytm-contract";
+import { arrayOf, isBoolean, isString, nullable, objectOf } from "./validation";
 
 export const HOOK_POLL_INTERVAL = 250;
-export const HOOK_POLL_MAX_ATTEMPTS = 120; // 30 seconds per stage
+export const HOOK_POLL_MAX_ATTEMPTS = 120;
 
-// Canonical player bar selector; raw ytmview scripts must use it verbatim
-// (enforced by tests/player-bar-selector.test.ts).
 export const PLAYER_BAR_SELECTOR = "ytmusic-app-layout>ytmusic-player-bar";
 
 export type PlayerApiSource = "property" | "scan" | "resolver" | "movie-player";
@@ -33,14 +20,27 @@ export type PlayerBarProbeSnapshot = {
   missingMembers: string[];
 };
 
-// Stage 1: the store hook installed by the Polymer base class trap.
+const isPlayerApiSource = (value: unknown): value is PlayerApiSource =>
+  value === "property" || value === "scan" || value === "resolver" || value === "movie-player";
+
+export const isPlayerBarProbeSnapshot = objectOf<PlayerBarProbeSnapshot>({
+  playerBarPresent: isBoolean,
+  miniplayerPresent: isBoolean,
+  playerApiPresent: isBoolean,
+  playerApiReady: isBoolean,
+  resolverPresent: isBoolean,
+  resolveError: nullable(isString),
+  resolvedVia: nullable(isPlayerApiSource),
+  candidateKeys: arrayOf(isString),
+  missingMembers: arrayOf(isString),
+});
+
 export const storeHookProbeSource = `
   (function() {
     return !!window.__YTMD_HOOK__;
   })
 `;
 
-// Stage 2: the player bar element and its player API.
 export const playerBarProbeSource = `
   (function() {
     const DUCK_TYPE = ${JSON.stringify([...PLAYER_API_DUCK_TYPE])};
@@ -175,9 +175,6 @@ export type PollResult<T> = {
   lastError: string | null;
 };
 
-// A probe that throws counts as a failed attempt instead of killing the poll:
-// an exception escaping an unbounded poll loop is exactly how the app used to
-// hang on the loading screen forever.
 export async function pollUntil<T>(probe: () => Promise<T>, isDone: (result: T) => boolean, intervalMs: number, maxAttempts: number): Promise<PollResult<T>> {
   let last: T | null = null;
   let lastError: string | null = null;
@@ -192,7 +189,7 @@ export async function pollUntil<T>(probe: () => Promise<T>, isDone: (result: T) 
       lastError = String(error);
     }
     if (attempt < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, intervalMs));
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
   }
   return { done: false, attempts: maxAttempts, last, lastError };

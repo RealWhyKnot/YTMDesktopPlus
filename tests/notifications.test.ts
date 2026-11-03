@@ -1,20 +1,25 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const shown = vi.hoisted(() => [] as Array<{ title: string; body: string }>);
+const shown = vi.hoisted(() => [] as { title: string; body: string }[]);
 
 vi.mock("electron", () => ({
   Notification: class {
-    constructor(private options: { title: string; body: string }) {}
+    private options: { title: string; body: string };
+    constructor(options: { title: string; body: string }) {
+      this.options = options;
+    }
     show() {
       shown.push({ title: this.options.title, body: this.options.body });
     }
-    close() {}
+    close() {
+      return undefined;
+    }
   },
-  nativeImage: { createFromDataURL: () => ({}) }
+  nativeImage: { createFromDataURL: () => ({}) },
 }));
 
-import NowPlayingNotifications from "../src/main/integrations/notifications";
-import playerStateStore from "../src/main/player-state-store";
+import { NowPlayingNotifications } from "../src/main/integrations/notifications";
+import { playerStateStore } from "../src/main/player-state-store";
 import { createLaunchPause } from "../src/main/playback/launch-pause";
 
 const details = (videoId: string) => ({
@@ -26,23 +31,39 @@ const details = (videoId: string) => ({
   title: `Track ${videoId}`,
   videoId,
   isLive: false,
-  musicVideoType: "MUSIC_VIDEO_TYPE_ATV"
+  musicVideoType: "MUSIC_VIDEO_TYPE_ATV",
 });
 
 describe("now playing notifications", () => {
   const notifications = new NowPlayingNotifications();
 
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-25T12:00:00Z"));
+  });
+
   afterEach(() => {
     notifications.disable();
     shown.length = 0;
     playerStateStore.updateVideoState(2);
+    vi.useRealTimers();
   });
 
   it("stays quiet for the paused restore at launch", () => {
-    const launchPause = createLaunchPause({ addEventListener: () => {}, removeEventListener: () => {}, send: () => {} });
+    const launchPause = createLaunchPause({
+      addEventListener: () => {
+        return undefined;
+      },
+      removeEventListener: () => {
+        return undefined;
+      },
+      send: () => {
+        return undefined;
+      },
+    });
     notifications.enable();
 
-    void launchPause.arm("restored", true);
+    void launchPause.arm("restored", true).catch((error: unknown) => console.warn("notifications.test: operation failed", error));
     playerStateStore.updateVideoDetails(details("restored"), "PL1", null, "INDIFFERENT", true);
     playerStateStore.updateVideoState(1);
     expect(shown).toEqual([]);
@@ -59,5 +80,12 @@ describe("now playing notifications", () => {
     playerStateStore.updateVideoDetails(details("next"), "PL1", null, "INDIFFERENT", true);
     playerStateStore.updateVideoState(1);
     expect(shown).toEqual([{ title: "Track next", body: "Artist" }]);
+  });
+
+  it("accepts empty normalized title and author without throwing", () => {
+    notifications.enable();
+    playerStateStore.updateVideoDetails({ videoId: "partial" }, undefined, null, undefined, true);
+    playerStateStore.updateVideoState(1);
+    expect(shown).toEqual([{ title: "", body: "" }]);
   });
 });

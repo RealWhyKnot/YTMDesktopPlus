@@ -2,7 +2,7 @@
   --bg: #141414;
   --bg-raised: #1c1c1c;
   --bg-control: #262626;
-  --bg-control-hover: #333333;
+  --bg-control-hover: #333;
   --border: #262626;
   --border-strong: #7a7a7a;
   --text: #ededed;
@@ -14,8 +14,8 @@
   --danger: #c98b8b;
   --danger-hover: #a86e6e;
   --knob: #ededed;
-  --overlay: rgba(0, 0, 0, 0.7);
+  --overlay: rgb(0 0 0 / 70%);
   --scrollbar-thumb: #3a3a3a;
   --titlebar-symbol: #b0b0b0;
-  --titlebar-separator: #333333;
+  --titlebar-separator: #333;
 }

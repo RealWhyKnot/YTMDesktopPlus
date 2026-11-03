@@ -1,19 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 
-const props = defineProps({
-  modelValue: {
-    type: String,
-    default: ""
-  },
-  label: {
-    type: String,
-    default: ""
-  }
+const props = withDefaults(defineProps<{ modelValue?: string; label?: string }>(), {
+  modelValue: "",
+  label: "",
 });
-const emit = defineEmits(["update:modelValue", "change"]);
+const emit = defineEmits<{ "update:modelValue": [value: string]; change: [] }>();
 
-const keybindInput = ref(null);
+const keybindInput = ref<HTMLInputElement | null>(null);
 const isEditing = ref(false);
 
 const currentKeybind = computed({
@@ -23,11 +17,11 @@ const currentKeybind = computed({
   set(value) {
     emit("update:modelValue", value);
     emit("change");
-  }
+  },
 });
 
 function startEditing() {
-  keybindInput.value.focus();
+  keybindInput.value?.focus();
 }
 
 function keybindInputFocused() {
@@ -83,7 +77,8 @@ function validateKey(event: KeyboardEvent) {
   if (event.code === "ArrowLeft") return "Left";
   if (event.code === "ArrowRight") return "Right";
   if (event.shiftKey && event.code === "Equal") return "Plus";
-  if (event.keyCode >= 65 && event.keyCode <= 90) return event.key.toUpperCase();
+  const uppercasedKey = event.key.toUpperCase();
+  if (/^[A-Z]$/.test(uppercasedKey)) return uppercasedKey;
 
   return event.key;
 }
@@ -96,7 +91,7 @@ function keybindInputKeyDown(event: KeyboardEvent) {
   let newKeybind = "";
 
   if (event.key === "Escape") {
-    keybindInput.value.blur();
+    keybindInput.value?.blur();
     event.preventDefault();
     return;
   }
@@ -107,7 +102,7 @@ function keybindInputKeyDown(event: KeyboardEvent) {
   if (event.shiftKey) newKeybind += "Shift+";
 
   newKeybind += validateKey(event);
-  keybindInput.value.blur();
+  keybindInput.value?.blur();
 
   currentKeybind.value = newKeybind;
 
@@ -116,7 +111,7 @@ function keybindInputKeyDown(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div :class="{ 'keybind': true, 'is-editing': isEditing }">
+  <div class="keybind" :data-editing="isEditing">
     <p v-if="!currentKeybind" class="keybind-text" @click="startEditing">None</p>
     <p v-else class="keybind-text" :title="currentKeybind" @click="startEditing">{{ currentKeybind }}</p>
     <input
@@ -144,7 +139,7 @@ function keybindInputKeyDown(event: KeyboardEvent) {
   display: flex;
 }
 
-.keybind.is-editing {
+.keybind[data-editing="true"] {
   border: 2px solid var(--accent);
 }
 
@@ -169,7 +164,7 @@ function keybindInputKeyDown(event: KeyboardEvent) {
   position: absolute;
   background: none;
   border: none;
-  outline: none;
+  outline: 2px solid transparent;
 }
 
 .remove {

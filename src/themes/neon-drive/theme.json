@@ -8,6 +8,6 @@
   "apiVersion": 1,
   "styles": ["theme.css"],
   "appStyles": ["app.css"],
-  "ytmStyles": ["ytm.css"],
+  "ytmStyles": ["ytm.user.css"],
   "titleBarOverlay": { "color": "#0f0722", "symbolColor": "#22d3ee" }
 }

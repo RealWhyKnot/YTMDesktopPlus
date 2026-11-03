@@ -33,9 +33,9 @@ describe("readThemeArchive", () => {
   });
 
   it("refuses an archive with too many entries", () => {
-    const files: Record<string, Uint8Array> = { "theme.json": bytes(manifest()) };
-    for (let i = 0; i < MAX_THEME_ENTRIES + 1; i++) files[`f${i}.css`] = bytes("a");
-    const archive = readThemeArchive(zipSync(files));
+    const files = new Map([["theme.json", bytes(manifest())]]);
+    for (let i = 0; i < MAX_THEME_ENTRIES + 1; i++) files.set(`f${i}.css`, bytes("a"));
+    const archive = readThemeArchive(zipSync(Object.fromEntries(files)));
     expect("reason" in archive && archive.reason).toContain("more than");
   });
 
@@ -55,9 +55,9 @@ describe("readThemeArchive", () => {
   });
 
   it("refuses an archive padded with folder entries", () => {
-    const files: Record<string, Uint8Array> = { "theme.json": bytes(manifest()) };
-    for (let i = 0; i < MAX_THEME_ENTRIES * 2 + 1; i++) files[`d${i}/`] = new Uint8Array(0);
-    const archive = readThemeArchive(zipSync(files));
+    const files = new Map([["theme.json", bytes(manifest())]]);
+    for (let i = 0; i < MAX_THEME_ENTRIES * 2 + 1; i++) files.set(`d${i}/`, new Uint8Array(0));
+    const archive = readThemeArchive(zipSync(Object.fromEntries(files)));
     expect("reason" in archive && archive.reason).toContain("more than");
   });
 

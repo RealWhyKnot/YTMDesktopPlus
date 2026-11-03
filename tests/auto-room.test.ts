@@ -17,16 +17,16 @@ function makeHarness(overrides: { enabled?: boolean; name?: string | null } = {}
     phase: "idle" as RoomPhase,
     isHost: false,
     name: overrides.name ?? null,
-    hosts: [] as Array<string | null>,
+    hosts: [] as (string | null)[],
     leaves: 0,
-    logs: [] as string[]
+    logs: [] as string[],
   };
   const autoRoom = new AutoRoom({
     enabled: () => state.enabled,
     phase: () => state.phase,
     isHost: () => state.isHost,
     savedDisplayName: () => state.name,
-    host: displayName => {
+    host: (displayName) => {
       state.hosts.push(displayName);
       state.phase = "connecting";
       state.isHost = true;
@@ -36,7 +36,7 @@ function makeHarness(overrides: { enabled?: boolean; name?: string | null } = {}
       state.phase = "idle";
       state.isHost = false;
     },
-    log: message => state.logs.push(message)
+    log: (message) => state.logs.push(message),
   });
   return { autoRoom, state };
 }
@@ -53,7 +53,6 @@ describe("AutoRoom", () => {
     autoRoom.evaluate();
     expect(state.hosts).toEqual([null]);
 
-    // Already hosting: nothing further.
     autoRoom.evaluate();
     expect(state.hosts).toHaveLength(1);
   });
@@ -104,7 +103,6 @@ describe("AutoRoom", () => {
     autoRoom.syncToggles();
     expect(state.leaves).toBe(1);
 
-    // A manually hosted room is not automation's to close.
     state.enabled = true;
     autoRoom.noteManualSession();
     state.phase = "hosting";

@@ -2,7 +2,7 @@ import type { WebContents } from "electron";
 import type { ThemeCss, ThemeDescriptor } from "~shared/themes/sdk";
 import type { IpcRegistrar } from "./registrar";
 
-export interface ThemeIpcDeps {
+export type ThemeIpcDeps = {
   descriptors(): ThemeDescriptor[];
   getCss(): ThemeCss;
   rescan(): void;
@@ -16,21 +16,21 @@ export interface ThemeIpcDeps {
   pickArchive(): Promise<string | null>;
   pickExportDestination(suggestedName: string): Promise<string | null>;
   isSettingsSender(sender: WebContents): boolean;
-}
+};
 
 export function registerThemeIpc(ipc: IpcRegistrar, deps: ThemeIpcDeps): void {
-  ipc.handle("themes:getAll", event => {
+  ipc.handle("themes:getAll", (event) => {
     if (!deps.isSettingsSender(event.sender)) return [];
     return deps.descriptors();
   });
 
-  ipc.handle("themes:rescan", event => {
+  ipc.handle("themes:rescan", (event) => {
     if (!deps.isSettingsSender(event.sender)) return [];
     deps.rescan();
     return deps.descriptors();
   });
 
-  ipc.handle("themes:create", event => {
+  ipc.handle("themes:create", (event) => {
     if (!deps.isSettingsSender(event.sender)) return { ok: false, reason: "not allowed" };
     const result = deps.create();
     if (result.ok) deps.revealPath(result.dir);
@@ -45,7 +45,7 @@ export function registerThemeIpc(ipc: IpcRegistrar, deps: ThemeIpcDeps): void {
     return { ok: false, reason: "not allowed" };
   });
 
-  ipc.handle("themes:duplicate", async (event, ...args) => {
+  ipc.handle("themes:duplicate", (event, ...args) => {
     if (!deps.isSettingsSender(event.sender)) return { ok: false, reason: "not allowed" };
     if (typeof args[0] !== "string") return { ok: false, reason: "not allowed" };
     const result = deps.duplicate(args[0]);
@@ -61,19 +61,19 @@ export function registerThemeIpc(ipc: IpcRegistrar, deps: ThemeIpcDeps): void {
     return deps.exportTo(args[0], destination);
   });
 
-  ipc.handle("themes:installFromFile", async event => {
+  ipc.handle("themes:installFromFile", async (event) => {
     if (!deps.isSettingsSender(event.sender)) return { ok: false, reason: "not allowed" };
     const archive = await deps.pickArchive();
     if (archive === null) return { ok: false, reason: "cancelled" };
     return deps.install(archive);
   });
 
-  ipc.on("themes:openFolder", event => {
+  ipc.on("themes:openFolder", (event) => {
     if (!deps.isSettingsSender(event.sender)) return;
     deps.openThemesFolder();
   });
 
-  ipc.on("themes:getActiveCss", event => {
+  ipc.on("themes:getActiveCss", (event) => {
     event.returnValue = deps.getCss();
   });
 }

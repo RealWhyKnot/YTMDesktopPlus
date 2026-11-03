@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { inject } from "vue";
 import YTMDSetting from "../../../components/YTMDSetting.vue";
-import { stagedSettingsKey } from "../useStagedSettings";
-import { settingsShellKey } from "../context";
+import { useStagedSettings } from "../use-staged-settings";
+import { useSettingsShell } from "../context";
 
-const staged = inject(stagedSettingsKey);
-const shell = inject(settingsShellKey);
+const staged = useStagedSettings();
+const shell = useSettingsShell();
 const stageChanged = staged.stageChanged;
 const {
   safeStorageAvailable,
@@ -18,16 +17,16 @@ const {
   restartDiscordPresence,
   deleteCompanionAuthToken,
   logoutLastFM,
-  connectLastFM
+  connectLastFM,
 } = shell;
 
-const companionServerEnabled = staged.refs["integrations.companionServerEnabled"];
-const companionServerCORSWildcardEnabled = staged.refs["integrations.companionServerCORSWildcardEnabled"];
-const companionServerLANEnabled = staged.refs["integrations.companionServerLANEnabled"];
-const discordPresenceEnabled = staged.refs["integrations.discordPresenceEnabled"];
-const discordPresenceHideOnPause = staged.refs["integrations.discordPresenceHideOnPause"];
-const lastFMEnabled = staged.refs["integrations.lastFMEnabled"];
-const scrobblePercent = staged.refs["lastfm.scrobblePercent"];
+const companionServerEnabled = staged.modelBoolean("integrations.companionServerEnabled");
+const companionServerCORSWildcardEnabled = staged.modelBoolean("integrations.companionServerCORSWildcardEnabled");
+const companionServerLANEnabled = staged.modelBoolean("integrations.companionServerLANEnabled");
+const discordPresenceEnabled = staged.modelBoolean("integrations.discordPresenceEnabled");
+const discordPresenceHideOnPause = staged.modelBoolean("integrations.discordPresenceHideOnPause");
+const lastFMEnabled = staged.modelBoolean("integrations.lastFMEnabled");
+const scrobblePercent = staged.modelNumber("lastfm.scrobblePercent");
 
 function formatLastUsed(lastUsed?: number) {
   if (typeof lastUsed !== "number") return "Unknown";
@@ -108,7 +107,7 @@ function formatLastUsed(lastUsed?: number) {
         </tbody>
       </table>
       <div v-if="companionServerAuthTokens.length === 0" class="no-authorized-companions">
-        <td>No authorized companions</td>
+        <span class="empty-companion-cell">No authorized companions</span>
       </div>
     </YTMDSetting>
     <YTMDSetting v-model="discordPresenceEnabled" type="checkbox" name="Discord rich presence" @change="stageChanged" />
@@ -137,8 +136,8 @@ function formatLastUsed(lastUsed?: number) {
       <div class="name-with-description">
         <p class="description">
           Signed in to Last.fm:
-          <span v-if="lastFMSessionKey" style="color: var(--success)">Yes</span>
-          <span v-else style="color: var(--danger)">No</span>
+          <span v-if="lastFMSessionKey" class="signed-in">Yes</span>
+          <span v-else class="signed-out">No</span>
         </p>
       </div>
       <button v-if="lastFMSessionKey" @click="logoutLastFM">Log out</button>
@@ -160,40 +159,45 @@ function formatLastUsed(lastUsed?: number) {
 </template>
 
 <style scoped>
+.signed-in {
+  color: var(--success);
+}
+
+.signed-out {
+  color: var(--danger);
+}
+
 .authorized-companions-table {
   width: 100%;
   table-layout: fixed;
 }
 
-.authorized-companions-table tr .companion {
-  width: 50%;
-  word-wrap: break-word;
-}
-
-.authorized-companions-table tr .companion .id {
-  color: var(--text-faint);
-  font-size: 14px;
-}
-
-.authorized-companions-table tr .version,
-.authorized-companions-table tr .last-used {
-  word-wrap: break-word;
-}
-
-.authorized-companions-table tr th,
-.authorized-companions-table tr td {
+.no-authorized-companions {
+  color: var(--text-muted);
   padding: 4px;
+}
+
+.empty-companion-cell {
+  display: table-cell;
+  padding: 1px;
+  unicode-bidi: isolate;
+}
+
+.discord-failure {
+  margin: 0;
+  color: var(--text-faint);
 }
 
 .authorized-companions-table th {
   text-align: left;
 }
 
-.authorized-companions-table thead tr th {
-  border-bottom: 1px solid var(--border);
+.authorized-companions-table tr th {
+  padding: 4px;
 }
-.authorized-companions-table thead tr .controls {
-  width: 48px;
+
+.authorized-companions-table tr td {
+  padding: 4px;
 }
 
 .authorized-companions-table tbody button {
@@ -206,13 +210,29 @@ function formatLastUsed(lastUsed?: number) {
   border: none;
 }
 
-.no-authorized-companions {
-  color: var(--text-muted);
-  padding: 4px;
+.authorized-companions-table thead th {
+  border-bottom: 1px solid var(--border);
 }
 
-.discord-failure {
-  margin: 0;
+.authorized-companions-table tr .companion {
+  width: 50%;
+  overflow-wrap: break-word;
+}
+
+.authorized-companions-table tr .version {
+  overflow-wrap: break-word;
+}
+
+.authorized-companions-table tr .last-used {
+  overflow-wrap: break-word;
+}
+
+.authorized-companions-table thead .controls {
+  width: 48px;
+}
+
+.authorized-companions-table .companion .id {
   color: var(--text-faint);
+  font-size: calc(14rem / var(--font-size-reference));
 }
 </style>

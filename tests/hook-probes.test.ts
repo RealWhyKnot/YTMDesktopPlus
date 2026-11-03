@@ -1,24 +1,32 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { playerBarProbeSource, pollUntil, storeHookProbeSource, type PlayerBarProbeSnapshot } from "../src/shared/hook-probes";
+import { evaluatePageScript } from "./helpers/page-script";
+import { isBoolean, type Guard } from "../src/shared/validation";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { playerBarProbeSource, pollUntil, storeHookProbeSource, isPlayerBarProbeSnapshot } from "../src/shared/hook-probes";
 import { PLAYER_API_MEMBERS } from "../src/shared/ytm-contract";
 
-// The probe sources are strings evaluated in the YTM page. Compile them the
-// same way the preload does to make sure they stay valid expressions.
-const compileProbe = <T>(source: string): (() => T) => new Function(`return (${source});`)() as () => T;
+function compileProbe<T>(source: string, guard: Guard<T>): () => T {
+  const script = evaluatePageScript(source);
+  if (typeof script !== "function") throw new TypeError("Expected a callable probe");
+  return () => {
+    const value: unknown = Reflect.apply(script, undefined, []);
+    if (!guard(value)) throw new TypeError("Invalid probe result");
+    return value;
+  };
+}
 
-const missingExcept = (...present: string[]): string[] => PLAYER_API_MEMBERS.filter(name => !present.includes(name));
+const missingExcept = (...present: string[]): string[] => PLAYER_API_MEMBERS.filter((name) => !present.includes(name));
 
-const fullApi = (): Record<string, unknown> => Object.fromEntries(PLAYER_API_MEMBERS.map(name => [name, (): boolean => true]));
+const fullApi = (): Record<string, unknown> => Object.fromEntries(PLAYER_API_MEMBERS.map((name) => [name, (): boolean => true]));
 
 describe("storeHookProbeSource", () => {
   it("reports false when the hook is missing", () => {
     vi.stubGlobal("window", {});
-    expect(compileProbe<boolean>(storeHookProbeSource)()).toBe(false);
+    expect(compileProbe(storeHookProbeSource, isBoolean)()).toBe(false);
   });
 
   it("reports true when the hook is installed", () => {
     vi.stubGlobal("window", { __YTMD_HOOK__: { ytmStore: {} } });
-    expect(compileProbe<boolean>(storeHookProbeSource)()).toBe(true);
+    expect(compileProbe(storeHookProbeSource, isBoolean)()).toBe(true);
   });
 });
 
@@ -29,7 +37,7 @@ describe("playerBarProbeSource", () => {
 
   it("does not throw when the player bar is missing", () => {
     vi.stubGlobal("document", { querySelector: (): null => null });
-    expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)()).toEqual({
+    expect(compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot)()).toEqual({
       playerBarPresent: false,
       miniplayerPresent: false,
       playerApiPresent: false,
@@ -38,13 +46,13 @@ describe("playerBarProbeSource", () => {
       resolveError: null,
       resolvedVia: null,
       candidateKeys: [],
-      missingMembers: []
+      missingMembers: [],
     });
   });
 
   it("names the miniplayer when it took the player bar's place", () => {
     vi.stubGlobal("document", { querySelector: (selector: string) => (selector === "ytmusic-app-layout>ytmusic-miniplayer" ? {} : null) });
-    const snapshot = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)();
+    const snapshot = compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot)();
     expect(snapshot.playerBarPresent).toBe(false);
     expect(snapshot.miniplayerPresent).toBe(true);
     expect(snapshot.playerApiReady).toBe(false);
@@ -52,7 +60,7 @@ describe("playerBarProbeSource", () => {
 
   it("does not throw when the player api is missing", () => {
     vi.stubGlobal("document", { querySelector: () => ({}) });
-    expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)()).toEqual({
+    expect(compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot)()).toEqual({
       playerBarPresent: true,
       miniplayerPresent: false,
       playerApiPresent: false,
@@ -61,7 +69,7 @@ describe("playerBarProbeSource", () => {
       resolveError: null,
       resolvedVia: null,
       candidateKeys: [],
-      missingMembers: []
+      missingMembers: [],
     });
   });
 
@@ -71,11 +79,11 @@ describe("playerBarProbeSource", () => {
         playerApi: {
           isReady: () => {
             throw new Error("not ready");
-          }
-        }
-      })
+          },
+        },
+      }),
     });
-    expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)()).toEqual({
+    expect(compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot)()).toEqual({
       playerBarPresent: true,
       miniplayerPresent: false,
       playerApiPresent: true,
@@ -84,13 +92,13 @@ describe("playerBarProbeSource", () => {
       resolveError: null,
       resolvedVia: "property",
       candidateKeys: [],
-      missingMembers: missingExcept("isReady")
+      missingMembers: missingExcept("isReady"),
     });
   });
 
   it("reports ready when the player api is ready", () => {
     vi.stubGlobal("document", { querySelector: () => ({ playerApi: fullApi() }) });
-    expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)()).toEqual({
+    expect(compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot)()).toEqual({
       playerBarPresent: true,
       miniplayerPresent: false,
       playerApiPresent: true,
@@ -99,7 +107,7 @@ describe("playerBarProbeSource", () => {
       resolveError: null,
       resolvedVia: "property",
       candidateKeys: [],
-      missingMembers: []
+      missingMembers: [],
     });
   });
 
@@ -108,14 +116,14 @@ describe("playerBarProbeSource", () => {
     delete api.setVolume;
     delete api.seekTo;
     vi.stubGlobal("document", { querySelector: () => ({ playerApi: api }) });
-    expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)().missingMembers).toEqual(["seekTo", "setVolume"]);
+    expect(compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot)().missingMembers).toEqual(["seekTo", "setVolume"]);
   });
 
   it("assigns playerApi from resolvePlayerApi and reports ready on the next poll", async () => {
     const api = { isReady: () => true };
-    const bar: Record<string, unknown> = { resolvePlayerApi: () => Promise.resolve(api) };
+    const bar = { resolvePlayerApi: () => Promise.resolve(api) };
     vi.stubGlobal("document", { querySelector: () => bar });
-    const probe = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource);
+    const probe = compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot);
     expect(probe()).toEqual({
       playerBarPresent: true,
       miniplayerPresent: false,
@@ -125,10 +133,10 @@ describe("playerBarProbeSource", () => {
       resolveError: null,
       resolvedVia: null,
       candidateKeys: ["resolvePlayerApi"],
-      missingMembers: []
+      missingMembers: [],
     });
     await Promise.resolve();
-    expect(bar.playerApi).toBe(api);
+    expect(Reflect.get(bar, "playerApi")).toBe(api);
     const second = probe();
     expect(second.playerApiReady).toBe(true);
     expect(second.resolvedVia).toBe("resolver");
@@ -136,71 +144,73 @@ describe("playerBarProbeSource", () => {
 
   it("adopts a renamed playerApi property found by the scan", () => {
     const api = fullApi();
-    const bar: Record<string, unknown> = { musicPlayerApi: api };
+    const bar = { musicPlayerApi: api };
     vi.stubGlobal("document", { querySelector: () => bar });
-    const snapshot = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)();
+    const snapshot = compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot)();
     expect(snapshot.resolvedVia).toBe("scan");
     expect(snapshot.playerApiReady).toBe(true);
-    expect(bar.playerApi).toBe(api);
+    expect(Reflect.get(bar, "playerApi")).toBe(api);
   });
 
   it("adopts a renamed resolver whose result duck-types", async () => {
     const api = fullApi();
-    const bar: Record<string, unknown> = { getPlayerApiRef: () => Promise.resolve(api) };
+    const bar = { getPlayerApiRef: () => Promise.resolve(api) };
     vi.stubGlobal("document", { querySelector: () => bar });
-    const probe = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource);
+    const probe = compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot);
     expect(probe().resolverPresent).toBe(true);
     await Promise.resolve();
-    expect(bar.playerApi).toBe(api);
+    expect(Reflect.get(bar, "playerApi")).toBe(api);
     expect(probe().resolvedVia).toBe("resolver");
   });
 
   it("rejects a renamed resolver whose result is not an api", async () => {
-    const bar: Record<string, unknown> = { getPlayerApiRef: () => Promise.resolve({ isReady: () => true }) };
+    const bar = { getPlayerApiRef: () => Promise.resolve({ isReady: () => true }) };
     vi.stubGlobal("document", { querySelector: () => bar });
-    const probe = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource);
+    const probe = compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot);
     probe();
     await Promise.resolve();
-    expect(bar.playerApi).toBeUndefined();
+    expect(Reflect.get(bar, "playerApi")).toBeUndefined();
   });
 
   it("ignores candidates that take arguments or are named like event handlers", () => {
     const api = fullApi();
-    const bar: Record<string, unknown> = {
+    const bar = {
       getPlayerApiRef: (which: string) => (which === "" ? null : api),
-      onPlayerApiReady: () => api
+      onPlayerApiReady: () => api,
     };
     vi.stubGlobal("document", { querySelector: () => bar });
-    expect(compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)().resolverPresent).toBe(false);
+    expect(compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot)().resolverPresent).toBe(false);
   });
 
   it("falls back to #movie_player when the player bar carries nothing", () => {
     const api = fullApi();
-    const bar: Record<string, unknown> = {};
+    const bar = {};
     vi.stubGlobal("document", { querySelector: (selector: string) => (selector === "#movie_player" ? api : bar) });
-    const snapshot = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)();
+    const snapshot = compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot)();
     expect(snapshot.resolvedVia).toBe("movie-player");
-    expect(bar.playerApi).toBe(api);
+    expect(Reflect.get(bar, "playerApi")).toBe(api);
   });
 
   it("reports the element's own player-ish keys when nothing resolves", () => {
-    const bar: Record<string, unknown> = { playerState_: 3, apiHost: "x", unrelated: 1 };
+    const bar = { playerState_: 3, apiHost: "x", unrelated: 1 };
     vi.stubGlobal("document", { querySelector: () => bar });
-    const snapshot = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)();
+    const snapshot = compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot)();
     expect(snapshot.resolvedVia).toBeNull();
     expect(snapshot.candidateKeys).toEqual(["playerState_", "apiHost"]);
   });
 
-  it("only calls resolvePlayerApi once while a resolution is pending", async () => {
+  it("only calls resolvePlayerApi once while a resolution is pending", () => {
     let calls = 0;
-    const bar: Record<string, unknown> = {
+    const bar = {
       resolvePlayerApi: () => {
         calls++;
-        return new Promise(() => {});
-      }
+        return new Promise(() => {
+          return undefined;
+        });
+      },
     };
     vi.stubGlobal("document", { querySelector: () => bar });
-    const probe = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource);
+    const probe = compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot);
     probe();
     probe();
     expect(calls).toBe(1);
@@ -208,14 +218,14 @@ describe("playerBarProbeSource", () => {
 
   it("reports a rejected resolvePlayerApi and retries on the next poll", async () => {
     let calls = 0;
-    const bar: Record<string, unknown> = {
+    const bar = {
       resolvePlayerApi: () => {
         calls++;
         return Promise.reject(new Error("player gone"));
-      }
+      },
     };
     vi.stubGlobal("document", { querySelector: () => bar });
-    const probe = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource);
+    const probe = compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot);
     probe();
     await Promise.resolve();
     await Promise.resolve();
@@ -227,39 +237,45 @@ describe("playerBarProbeSource", () => {
 
   it("does not clobber an existing synchronous playerApi", () => {
     const api = { isReady: () => true };
-    const bar: Record<string, unknown> = {
+    const bar = {
       playerApi: api,
-      resolvePlayerApi: () => Promise.resolve({ isReady: () => true })
+      resolvePlayerApi: () => Promise.resolve({ isReady: () => true }),
     };
     vi.stubGlobal("document", { querySelector: () => bar });
-    const snapshot = compileProbe<PlayerBarProbeSnapshot>(playerBarProbeSource)();
+    const snapshot = compileProbe(playerBarProbeSource, isPlayerBarProbeSnapshot)();
     expect(snapshot.playerApiReady).toBe(true);
-    expect(bar.playerApi).toBe(api);
+    expect(Reflect.get(bar, "playerApi")).toBe(api);
   });
 });
 
 describe("pollUntil", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
   it("resolves immediately when the first probe succeeds", async () => {
-    const result = await pollUntil(
-      async () => true,
-      done => done,
+    const polling = pollUntil(
+      () => Promise.resolve(true),
+      (isDone) => isDone,
       1,
       5
     );
+    await vi.runAllTimersAsync();
+    const result = await polling;
     expect(result).toEqual({ done: true, attempts: 1, last: true, lastError: null });
   });
 
   it("treats a throwing probe as a failed attempt instead of rejecting", async () => {
     let calls = 0;
-    const result = await pollUntil(
-      async () => {
+    const polling = pollUntil(
+      () => {
         calls++;
-        throw new Error("probe exploded");
+        return Promise.reject(new Error("probe exploded"));
       },
       () => true,
       1,
       3
     );
+    await vi.runAllTimersAsync();
+    const result = await polling;
     expect(calls).toBe(3);
     expect(result.done).toBe(false);
     expect(result.lastError).toContain("probe exploded");
@@ -267,16 +283,18 @@ describe("pollUntil", () => {
 
   it("recovers when a probe throws and then succeeds", async () => {
     let calls = 0;
-    const result = await pollUntil(
-      async () => {
+    const polling = pollUntil(
+      () => {
         calls++;
-        if (calls === 1) throw new Error("transient");
-        return true;
+        if (calls === 1) return Promise.reject(new Error("transient"));
+        return Promise.resolve(true);
       },
-      done => done,
+      (isDone) => isDone,
       1,
       5
     );
+    await vi.runAllTimersAsync();
+    const result = await polling;
     expect(result.done).toBe(true);
     expect(result.attempts).toBe(2);
     expect(result.lastError).toBeNull();
@@ -284,30 +302,34 @@ describe("pollUntil", () => {
 
   it("keeps polling until the probe succeeds", async () => {
     let calls = 0;
-    const result = await pollUntil(
-      async () => {
+    const polling = pollUntil(
+      () => {
         calls++;
-        return calls >= 3;
+        return Promise.resolve(calls >= 3);
       },
-      done => done,
+      (isDone) => isDone,
       1,
       5
     );
+    await vi.runAllTimersAsync();
+    const result = await polling;
     expect(result.done).toBe(true);
     expect(result.attempts).toBe(3);
   });
 
   it("gives up after maxAttempts and reports the last snapshot", async () => {
     let calls = 0;
-    const result = await pollUntil(
-      async () => {
+    const polling = pollUntil(
+      () => {
         calls++;
-        return { seen: calls };
+        return Promise.resolve({ seen: calls });
       },
       () => false,
       1,
       4
     );
+    await vi.runAllTimersAsync();
+    const result = await polling;
     expect(calls).toBe(4);
     expect(result).toEqual({ done: false, attempts: 4, last: { seen: 4 }, lastError: null });
   });

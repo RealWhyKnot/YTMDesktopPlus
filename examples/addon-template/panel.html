@@ -3,11 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <title>Template panel</title>
+    <style>
+      .title-spacer {
+        flex: 1;
+      }
+    </style>
   </head>
   <body>
     <div class="ytmd-row ytmd-drag">
       <strong>Template panel</strong>
-      <span style="flex: 1"></span>
+      <span class="title-spacer"></span>
       <button class="ytmd-button ytmd-no-drag" onclick="ytmdAddon.closeWindow()">Close</button>
     </div>
     <div class="ytmd-card">

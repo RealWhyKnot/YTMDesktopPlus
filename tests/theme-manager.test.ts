@@ -1,17 +1,24 @@
+import { requireRecord, requireValue } from "./helpers/require-value";
 import fs from "fs";
 import path from "path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_TITLE_BAR_OVERLAY, parseTokens, ThemeManager, type ThemeManagerServices } from "../src/main/themes/manager";
 import { makeTempDir } from "./helpers/temp-dir";
+import { mockFileWatchers } from "./helpers/file-watcher";
 
 const tempDir = () => makeTempDir("ytmd-theme-manager-");
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 function writeBase(dir: string): void {
   const base = path.join(dir, "_base");
   fs.mkdirSync(base, { recursive: true });
   fs.writeFileSync(path.join(base, "app.css"), ":root{--bg:#000000;--accent:#f44336;--bg-control:#212121}");
   fs.writeFileSync(path.join(base, "ytm-tokens.css"), ":root{--ytmd-bg:var(--bg)}");
-  fs.writeFileSync(path.join(base, "ytm.css"), "ytmusic-app{background:var(--ytmd-bg)}");
+  fs.writeFileSync(path.join(base, "ytm.user.css"), "ytmusic-app{background:var(--ytmd-bg)}");
   fs.writeFileSync(path.join(base, "addon-ui.css"), ".ytmd-button{background:var(--bg-control)}");
 }
 
@@ -37,12 +44,12 @@ function build(overrides: Partial<ThemeManagerServices> = {}) {
     userThemesDir,
     appVersion: "2026.910.0",
     getActiveId: () => active,
-    setActiveId: id => {
+    setActiveId: (id) => {
       active = id;
     },
     onChanged,
     log: { info: vi.fn(), warn: vi.fn() },
-    ...overrides
+    ...overrides,
   });
 
   return { manager, bundledThemesDir, userThemesDir, onChanged };
@@ -86,9 +93,9 @@ describe("ThemeManager", () => {
   it("keeps appStyles off the music page and ytmStyles off the app", () => {
     const { manager, bundledThemesDir } = build();
     const dir = path.join(bundledThemesDir, "split");
-    writeTheme(bundledThemesDir, "split", { appStyles: ["app.css"], ytmStyles: ["ytm.css"] });
+    writeTheme(bundledThemesDir, "split", { appStyles: ["app.css"], ytmStyles: ["ytm.user.css"] });
     fs.writeFileSync(path.join(dir, "app.css"), ".titlebar{color:red}");
-    fs.writeFileSync(path.join(dir, "ytm.css"), "ytmusic-player-bar{color:blue}");
+    fs.writeFileSync(path.join(dir, "ytm.user.css"), "ytmusic-player-bar{color:blue}");
 
     manager.refresh();
     manager.setActive("split");
@@ -109,6 +116,23 @@ describe("ThemeManager", () => {
     manager.dispose();
   });
 
+  it.each(["ytm.css", "custom-page.css"])("loads a user theme's declared %s file", (filename) => {
+    const { manager, userThemesDir } = build();
+    const css = "ytmusic-player-bar{color:#123456}";
+    writeTheme(userThemesDir, "custom", { ytmStyles: [filename] });
+    fs.writeFileSync(path.join(userThemesDir, "custom", filename), css);
+
+    try {
+      manager.refresh();
+      expect(manager.setActive("custom")).toEqual({ ok: true });
+      expect(manager.getCss().ytm).toContain(css);
+      expect(manager.getCss().app).not.toContain(css);
+      expect(manager.getCss().addonWindow).not.toContain(css);
+    } finally {
+      manager.dispose();
+    }
+  });
+
   it("refuses to activate an incompatible theme", () => {
     const { manager, bundledThemesDir } = build();
     writeTheme(bundledThemesDir, "future", { apiVersion: 99 });
@@ -123,7 +147,7 @@ describe("ThemeManager", () => {
     writeTheme(bundledThemesDir, "newer", { minAppVersion: "2099.1.1" });
     manager.refresh();
 
-    const descriptor = manager.descriptors().find(entry => entry.manifest.id === "newer");
+    const descriptor = manager.descriptors().find((entry) => entry.manifest.id === "newer");
     expect(descriptor?.state).toBe("incompatible");
     manager.dispose();
   });
@@ -134,12 +158,12 @@ describe("ThemeManager", () => {
     writeTheme(userThemesDir, "clash");
     manager.refresh();
 
-    const entries = manager.descriptors().filter(entry => entry.manifest.id === "clash");
+    const entries = manager.descriptors().filter((entry) => entry.manifest.id === "clash");
     expect(entries).toHaveLength(2);
-    expect(entries[0].origin).toBe("bundled");
-    expect(entries[0].state).toBe("ok");
-    expect(entries[1].state).toBe("error");
-    expect(entries[1].error).toContain("id conflicts");
+    expect(requireValue(entries[0]).origin).toBe("bundled");
+    expect(requireValue(entries[0]).state).toBe("ok");
+    expect(requireValue(entries[1]).state).toBe("error");
+    expect(requireValue(entries[1]).error).toContain("id conflicts");
     manager.dispose();
   });
 
@@ -164,10 +188,10 @@ describe("ThemeManager", () => {
     manager.refresh();
 
     manager.setActive("stock");
-    expect(manager.descriptors().find(entry => entry.manifest.id === "stock")?.watching).toBe(false);
+    expect(manager.descriptors().find((entry) => entry.manifest.id === "stock")?.watching).toBe(false);
 
     manager.setActive("mine");
-    expect(manager.descriptors().find(entry => entry.manifest.id === "mine")?.watching).toBe(true);
+    expect(manager.descriptors().find((entry) => entry.manifest.id === "mine")?.watching).toBe(true);
     manager.dispose();
   });
 
@@ -177,7 +201,7 @@ describe("ThemeManager", () => {
     manager.refresh();
     manager.setActive("leaky");
 
-    const descriptor = manager.descriptors().find(entry => entry.manifest.id === "leaky");
+    const descriptor = manager.descriptors().find((entry) => entry.manifest.id === "leaky");
     expect(descriptor?.warnings.join(" ")).toContain("remote url was removed");
     expect(manager.getCss().app).not.toContain("evil.example");
     manager.dispose();
@@ -192,7 +216,7 @@ describe("ThemeManager", () => {
     const unsubscribe = manager.onChange(listener);
     manager.setActive("light");
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(listener.mock.calls[0][0].id).toBe("light");
+    expect(requireRecord(requireValue(listener.mock.calls[0])[0]).id).toBe("light");
 
     unsubscribe();
     manager.setActive(null);
@@ -209,7 +233,7 @@ describe("ThemeManager", () => {
 
     expect("id" in result && result.id).toBe("light-copy");
     expect(manager.activeTheme().id).toBe("light-copy");
-    const copy = manager.descriptors().find(entry => entry.manifest.id === "light-copy");
+    const copy = manager.descriptors().find((entry) => entry.manifest.id === "light-copy");
     expect(copy?.origin).toBe("user");
     expect(copy?.watching).toBe(true);
     manager.dispose();
@@ -220,7 +244,7 @@ describe("ThemeManager", () => {
     writeTheme(userThemesDir, "leaky", {}, ":root{--bg:#fff}\nbody{background:url(https://evil.example/p.png)}");
     manager.refresh();
 
-    const descriptor = manager.descriptors().find(entry => entry.manifest.id === "leaky");
+    const descriptor = manager.descriptors().find((entry) => entry.manifest.id === "leaky");
     expect(descriptor?.active).toBe(false);
     expect(descriptor?.warnings.join(" ")).toContain("remote url was removed");
     manager.dispose();
@@ -231,7 +255,7 @@ describe("ThemeManager", () => {
     writeTheme(userThemesDir, "pale", {}, ":root{--bg:#ffffff;--text:#cccccc;--accent:#c0392b}");
     manager.refresh();
 
-    const descriptor = manager.descriptors().find(entry => entry.manifest.id === "pale");
+    const descriptor = manager.descriptors().find((entry) => entry.manifest.id === "pale");
     expect(descriptor?.warnings.join(" ")).toContain("low contrast: --text on --bg");
     manager.dispose();
   });
@@ -241,22 +265,26 @@ describe("ThemeManager", () => {
     writeTheme(userThemesDir, "mixed", {}, ":root{--bg:#ffffff;--text:color-mix(in srgb, #000 80%, #fff);--accent:#c0392b}");
     manager.refresh();
 
-    const descriptor = manager.descriptors().find(entry => entry.manifest.id === "mixed");
+    const descriptor = manager.descriptors().find((entry) => entry.manifest.id === "mixed");
     expect(descriptor?.warnings).toEqual([]);
     manager.dispose();
   });
 
   it("watches a bundled theme when watchBundled is set", async () => {
+    vi.useFakeTimers();
+    const watchers = mockFileWatchers();
     const { manager, bundledThemesDir, onChanged } = build({ watchBundled: true });
     writeTheme(bundledThemesDir, "stock");
     manager.refresh();
     manager.setActive("stock");
 
-    expect(manager.descriptors().find(entry => entry.manifest.id === "stock")?.watching).toBe(true);
+    expect(manager.descriptors().find((entry) => entry.manifest.id === "stock")?.watching).toBe(true);
 
     const calls = onChanged.mock.calls.length;
     fs.writeFileSync(path.join(bundledThemesDir, "stock", "theme.css"), ":root{--bg:#101010;--accent:#c0392b}");
-    await vi.waitFor(() => expect(onChanged.mock.calls.length).toBeGreaterThan(calls), { timeout: 3000 });
+    watchers.change(path.join(bundledThemesDir, "stock"), "theme.css");
+    await vi.runAllTimersAsync();
+    expect(onChanged.mock.calls.length).toBeGreaterThan(calls);
     manager.dispose();
   });
 
@@ -268,7 +296,7 @@ describe("ThemeManager", () => {
     expect(first.ok && first.id).toBe("my-theme");
     expect(manager.activeTheme().id).toBe("my-theme");
 
-    const created = manager.descriptors().find(entry => entry.manifest.id === "my-theme");
+    const created = manager.descriptors().find((entry) => entry.manifest.id === "my-theme");
     expect(created?.origin).toBe("user");
     expect(created?.state).toBe("ok");
     expect(created?.warnings).toEqual([]);
@@ -284,7 +312,7 @@ describe("ThemeManager", () => {
     writeTheme(bundledThemesDir, "light");
     manager.refresh();
 
-    const descriptor = manager.descriptors().find(entry => entry.manifest.id === "light");
+    const descriptor = manager.descriptors().find((entry) => entry.manifest.id === "light");
     expect(descriptor?.swatch[0]).toBe("#ffffff");
     expect(descriptor?.swatch[1]).toBe("#212121");
     expect(descriptor?.swatch[2]).toBe("#c0392b");

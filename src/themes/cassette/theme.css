@@ -1,5 +1,5 @@
 @font-face {
-  font-family: "Oswald";
+  font-family: Oswald;
   src: url("fonts/Oswald.woff2") format("woff2");
   font-weight: 400 600;
   font-display: swap;
@@ -21,7 +21,7 @@
   --danger: #e35d4f;
   --danger-hover: #bc4739;
   --knob: #ffb347;
-  --overlay: rgba(10, 9, 8, 0.7);
+  --overlay: rgb(10 9 8 / 70%);
   --scrollbar-thumb: #4a4542;
   --titlebar-symbol: #ffb347;
   --titlebar-separator: #3a3634;

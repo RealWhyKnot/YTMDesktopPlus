@@ -12,7 +12,6 @@ describe("parseProtocolUrl", () => {
     expect(parsed?.params.get("invite")).toBe("yes");
   });
 
-  // ytmdplus: is a non-special scheme, so the host keeps its case.
   it("lowercases the command name but not the segments", () => {
     expect(parseProtocolUrl("ytmdplus://ROOM/ABCDEFGH")).toMatchObject({ name: "room", segments: ["ABCDEFGH"] });
   });
@@ -34,8 +33,6 @@ describe("parseProtocolUrl", () => {
     expect(parseProtocolUrl("")).toBeNull();
   });
 
-  // URL parsing collapses "..", so a traversal attempt just yields segments
-  // the handler will reject. Handlers validate their own segments.
   it("collapses relative segments", () => {
     expect(parseProtocolUrl("ytmdplus://room/../../etc/passwd")).toMatchObject({ name: "room", segments: ["etc", "passwd"] });
   });
@@ -69,7 +66,6 @@ describe("resolveStartSeconds", () => {
     expect(resolveStartSeconds({ kind: "anchor", epochMs: now - 2000 }, now, 200)).toBeNull();
   });
 
-  // A future anchor means the two clocks disagree; do not seek backwards.
   it("ignores a future anchor", () => {
     expect(resolveStartSeconds({ kind: "anchor", epochMs: now + 60_000 }, now, 200)).toBeNull();
   });

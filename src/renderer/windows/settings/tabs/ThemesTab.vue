@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed, inject } from "vue";
-import { settingsShellKey } from "../context";
+import { computed } from "vue";
+import { useSettingsShell } from "../context";
 
-const shell = inject(settingsShellKey);
+const shell = useSettingsShell();
 const themes = shell.themes;
 
-const active = computed(() => themes.value.find(theme => theme.active) ?? null);
-const usable = computed(() => themes.value.filter(theme => theme.state === "ok"));
-const broken = computed(() => themes.value.filter(theme => theme.state !== "ok"));
+const active = computed(() => themes.value.find((theme) => theme.active) ?? null);
+const usable = computed(() => themes.value.filter((theme) => theme.state === "ok"));
+const broken = computed(() => themes.value.filter((theme) => theme.state !== "ok"));
 
 function asSentence(text: string | null | undefined): string {
   const trimmed = (text ?? "").trim();
@@ -35,7 +35,7 @@ function asSentence(text: string | null | undefined): string {
     </p>
 
     <div class="grid">
-      <button class="theme-card none" :class="{ selected: active === null }" @click="shell.setActiveTheme(null)">
+      <button class="theme-card none" :data-selected="active === null" @click="shell.setActiveTheme(null)">
         <div class="swatches stock">
           <span class="material-symbols-outlined">format_color_reset</span>
         </div>
@@ -47,12 +47,12 @@ function asSentence(text: string | null | undefined): string {
         v-for="theme in usable"
         :key="theme.manifest.id"
         class="theme-card"
-        :class="{ selected: theme.active }"
+        :data-selected="theme.active"
         @click="shell.setActiveTheme(theme.manifest.id)"
       >
         <img v-if="theme.previewDataUrl" class="preview" :src="theme.previewDataUrl" alt="" />
         <div v-else class="swatches">
-          <span v-for="(color, index) in theme.swatch" :key="index" :style="{ backgroundColor: color }"></span>
+          <span v-for="(color, index) in theme.swatch" :key="index" :style="{ '--swatch-color': color }" class="swatch-color"></span>
         </div>
         <p class="name">
           {{ theme.manifest.name }}
@@ -85,6 +85,10 @@ function asSentence(text: string | null | undefined): string {
 </template>
 
 <style scoped>
+.swatch-color {
+  background-color: var(--swatch-color, transparent);
+}
+
 .themes-header {
   display: flex;
   align-items: center;
@@ -94,21 +98,10 @@ function asSentence(text: string | null | undefined): string {
   margin-bottom: var(--space-sm);
 }
 
-.themes-header .count {
-  margin: 0;
-  color: var(--text-muted);
-}
-
 .header-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);
-}
-
-.header-actions button .material-symbols-outlined,
-.themes-header button .material-symbols-outlined {
-  margin-right: 4px;
-  font-size: 18px;
 }
 
 .theme-error {
@@ -123,12 +116,11 @@ function asSentence(text: string | null | undefined): string {
   color: var(--text-muted);
 }
 
-.theme-error .material-symbols-outlined {
-  color: var(--danger);
-  flex-shrink: 0;
+.theme-error-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.theme-error-text,
 .broken-text {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -154,15 +146,16 @@ function asSentence(text: string | null | undefined): string {
   font-family: inherit;
 }
 
-.theme-card:hover {
-  border-color: var(--border-strong);
+.preview {
+  display: flex;
+  width: 100%;
+  height: 64px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  object-fit: cover;
+  margin-bottom: var(--space-sm);
 }
 
-.theme-card.selected {
-  border-color: var(--accent);
-}
-
-.preview,
 .swatches {
   display: flex;
   width: 100%;
@@ -173,46 +166,9 @@ function asSentence(text: string | null | undefined): string {
   margin-bottom: var(--space-sm);
 }
 
-.swatches span {
-  flex: 1;
-}
-
-.swatches.stock {
-  align-items: center;
-  justify-content: center;
-  background-color: var(--bg-control);
-  color: var(--text-faint);
-}
-
-.theme-card .name {
-  margin: 0;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .watching {
-  font-size: 16px;
+  font-size: calc(16rem / var(--font-size-reference));
   color: var(--success);
-}
-
-.theme-card .author {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: 12px;
-}
-
-.theme-card .description {
-  margin: var(--space-xs) 0 0 0;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.theme-card .warning {
-  margin: var(--space-xs) 0 0 0;
-  color: var(--text-faint);
-  font-size: 12px;
 }
 
 .active-actions {
@@ -224,13 +180,6 @@ function asSentence(text: string | null | undefined): string {
   margin-top: var(--space-md);
   padding-top: var(--space-md);
   border-top: 1px solid var(--border);
-}
-
-.active-actions .active-name {
-  margin: 0;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--text-muted);
 }
 
 .broken {
@@ -248,12 +197,84 @@ function asSentence(text: string | null | undefined): string {
   gap: var(--space-sm);
   margin: 0 0 var(--space-xs) 0;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: calc(13rem / var(--font-size-reference));
+}
+
+.swatches span {
+  flex: 1;
+}
+
+.themes-header .count {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.theme-error .material-symbols-outlined {
+  color: var(--danger);
+  flex-shrink: 0;
+}
+
+.theme-card:hover {
+  border-color: var(--border-strong);
+}
+
+.theme-card[data-selected="true"] {
+  border-color: var(--accent);
+}
+
+.swatches.stock {
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-control);
+  color: var(--text-faint);
+}
+
+.theme-card .name {
+  margin: 0;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.theme-card .author {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: calc(12rem / var(--font-size-reference));
+}
+
+.theme-card .description {
+  margin: var(--space-xs) 0 0 0;
+  color: var(--text-muted);
+  font-size: calc(13rem / var(--font-size-reference));
+}
+
+.theme-card .warning {
+  margin: var(--space-xs) 0 0 0;
+  color: var(--text-faint);
+  font-size: calc(12rem / var(--font-size-reference));
+}
+
+.active-actions .active-name {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
 }
 
 .broken-row .material-symbols-outlined {
   flex-shrink: 0;
-  font-size: 18px;
+  font-size: calc(18rem / var(--font-size-reference));
   color: var(--danger);
+}
+
+.header-actions button .material-symbols-outlined {
+  margin-right: 4px;
+  font-size: calc(18rem / var(--font-size-reference));
+}
+
+.themes-header button .material-symbols-outlined {
+  margin-right: 4px;
+  font-size: calc(18rem / var(--font-size-reference));
 }
 </style>

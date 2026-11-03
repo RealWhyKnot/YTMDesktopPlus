@@ -1,0 +1,53 @@
+:root {
+  --layer-aurora-ytm-z-index-1: 100;
+  --color-aurora-ytm-background-2: rgb(52 211 153 / 14%);
+  --color-aurora-ytm-background-3: rgb(167 139 250 / 12%);
+  --color-aurora-ytm-box-shadow-4: rgb(52 211 153 / 12%);
+}
+
+ytmusic-app::after {
+  content: "";
+  position: fixed;
+  inset: -60% -20% 40%;
+  pointer-events: none;
+  z-index: var(--layer-aurora-ytm-z-index-1);
+  background:
+    radial-gradient(60% 40% at 25% 30%, var(--color-aurora-ytm-background-2), transparent 70%),
+    radial-gradient(50% 35% at 70% 20%, var(--color-aurora-ytm-background-3), transparent 70%);
+  animation: aurora-drift 60s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+@keyframes aurora-drift {
+  0% {
+    transform: translate3d(-6%, 0, 0) rotate(-2deg);
+    opacity: 0.7;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate3d(6%, 3%, 0) rotate(2deg);
+    opacity: 0.8;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ytmusic-app::after {
+    animation: none;
+  }
+}
+
+ytmusic-app-layout > ytmusic-player-bar {
+  box-shadow: 0 -6px 24px var(--color-aurora-ytm-box-shadow-4) !important;
+}
+
+ytmusic-two-row-item-renderer {
+  transition: box-shadow var(--motion-base) var(--ease);
+}
+
+ytmusic-two-row-item-renderer:hover {
+  box-shadow: 0 8px 24px var(--color-aurora-ytm-background-2);
+}

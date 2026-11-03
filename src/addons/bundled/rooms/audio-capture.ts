@@ -5,31 +5,33 @@ import listeningOffScript from "./scripts/audiocapture-listening-off.script?raw"
 
 type CaptureScript = "enable" | "disable" | "listening-on" | "listening-off";
 
-export default class AudioStreamCapture {
+export class AudioStreamCapture {
   private hasInjected = false;
   private isEnabled = false;
-  private waitForYTMView = true;
-  private listening = false;
+  private isWaitForYTMView = true;
+  private isListening = false;
 
-  constructor(
-    private readonly runScript: (name: CaptureScript) => void,
-    private readonly host: { start(): void; stop(): void }
-  ) {}
+  private readonly runScript: (name: CaptureScript) => void;
+  private readonly host: { start(): void; stop(): void };
+  constructor(runScript: (name: CaptureScript) => void, host: { start(): void; stop(): void }) {
+    this.runScript = runScript;
+    this.host = host;
+  }
 
   public enable(): void {
     this.isEnabled = true;
-    if (this.hasInjected || this.waitForYTMView) return;
+    if (this.hasInjected || this.isWaitForYTMView) return;
 
     this.host.start();
     this.runScript("enable");
     this.hasInjected = true;
-    if (this.listening) this.runScript("listening-on");
+    if (this.isListening) this.runScript("listening-on");
   }
 
-  public setListening(active: boolean): void {
-    if (this.listening === active) return;
-    this.listening = active;
-    if (this.hasInjected) this.runScript(active ? "listening-on" : "listening-off");
+  public setListening(isActive: boolean): void {
+    if (this.isListening === isActive) return;
+    this.isListening = isActive;
+    if (this.hasInjected) this.runScript(isActive ? "listening-on" : "listening-off");
   }
 
   public disable(): void {
@@ -46,14 +48,13 @@ export default class AudioStreamCapture {
       { name: "enable", script: enableScript },
       { name: "disable", script: disableScript },
       { name: "listening-on", script: listeningOnScript },
-      { name: "listening-off", script: listeningOffScript }
+      { name: "listening-off", script: listeningOffScript },
     ];
   }
 
   public ytmViewLoaded(): void {
-    this.waitForYTMView = false;
+    this.isWaitForYTMView = false;
     if (this.isEnabled) {
-      // The page was (re)loaded, so any previous injection is gone.
       this.hasInjected = false;
       this.enable();
     }

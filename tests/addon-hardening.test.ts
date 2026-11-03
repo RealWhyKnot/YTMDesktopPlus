@@ -1,38 +1,45 @@
+import { readMemory } from "./helpers/read-memory";
+import { callMethod } from "./helpers/call-method";
+import { requireValue } from "./helpers/require-value";
 import fs from "fs";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { scanAddonFolder, scanExternalAddons } from "../src/main/addons/external-loader";
 import { ADDON_ACTIVATE_TIMEOUT_MS, ADDON_FILES_CHANGED_WARNING, AddonManager } from "../src/main/addons/manager";
-import { createAddonContext, type AddonContext, type AddonHostBridge } from "../src/main/addons/context";
+import { createAddonContext, type AddonHostBridge } from "../src/main/addons/context";
+import type { AddonContext, AddonDescriptor } from "~shared/addons/sdk";
 import { MANIFEST_TEXT_LIMITS, validateManifest } from "../src/main/addons/validate-manifest";
 import { validateThemeManifest } from "../src/main/themes/validate-manifest";
-import type { AddonDescriptor, AddonTitlebarBadge } from "../src/shared/addons/types";
 import { makeManifest as manifest } from "./helpers/fake-addon-context";
-import { fakeServices } from "./helpers/fake-services";
+import { fakeServices, fakeAddonView } from "./helpers/fake-services";
 import { makeTempDir } from "./helpers/temp-dir";
 
-const fakeView = () => ({ webContents: { send: vi.fn() } as unknown as Electron.WebContents });
-
-const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+const fakeView = fakeAddonView;
 
 function runtimeOf(memory: Map<string, unknown>, id: string): AddonDescriptor {
-  return (memory.get("addonsRuntime") as AddonDescriptor[]).find(descriptor => descriptor.manifest.id === id);
+  return requireValue(readMemory(memory, "addonsRuntime").find((descriptor) => descriptor.manifest.id === id));
 }
 
-async function bootOne(fixture: ReturnType<typeof fakeServices>, activate: (ctx: AddonContext) => unknown = () => {}) {
-  let ctx: AddonContext;
+async function bootOne(
+  fixture: ReturnType<typeof fakeServices>,
+  activate: (ctx: AddonContext) => unknown = () => {
+    return undefined;
+  }
+) {
+  let ctx: AddonContext | undefined;
   const manager = new AddonManager(fixture.services);
   manager.registerBundled([
     {
       manifest: manifest({ id: "sample", defaultEnabled: true }),
-      activate: async context => {
+      activate: async (context) => {
         ctx = context;
         await activate(context);
-      }
-    }
+        return undefined;
+      },
+    },
   ]);
   await manager.boot();
-  return { manager, ctx };
+  return { manager, ctx: requireValue<AddonContext>(ctx) };
 }
 
 afterEach(() => {
@@ -48,12 +55,14 @@ describe("activate timeout", () => {
     manager.registerBundled([
       {
         manifest: manifest({ id: "stuck", defaultEnabled: true }),
-        activate: ctx => {
+        activate: (ctx) => {
           ctx.titlebar.setBadge({ icon: "hourglass" });
-          return new Promise(() => {});
-        }
+          return new Promise(() => {
+            return undefined;
+          });
+        },
       },
-      { manifest: manifest({ id: "healthy", defaultEnabled: true }), activate: neighbour }
+      { manifest: manifest({ id: "healthy", defaultEnabled: true }), activate: neighbour },
     ]);
 
     const booted = manager.boot();
@@ -72,34 +81,32 @@ describe("activate timeout", () => {
     const fixture = fakeServices();
     const destroy = vi.fn();
     const lateCleanup = vi.fn();
-    let finish: () => void;
-    let ctx: AddonContext;
+    const { promise: activation, resolve: finish } = Promise.withResolvers<undefined>();
+    let ctx: AddonContext | undefined;
     const manager = new AddonManager(fixture.services);
     manager.registerBundled([
       {
         manifest: manifest({ id: "slow", defaultEnabled: true }),
-        activate: async context => {
+        activate: async (context) => {
           ctx = context;
-          await new Promise<void>(resolve => {
-            finish = resolve;
-          });
+          await activation;
           context.settings.onDidChange("x", lateCleanup);
           context.titlebar.setBadge({ icon: "late" });
           return { destroy };
-        }
-      }
+        },
+      },
     ]);
 
     const booted = manager.boot();
     await vi.advanceTimersByTimeAsync(ADDON_ACTIVATE_TIMEOUT_MS);
     await booted;
-    finish();
+    finish(undefined);
     await vi.advanceTimersByTimeAsync(0);
 
     expect(destroy).toHaveBeenCalledOnce();
     expect(fixture.memory.get("addonTitlebarBadges")).toEqual([]);
     expect(runtimeOf(fixture.memory, "slow").state).toBe("error");
-    ctx.settings.set("x", 1);
+    requireValue<AddonContext>(ctx).settings.set("x", 1);
     expect(lateCleanup).not.toHaveBeenCalled();
   });
 
@@ -111,10 +118,11 @@ describe("activate timeout", () => {
     manager.registerBundled([
       {
         manifest: manifest({ id: "late", defaultEnabled: true }),
-        activate: ctx => {
+        activate: (ctx) => {
           ctx.ytmview.onLoaded(onLoaded);
-        }
-      }
+          return undefined;
+        },
+      },
     ]);
     manager.notifyYtmViewLoaded();
     await manager.boot();
@@ -142,15 +150,13 @@ describe("async callback failures", () => {
   it("records rejected promises from every callback the manager invokes", async () => {
     const fixture = fakeServices();
     fixture.services.getYtmView = fakeView;
-    const fail = (message: string) => async () => {
-      throw new Error(message);
-    };
-    const { manager } = await bootOne(fixture, ctx => {
+    const fail = (message: string) => () => Promise.reject(new Error(message));
+    const { manager } = await bootOne(fixture, (ctx) => {
       ctx.ytmview.onLoaded(fail("loaded"));
       ctx.ytmview.onMessage("ping", fail("message"));
       ctx.settings.onAction("press", fail("action"));
       ctx.titlebar.onBadgeClick(fail("badge"));
-      ctx.tray.setMenuItems([{ label: "Go", click: fail("tray") }]);
+      callMethod(ctx.tray, "setMenuItems", [{ label: "Go", click: fail("tray") }]);
     });
 
     const checks: [() => void, string][] = [
@@ -158,11 +164,11 @@ describe("async callback failures", () => {
       [() => manager.handleViewMessage("sample", "ping", null), "ytmview.onMessage(ping): message"],
       [() => manager.handleSettingsAction("sample", "press"), "settings.onAction(press): action"],
       [() => manager.handleBadgeClick("sample"), "titlebar.onBadgeClick: badge"],
-      [() => manager.trayMenuItems()[0].click(), "tray.item: tray"]
+      [() => requireValue(manager.trayMenuItems()[0]).click(), "tray.item: tray"],
     ];
     for (const [trigger, expected] of checks) {
       trigger();
-      await flush();
+      await Promise.resolve();
       expect(runtimeOf(fixture.memory, "sample").lastError).toBe(expected);
     }
     expect(runtimeOf(fixture.memory, "sample").state).toBe("active");
@@ -196,14 +202,14 @@ describe("risk acknowledgement fingerprint", () => {
 
   it("pins the files on first trust and asks again after they change", async () => {
     const { root, dir } = addonOnDisk();
-    const fixture = fakeServices({ pinned: { enabled: true, riskAcknowledged: true } as { enabled: boolean } });
-    const states = () => fixture.stored.addons.states as Record<string, { enabled: boolean; riskAcknowledged?: boolean; fingerprint?: string }>;
+    const fixture = fakeServices({ pinned: { enabled: true, riskAcknowledged: true } });
+    const states = () => fixture.stored.addons.states;
 
     const first = new AddonManager(fixture.services);
     first.registerExternal(scanExternalAddons(root));
     await first.boot();
     expect(runtimeOf(fixture.memory, "pinned").state).toBe("active");
-    const pinned = states().pinned.fingerprint;
+    const pinned = requireValue(states().pinned).fingerprint;
     expect(pinned).toBe(scanAddonFolder(dir).fingerprint);
     expect(first.needsRiskAcknowledgement("pinned")).toBe(false);
 
@@ -218,10 +224,10 @@ describe("risk acknowledgement fingerprint", () => {
     expect(second.needsRiskAcknowledgement("pinned")).toBe(true);
 
     second.acknowledgeRisk("pinned");
-    expect(states().pinned.fingerprint).toBe(scanAddonFolder(dir).fingerprint);
-    expect(states().pinned.fingerprint).not.toBe(pinned);
+    expect(requireValue(states().pinned).fingerprint).toBe(scanAddonFolder(dir).fingerprint);
+    expect(requireValue(states().pinned).fingerprint).not.toBe(pinned);
     expect(second.needsRiskAcknowledgement("pinned")).toBe(false);
-    expect(second.descriptors().find(entry => entry.manifest.id === "pinned").warnings).not.toContain(ADDON_FILES_CHANGED_WARNING);
+    expect(requireValue(second.descriptors().find((entry) => entry.manifest.id === "pinned")).warnings).not.toContain(ADDON_FILES_CHANGED_WARNING);
   });
 });
 
@@ -230,7 +236,7 @@ describe("stored state for uninstalled addons", () => {
     const fixture = fakeServices({
       gone: { enabled: true },
       unreadable: { enabled: true },
-      sample: { enabled: true }
+      sample: { enabled: true },
     });
     fixture.stored.addons.settings = { gone: { a: 1 }, unreadable: { b: 2 }, sample: { c: 3 } };
     fs.mkdirSync(path.join(fixture.services.userDataPath, "addons", "unreadable"), { recursive: true });
@@ -273,14 +279,14 @@ describe("titlebar badge", () => {
   it("clamps long badge text and tooltips", async () => {
     const fixture = fakeServices();
     const { ctx } = await bootOne(fixture);
-    ctx.titlebar.setBadge({ icon: "x".repeat(500), text: "🎵".repeat(40), tooltip: "t".repeat(1000), active: "yes" as unknown as boolean });
+    callMethod(ctx.titlebar, "setBadge", { icon: "x".repeat(500), text: "🎵".repeat(40), tooltip: "t".repeat(1000), active: "yes" });
 
-    const [badge] = fixture.memory.get("addonTitlebarBadges") as AddonTitlebarBadge[];
-    expect(Array.from(badge.text)).toHaveLength(12);
-    expect(badge.text.endsWith("…")).toBe(true);
-    expect(Array.from(badge.tooltip)).toHaveLength(200);
-    expect(badge.icon.length).toBeLessThanOrEqual(64);
-    expect(badge.active).toBe(false);
+    const [badge] = readMemory(fixture.memory, "addonTitlebarBadges");
+    expect(Array.from(requireValue(requireValue(badge).text))).toHaveLength(12);
+    expect(requireValue(requireValue(badge).text).endsWith("…")).toBe(true);
+    expect(Array.from(requireValue(requireValue(badge).tooltip))).toHaveLength(200);
+    expect(requireValue(badge).icon.length).toBeLessThanOrEqual(64);
+    expect(requireValue(badge).active).toBe(false);
   });
 
   it("leaves short badges alone", async () => {
@@ -296,7 +302,7 @@ describe("number settings", () => {
 
   it("clamps writes from the addon and rejects NaN", async () => {
     const fixture = fakeServices();
-    const { ctx } = await bootOne(fixture, context => {
+    const { ctx } = await bootOne(fixture, (context) => {
       context.settings.registerDefaults({ level: 5 });
       context.settings.registerSettingsUI(sections);
     });
@@ -313,7 +319,7 @@ describe("number settings", () => {
   it("repairs a bad stored value when the settings UI registers", async () => {
     const fixture = fakeServices();
     fixture.stored.addons.settings = { sample: { level: null } };
-    const { ctx } = await bootOne(fixture, context => {
+    const { ctx } = await bootOne(fixture, (context) => {
       context.settings.registerDefaults({ level: 5 });
       context.settings.registerSettingsUI(sections);
     });
@@ -322,15 +328,15 @@ describe("number settings", () => {
 
   it("corrects out of range and NaN writes from elsewhere before the addon sees them", async () => {
     const fixture = fakeServices();
-    const seen = vi.fn();
-    const { ctx } = await bootOne(fixture, context => {
+    const seen = vi.fn<(value: unknown) => void>();
+    const { ctx } = await bootOne(fixture, (context) => {
       context.settings.registerDefaults({ level: 5 });
       context.settings.onDidChange("level", seen);
       context.settings.registerSettingsUI(sections);
     });
     const writeFromSettingsWindow = (value: unknown) => {
       const addons = fixture.services.store.get("addons");
-      addons.settings.sample.level = value;
+      requireValue(addons.settings.sample).level = value;
       fixture.services.store.set("addons", addons);
     };
 
@@ -353,16 +359,38 @@ describe("number settings", () => {
 
 function nullBridge(): AddonHostBridge {
   return {
-    setSettingsSections: () => {},
-    addLoadedCallback: () => () => {},
-    addCssHandle: () => {},
-    addCleanup: () => {},
-    setTitlebarBadge: () => {},
-    addBadgeClickCallback: () => () => {},
-    addActionCallback: () => () => {},
-    addMessageCallback: () => () => {},
-    setTrayMenuItems: () => {},
-    addWindow: () => {},
-    reportError: () => {}
+    setSettingsSections: () => {
+      return undefined;
+    },
+    addLoadedCallback: () => () => {
+      return undefined;
+    },
+    addCssHandle: () => {
+      return undefined;
+    },
+    addCleanup: () => {
+      return undefined;
+    },
+    setTitlebarBadge: () => {
+      return undefined;
+    },
+    addBadgeClickCallback: () => () => {
+      return undefined;
+    },
+    addActionCallback: () => () => {
+      return undefined;
+    },
+    addMessageCallback: () => () => {
+      return undefined;
+    },
+    setTrayMenuItems: () => {
+      return undefined;
+    },
+    addWindow: () => {
+      return undefined;
+    },
+    reportError: () => {
+      return undefined;
+    },
   };
 }

@@ -1,5 +1,6 @@
 import { THEME_API_VERSION, THEME_ID_PATTERN, type ThemeManifest } from "~shared/themes/sdk";
 import { manifestTextTooLong, versionAtLeast } from "../addons/validate-manifest";
+import { isArray, isRecord } from "~shared/unknown";
 
 const SEMVER_SHAPE = /^\d+\.\d+\.\d+(-.+)?$/;
 const HEX_COLOR = /^#[0-9a-fA-F]{3,8}$/;
@@ -14,12 +15,12 @@ export function isContainedRelativePath(p: string): boolean {
 }
 
 export function validateThemeManifest(manifest: unknown): string | null {
-  if (manifest === null || typeof manifest !== "object") return "manifest is not an object";
-  const m = manifest as Record<string, unknown>;
+  if (!isRecord(manifest)) return "manifest is not an object";
+  const m = manifest;
 
   if (typeof m.id !== "string" || !THEME_ID_PATTERN.test(m.id)) return "id must be lowercase letters, digits and dashes";
   for (const field of ["name", "version", "author", "description"] as const) {
-    if (typeof m[field] !== "string" || (m[field] as string).trim() === "") return `${field} is required`;
+    if (typeof m[field] !== "string" || m[field].trim() === "") return `${field} is required`;
   }
   if (m.minAppVersion !== undefined && typeof m.minAppVersion !== "string") return "minAppVersion must be a string";
   if (m.homepage !== undefined && typeof m.homepage !== "string") return "homepage must be a string";
@@ -36,8 +37,8 @@ export function validateThemeManifest(manifest: unknown): string | null {
   for (const field of STYLE_FIELDS) {
     const value = m[field];
     if (value === undefined) continue;
-    if (!Array.isArray(value) || value.some(entry => typeof entry !== "string")) return `${field} must be an array of relative paths`;
-    if ((value as string[]).some(entry => !isContainedRelativePath(entry))) return `${field} paths must stay inside the theme folder`;
+    if (!isArray(value) || !value.every((entry) => typeof entry === "string")) return `${field} must be an array of relative paths`;
+    if (value.some((entry) => !isContainedRelativePath(entry))) return `${field} paths must stay inside the theme folder`;
   }
 
   if (m.preview !== undefined) {
@@ -46,16 +47,20 @@ export function validateThemeManifest(manifest: unknown): string | null {
   }
 
   if (m.titleBarOverlay !== undefined) {
-    const overlay = m.titleBarOverlay as Record<string, unknown>;
-    if (overlay === null || typeof overlay !== "object") return "titleBarOverlay must be an object";
+    const overlay = m.titleBarOverlay;
+    if (!isRecord(overlay)) return "titleBarOverlay must be an object";
     for (const key of ["color", "symbolColor"] as const) {
-      if (typeof overlay[key] !== "string" || !HEX_COLOR.test(overlay[key] as string)) {
+      if (typeof overlay[key] !== "string" || !HEX_COLOR.test(overlay[key])) {
         return `titleBarOverlay.${key} must be a hex colour`;
       }
     }
   }
 
   return null;
+}
+
+export function isThemeManifest(value: unknown): value is ThemeManifest {
+  return validateThemeManifest(value) === null;
 }
 
 export function themeManifestWarnings(manifest: ThemeManifest): string[] {

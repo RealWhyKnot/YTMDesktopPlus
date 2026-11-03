@@ -1,19 +1,21 @@
 <script setup lang="ts">
+import type { AppWindow } from "../../app-window";
+declare const window: AppWindow;
+defineOptions({ name: "ListenAlongRoom" });
 import { computed, ref } from "vue";
 import { otherListenerCount, type AudioIssue, type RoomSnapshot } from "~shared/room-protocol";
+import { readRoomSnapshot, readRoomText } from "~shared/validate-room-snapshot";
 
 const memoryStore = window.ytmd.memoryStore;
 const store = window.ytmd.store;
 
-// Room state lives in the rooms addon's own memory namespace, read the same
-// way any addon window reads its addon's state.
 const roomsMemory = (all: { rooms?: Record<string, unknown> } | undefined) => all?.rooms ?? {};
 const initialMemory = roomsMemory(await memoryStore.get("addonMemory"));
 
-const snapshot = ref<RoomSnapshot | null>((initialMemory.room as RoomSnapshot | null | undefined) ?? null);
-const joinPrompt = ref<string | null>((initialMemory.joinPrompt as string | null | undefined) ?? null);
+const snapshot = ref<RoomSnapshot | null>(readRoomSnapshot(initialMemory.room));
+const joinPrompt = ref<string | null>(readRoomText(initialMemory.joinPrompt));
 
-const savedName = ((await store.get("addons"))?.settings?.rooms?.displayName as string | null | undefined) ?? null;
+const savedName = readRoomText((await store.get("addons")).settings.rooms?.displayName);
 const displayName = ref<string>(savedName ?? "");
 const joinInput = ref<string>(joinPrompt.value ?? "");
 const trackInput = ref<string>("");
@@ -22,16 +24,16 @@ const copied = ref(false);
 const showAllMembers = ref(false);
 
 const MEMBER_PREVIEW = 8;
-const AUDIO_ISSUE_TEXT: Record<AudioIssue, string> = {
+const AUDIO_ISSUE_TEXT = {
   retrying: "Audio to the web stopped. Trying again soon.",
   stopped: "Audio to the web stopped. Turn streaming off and back on in Settings to try again.",
-  outdated: "Streaming audio to the web needs a newer version of the app"
-};
+  outdated: "Streaming audio to the web needs a newer version of the app",
+} satisfies Record<AudioIssue, string>;
 
-memoryStore.onStateChanged(newState => {
+memoryStore.onStateChanged((newState) => {
   const memory = roomsMemory(newState.addonMemory);
-  snapshot.value = (memory.room as RoomSnapshot | null | undefined) ?? snapshot.value;
-  const prompt = (memory.joinPrompt as string | null | undefined) ?? null;
+  snapshot.value = readRoomSnapshot(memory.room) ?? snapshot.value;
+  const prompt = readRoomText(memory.joinPrompt);
   if (prompt !== joinPrompt.value) {
     joinPrompt.value = prompt;
     if (prompt) joinInput.value = prompt;
@@ -40,7 +42,7 @@ memoryStore.onStateChanged(newState => {
 
 const phase = computed(() => snapshot.value?.phase ?? "idle");
 const canSubmitName = computed(() => displayName.value.trim().length > 0);
-const isController = computed(() => snapshot.value?.isHost || snapshot.value?.role === 1);
+const isController = computed(() => snapshot.value?.isHost === true || snapshot.value?.role === 1);
 const pendingInvite = computed(() => (joinPrompt.value && joinPrompt.value !== snapshot.value?.roomId ? joinPrompt.value : null));
 const listenerTotal = computed(() => otherListenerCount(snapshot.value) + 1);
 const webListeners = computed(() => snapshot.value?.webListenerCount ?? 0);
@@ -50,7 +52,7 @@ const members = computed(() => snapshot.value?.members ?? []);
 const visibleMembers = computed(() => {
   if (showAllMembers.value || members.value.length <= MEMBER_PREVIEW) return members.value;
   const preview = members.value.slice(0, MEMBER_PREVIEW);
-  const you = members.value.find(member => member.id === snapshot.value?.memberId);
+  const you = members.value.find((member) => member.id === snapshot.value?.memberId);
   return you && !preview.includes(you) ? [...preview.slice(0, MEMBER_PREVIEW - 1), you] : preview;
 });
 
@@ -101,9 +103,11 @@ function control(action: string) {
 function sendSeek() {
   const parts = seekInput.value.trim().split(":");
   if (parts.length === 0 || parts.length > 2) return;
-  const numbers = parts.map(part => Number(part));
-  if (numbers.some(value => !Number.isFinite(value) || value < 0)) return;
-  const seconds = parts.length === 2 ? numbers[0] * 60 + numbers[1] : numbers[0];
+  const numbers = parts.map((part) => Number(part));
+  if (numbers.some((value) => !Number.isFinite(value) || value < 0)) return;
+  const [first, second] = numbers;
+  if (first === undefined || (parts.length === 2 && second === undefined)) return;
+  const seconds = second === undefined ? first : first * 60 + second;
   window.ytmd.roomControl("seek", seconds);
   seekInput.value = "";
 }
@@ -140,7 +144,6 @@ function memberLabel(name: string | null, id: string) {
       </div>
     </div>
 
-    <!-- Idle: start or join -->
     <div v-if="phase === 'idle'" class="setup">
       <div class="field">
         <p class="label">Display name</p>
@@ -161,21 +164,18 @@ function memberLabel(name: string | null, id: string) {
       </div>
     </div>
 
-    <!-- Connecting -->
     <div v-else-if="phase === 'connecting'" class="status-screen">
       <span class="material-symbols-outlined spinning">progress_activity</span>
       <p>Connecting to the room service...</p>
       <button class="subtle" @click="leaveRoom">Cancel</button>
     </div>
 
-    <!-- Failed -->
     <div v-else-if="phase === 'failed'" class="status-screen">
       <span class="material-symbols-outlined error-icon">error</span>
       <p>{{ snapshot?.error ?? "Something went wrong" }}</p>
       <button class="subtle" @click="leaveRoom">Back</button>
     </div>
 
-    <!-- In a room -->
     <div v-else class="in-room">
       <div class="room-header">
         <div class="room-code-line">
@@ -263,343 +263,4 @@ function memberLabel(name: string | null, id: string) {
   </div>
 </template>
 
-<style scoped>
-.room-container {
-  box-sizing: border-box;
-  user-select: none;
-  overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.field .label,
-.section-title {
-  margin: 0 0 6px 0;
-  color: var(--text-muted);
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.hint {
-  margin: 6px 0 0 0;
-  color: var(--text-faint);
-  font-size: 12px;
-}
-
-.text-input {
-  width: 100%;
-  box-sizing: border-box;
-  background-color: var(--bg-raised);
-  color: var(--text);
-  border: 1px solid var(--bg-control-hover);
-  border-radius: 4px;
-  padding: 8px 10px;
-  outline: none;
-}
-
-.text-input:focus {
-  border-color: var(--border-strong);
-}
-
-.card {
-  background-color: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.card-title {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-}
-
-.card-body {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-button {
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px 14px;
-  background-color: var(--bg-control);
-  color: var(--text);
-}
-
-button:disabled {
-  color: var(--text-faint);
-  cursor: not-allowed;
-}
-
-.primary {
-  background-color: var(--accent);
-}
-
-.primary:disabled {
-  background-color: var(--bg-control);
-}
-
-.subtle {
-  background-color: transparent;
-  border: 1px solid var(--border-strong);
-}
-
-.subtle.small {
-  padding: 4px 10px;
-  font-size: 12px;
-}
-
-.setup {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.status-screen {
-  flex-grow: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: var(--text-muted);
-}
-
-.status-screen p {
-  max-width: 100%;
-  text-align: center;
-  overflow-wrap: anywhere;
-}
-
-.spinning {
-  animation: rotation 1s infinite linear;
-  font-size: 32px;
-}
-
-@keyframes rotation {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(359deg);
-  }
-}
-
-.error-icon {
-  color: var(--accent);
-  font-size: 32px;
-}
-
-.in-room {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  flex-grow: 1;
-}
-
-.link-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.link-buttons .material-symbols-outlined {
-  font-size: 16px;
-}
-
-.room-header .room-code-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.room-code {
-  font-family: var(--font-mono);
-  font-size: 22px;
-  letter-spacing: 0.18em;
-  background-color: var(--bg-raised);
-  border: 1px solid var(--bg-control-hover);
-  border-radius: 6px;
-  padding: 4px 10px;
-  user-select: all;
-}
-
-.room-subtitle {
-  margin: 8px 0 0 0;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.room-subtitle-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.listener-count {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--text-faint);
-}
-
-.listener-count .material-symbols-outlined {
-  font-size: 18px;
-}
-
-.notice {
-  background-color: var(--bg-raised);
-  border: 1px solid var(--bg-control-hover);
-  border-left: 3px solid var(--accent);
-  border-radius: 4px;
-  padding: 8px 10px;
-  color: var(--text-muted);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
-.notice.suspended {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.notice.suspended button {
-  flex-shrink: 0;
-  overflow-wrap: normal;
-}
-
-.notice.streaming {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-left-color: var(--success);
-}
-
-.live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: var(--success);
-  flex-shrink: 0;
-}
-
-.members .member {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.member-label {
-  flex-grow: 1;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-}
-
-.member-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.you-tag {
-  flex-shrink: 0;
-  color: var(--text-faint);
-  font-size: 12px;
-  margin-left: 4px;
-}
-
-.show-all {
-  margin-top: 8px;
-}
-
-.badge {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-radius: 3px;
-  padding: 2px 6px;
-}
-
-.host-badge {
-  background-color: var(--accent);
-}
-
-.controller-badge {
-  background-color: var(--bg-control-hover);
-}
-
-.web-badge {
-  background-color: var(--bg-control-hover);
-}
-
-.invite {
-  border-color: var(--accent);
-}
-
-.invite-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.empty {
-  color: var(--text-faint);
-  font-size: 13px;
-  margin: 8px 0 0 0;
-}
-
-.icon-button {
-  padding: 6px;
-  background-color: var(--bg-control);
-}
-
-.transport {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.inline-field {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.footer {
-  margin-top: auto;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.leave {
-  background-color: transparent;
-  border: 1px solid var(--accent);
-  color: var(--accent);
-}
-</style>
+<style scoped src="./room.css"></style>

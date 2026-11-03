@@ -1,10 +1,8 @@
 import type { RemoteTrack } from "./mirror-engine";
-
-// Response walking for the InnerTube calls the mirror makes. Pure, so the
-// shapes YTM actually returns can be pinned down in tests.
+import { isRecord } from "~shared/unknown";
 
 function runsText(runs: { text?: string }[] | undefined): string {
-  return (runs ?? []).map(run => run.text ?? "").join("");
+  return (runs ?? []).map((run) => run.text ?? "").join("");
 }
 
 type FlexColumn = { musicResponsiveListItemFlexColumnRenderer?: { text?: { runs?: { text?: string }[] } } };
@@ -16,9 +14,6 @@ type ListItem = {
   playlistItemData?: { videoId?: string };
 };
 
-/** The first tracks of a FEmusic_history browse response, newest first.
- *  Duration rides along in the fixed columns as "m:ss" or "h:mm:ss" when the
- *  row has one; parsing it here saves a lookup call entirely. */
 export function extractHistoryHead(browseResponse: unknown, limit = 3): RemoteTrack[] {
   const items: RemoteTrack[] = [];
 
@@ -30,7 +25,7 @@ export function extractHistoryHead(browseResponse: unknown, limit = 3): RemoteTr
     }
     const item = (node as { musicResponsiveListItemRenderer?: ListItem }).musicResponsiveListItemRenderer;
     if (item) {
-      const columns = (item.flexColumns ?? []).map(column => runsText(column.musicResponsiveListItemFlexColumnRenderer?.text?.runs));
+      const columns = (item.flexColumns ?? []).map((column) => runsText(column.musicResponsiveListItemFlexColumnRenderer?.text?.runs));
       const thumbnails = item.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails ?? [];
       let durationSeconds: number | null = null;
       for (const fixed of item.fixedColumns ?? []) {
@@ -46,8 +41,8 @@ export function extractHistoryHead(browseResponse: unknown, limit = 3): RemoteTr
           videoId,
           title: columns[0] ?? "",
           author: columns[1] ?? "",
-          thumbnailUrl: thumbnails.length ? (thumbnails[thumbnails.length - 1].url ?? null) : null,
-          durationSeconds
+          thumbnailUrl: thumbnails.at(-1)?.url ?? null,
+          durationSeconds,
         });
       }
       return;
@@ -59,8 +54,8 @@ export function extractHistoryHead(browseResponse: unknown, limit = 3): RemoteTr
   return items;
 }
 
-/** A track's length from an InnerTube player response; null when unusable. */
 export function extractDurationSeconds(playerResponse: unknown): number | null {
-  const length = Number((playerResponse as { videoDetails?: { lengthSeconds?: string } } | null)?.videoDetails?.lengthSeconds);
+  const details = isRecord(playerResponse) ? playerResponse.videoDetails : undefined;
+  const length = Number(isRecord(details) ? details.lengthSeconds : undefined);
   return Number.isFinite(length) && length > 0 ? length : null;
 }

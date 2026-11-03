@@ -1,11 +1,8 @@
 import { app, ipcMain, screen, type BrowserWindow, type Session, type WebContents } from "electron";
 import log from "electron-log";
 import path from "path";
-
-// Development and test-run seams, all opt-in through environment variables.
-// This module must run before anything reads userData (logging, the single
-// instance lock, the config store), so it is imported first from the main
-// entry point.
+import { isRecord } from "~shared/unknown";
+import { arrayOf, isString, objectOf } from "~shared/validation";
 
 export type BreakableHookStage = "store-hook" | "player-api";
 
@@ -52,11 +49,7 @@ export function initializeTestSeams() {
     }
 
     if (process.env.YTMD_TEST) {
-      // The YTM view preload asks for its broken stage synchronously at
-      // startup. This must be per-request rather than an additionalArguments
-      // switch: renderer processes can be reused across view recreations,
-      // which would resurrect a consumed break flag from the old argv.
-      ipcMain.on("ytmdTest:getBrokenHookStage", event => {
+      ipcMain.on("ytmdTest:getBrokenHookStage", (event) => {
         event.returnValue = takeBrokenHookStage();
       });
     }
@@ -64,10 +57,6 @@ export function initializeTestSeams() {
 
   const runnerPid = Number(process.env.YTMD_TEST_RUNNER_PID);
   if (process.env.YTMD_TEST && runnerPid) {
-    // Watch the test runner's process. If the runner dies for any reason the
-    // app exits with it, so runs can never leave an orphaned instance behind.
-    // (Stdin cannot carry this signal: Windows GUI processes do not reliably
-    // inherit console pipe handles.)
     setInterval(() => {
       try {
         process.kill(runnerPid, 0);
@@ -81,21 +70,22 @@ export function initializeTestSeams() {
 type DisplayBounds = { x: number; y: number; width: number; height: number };
 
 export function offscreenOrigin(displays: DisplayBounds[], windowWidth: number): { x: number; y: number } {
-  const left = Math.min(0, ...displays.map(bounds => bounds.x));
-  const top = Math.min(0, ...displays.map(bounds => bounds.y));
+  const left = Math.min(0, ...displays.map((bounds) => bounds.x));
+  const top = Math.min(0, ...displays.map((bounds) => bounds.y));
   return { x: left - windowWidth - 400, y: top };
 }
 
-export function keepOffscreen(window: BrowserWindow, displays: () => DisplayBounds[] = () => screen.getAllDisplays().map(display => display.bounds)) {
+export function keepOffscreen(window: BrowserWindow, displays: () => DisplayBounds[] = () => screen.getAllDisplays().map((display) => display.bounds)) {
   const park = () => {
     const [width, height] = window.getSize();
+    if (width === undefined || height === undefined) throw new Error("Window dimensions are unavailable");
     nativeSetBounds({ ...offscreenOrigin(displays(), width), width, height });
   };
   const nativeSetBounds = window.setBounds.bind(window);
   const nativeShowInactive = window.showInactive.bind(window);
 
   window.setSkipTaskbar(true);
-  window.setBounds = bounds => {
+  window.setBounds = (bounds) => {
     nativeSetBounds({ ...window.getBounds(), ...bounds });
     park();
   };
@@ -106,15 +96,16 @@ export function keepOffscreen(window: BrowserWindow, displays: () => DisplayBoun
   window.focus = () => undefined;
   window.moveTop = () => undefined;
   window.setAlwaysOnTop = () => undefined;
-  window.show = () => {
+  const show = () => {
     park();
     nativeShowInactive();
   };
-  window.showInactive = window.show;
+  window.show = show;
+  window.showInactive = show;
   window.on("move", () => {
     const bounds = window.getBounds();
-    const onScreen = displays().some(display => bounds.x + bounds.width > display.x && bounds.x < display.x + display.width);
-    if (onScreen) park();
+    const isOnScreen = displays().some((display) => bounds.x + bounds.width > display.x && bounds.x < display.x + display.width);
+    if (isOnScreen) park();
   });
   park();
 }
@@ -124,7 +115,7 @@ export function isTestRun(): boolean {
 }
 
 export function isTestClient(): boolean {
-  return !!(process.env.YTMD_TEST || process.env.YTMD_TEST_PROFILE);
+  return !!process.env.YTMD_TEST || !!process.env.YTMD_TEST_PROFILE;
 }
 
 export const WATCH_HISTORY_WRITES = ["*://*.youtube.com/api/stats/playback*", "*://*.youtube.com/api/stats/watchtime*"];
@@ -144,13 +135,13 @@ export function blockWatchHistoryWrites(ytmSession: Session) {
 }
 
 export function parseYtmFlagSpec(spec: string): Record<string, boolean | string> {
-  const flags: Record<string, boolean | string> = {};
+  const flags = new Map<string, boolean | string>();
   for (const pair of spec.split(",")) {
-    const [name, value = "true"] = pair.split("=").map(part => part.trim());
+    const [name, value = "true"] = pair.split("=").map((part) => part.trim());
     if (!name) continue;
-    flags[name] = value === "true" ? true : value === "false" ? false : value;
+    flags.set(name, value === "true" ? true : value === "false" ? false : value);
   }
-  return flags;
+  return Object.fromEntries(flags);
 }
 
 export function injectYtmFlags(html: string, flags: Record<string, boolean | string>): string {
@@ -166,33 +157,43 @@ export function injectYtmExperimentFlags(contents: WebContents) {
   const flags = parseYtmFlagSpec(spec);
   const debuggerSession = contents.debugger;
   debuggerSession.attach("1.3");
-  debuggerSession.on("message", async (_event, method, params) => {
-    if (method !== "Fetch.requestPaused") return;
+  const injectResponse = async (params: unknown) => {
+    if (!isRecord(params) || typeof params.requestId !== "string") return;
     try {
-      const body = await debuggerSession.sendCommand("Fetch.getResponseBody", { requestId: params.requestId });
+      const body: unknown = await debuggerSession.sendCommand("Fetch.getResponseBody", { requestId: params.requestId });
+      if (!isRecord(body) || typeof body.body !== "string") throw new TypeError("YTM response body is invalid");
       const html = body.base64Encoded ? Buffer.from(body.body, "base64").toString("utf8") : body.body;
       const rewritten = injectYtmFlags(html, flags);
       log.info(`test-seams: YTM experiment flags ${spec} ${rewritten === html ? "not injected, no flag block" : "injected"}`);
-      const headers = (params.responseHeaders ?? []).filter((header: { name: string }) => !/^content-(length|encoding)$/i.test(header.name));
+      const responseHeaders = params.responseHeaders ?? [];
+      if (!arrayOf(objectOf({ name: isString, value: isString }))(responseHeaders)) throw new TypeError("YTM response headers are invalid");
+      const headers = responseHeaders.filter((header) => !/^content-(length|encoding)$/i.test(header.name));
+      const responseCode = params.responseStatusCode ?? 200;
+      if (typeof responseCode !== "number") throw new TypeError("YTM response status is invalid");
       await debuggerSession.sendCommand("Fetch.fulfillRequest", {
         requestId: params.requestId,
-        responseCode: params.responseStatusCode ?? 200,
+        responseCode,
         responseHeaders: headers,
-        body: Buffer.from(rewritten, "utf8").toString("base64")
+        body: Buffer.from(rewritten, "utf8").toString("base64"),
       });
     } catch (error) {
       log.warn("test-seams: YTM experiment flag injection failed", error);
-      debuggerSession.sendCommand("Fetch.continueRequest", { requestId: params.requestId }).catch((): undefined => undefined);
+      void debuggerSession.sendCommand("Fetch.continueRequest", { requestId: params.requestId }).catch((error: unknown) => {
+        log.warn("test-seams: operation failed", error);
+        return undefined;
+      });
     }
+  };
+  debuggerSession.on("message", (_event, method, params: unknown) => {
+    if (method === "Fetch.requestPaused") void injectResponse(params).catch((error: unknown) => log.warn("test-seams: operation failed", error));
   });
-  debuggerSession.sendCommand("Fetch.enable", {
-    patterns: [{ urlPattern: "https://music.youtube.com/*", resourceType: "Document", requestStage: "Response" }]
-  });
+  void debuggerSession
+    .sendCommand("Fetch.enable", {
+      patterns: [{ urlPattern: "https://music.youtube.com/*", resourceType: "Document", requestStage: "Response" }],
+    })
+    .catch((error: unknown) => log.warn("injectYtmExperimentFlags failed", error));
 }
 
-// Returns the hook stage the current YTM view creation should break, consuming
-// it when it was declared with the :once modifier so a view recreation (the
-// Retry path) recovers.
 export function takeBrokenHookStage(): BreakableHookStage | null {
   if (!breakHooks) return null;
   const stage = breakHooks.stage;

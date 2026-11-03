@@ -1,9 +1,11 @@
-import { BrowserView, BrowserWindow, ipcMain } from "electron";
+import { transformPlayerState } from "./player-state";
+import { type WebContents, BrowserWindow, ipcMain } from "electron";
 import Conf from "conf";
-import { FastifyPluginCallback, FastifyPluginOptions } from "fastify";
-import { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
-import MemoryStore from "../../../../memory-store";
-import playerStateStore, { PlayerState, RepeatMode } from "../../../../player-state-store";
+import { type FastifyPluginAsync, type FastifyPluginOptions } from "fastify";
+import { isRecord } from "~shared/unknown";
+import { type MemoryStoreSchema, type StoreSchema } from "~shared/store/schema";
+import { MemoryStore } from "../../../../memory-store";
+import { playerStateStore, type PlayerState, RepeatMode } from "../../../../player-state-store";
 import {
   clearFailedAuth,
   createAuthToken,
@@ -13,8 +15,9 @@ import {
   isAuthValid,
   isAuthValidMiddleware,
   rateLimitKey,
-  recordFailedAuth
+  recordFailedAuth,
 } from "../../api-shared/auth";
+import { socketServer } from "../../api-shared/socket-server";
 import fastifyRateLimit from "@fastify/rate-limit";
 import crypto from "crypto";
 import { senderFrameIsMainAt, senderIsView, type SenderEvent } from "../../../../ipc/sender-guards";
@@ -22,11 +25,11 @@ import { YTM_ORIGIN } from "../../../../ytm-navigation";
 import { createAppWindow, loadWindowEntry } from "../../../../windows/window-factory";
 import {
   APIV1CommandRequestBody,
-  APIV1CommandRequestBodyType,
+  type APIV1CommandRequestBodyType,
   APIV1RequestCodeBody,
-  APIV1RequestCodeBodyType,
+  type APIV1RequestCodeBodyType,
   APIV1RequestTokenBody,
-  APIV1RequestTokenBodyType
+  type APIV1RequestTokenBodyType,
 } from "../../api-shared/schemas";
 import {
   AuthorizationDeniedError,
@@ -41,66 +44,19 @@ import {
   InvalidVolumeError,
   UnauthenticatedError,
   YouTubeMusicTimeOutError,
-  YouTubeMusicUnavailableError
+  YouTubeMusicUnavailableError,
 } from "../../api-shared/errors";
 import path from "node:path";
 
 declare const ALL_WINDOWS_VITE_DEV_SERVER_URL: string;
 
-const transformPlayerState = (state: PlayerState) => {
-  return {
-    player: {
-      trackState: state.trackState,
-      videoProgress: state.videoProgress,
-      volume: state.volume,
-      muted: state.muted,
-      adPlaying: state.adPlaying,
-      queue: state.queue
-        ? {
-            autoplay: state.queue.autoplay,
-            items: state.queue.items,
-            automixItems: state.queue.automixItems,
-            isGenerating: state.queue.isGenerating,
-            isInfinite: state.queue.isInfinite,
-            repeatMode: state.queue.repeatMode,
-            selectedItemIndex: state.queue.selectedItemIndex
-          }
-        : null
-    },
-    video: state.videoDetails
-      ? {
-          author: state.videoDetails.author,
-          channelId: state.videoDetails.channelId,
-          title: state.videoDetails.title,
-          album: state.videoDetails.album,
-          albumId: state.videoDetails.albumId,
-          likeStatus: state.videoDetails.likeStatus,
-          thumbnails: state.videoDetails.thumbnails,
-          durationSeconds: state.videoDetails.durationSeconds,
-          id: state.videoDetails.id,
-          isLive: state.videoDetails.isLive,
-          videoType: state.videoDetails.videoType,
-          // API Users: In YTM the initial player response for a song may not contain filled out metadata is fetched via another requests. This indicates that is complete.
-          //            For context you can refer to YTM playing a song but the player bar not displaying the information for the song yet. This is that behavior.
-          metadataFilled: state.hasFullMetadata
-        }
-      : null,
-    // API Users:
-    // WARNING! WARNING! WARNING! WARNING!
-    // playlistId may not be what you expect it to be.
-    // - If the song playing comes from a randomly generated radio queue then this will be the id of that random queue (YTM does not persist these, pretend these IDs don't exist on the YTM backend)
-    // - If you add an album/playlist to queue once those songs start playing then playlistId will be the id of that album/playlist
-    // - Play Next for individual songs have a null playlistId when reached in a queue. Does not apply for Play Next to an entire album/playlist.
-    // In summary, this property doesn't reliably tell you this video belongs to the specified playlistId. Do not treat it as such. Use it as a state if something may be playing from a known playlistId
-    playlistId: state.playlistId
-  };
-};
+export type CompanionYtmView = { webContents: Pick<WebContents, "send"> };
 
-interface CompanionServerAPIv1Options extends FastifyPluginOptions {
+type CompanionServerAPIv1Options = {
   getStore: () => Conf<StoreSchema>;
   getMemoryStore: () => MemoryStore<MemoryStoreSchema>;
-  getYtmView: () => BrowserView;
-}
+  getYtmView: () => CompanionYtmView | null;
+} & FastifyPluginOptions;
 
 type Playlist = {
   id: string;
@@ -113,8 +69,8 @@ const PLAYLIST_TITLE_MAX_LENGTH = 1024;
 const isPlaylistId = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= PLAYLIST_ID_MAX_LENGTH;
 
 const toObservedPlaylist = (value: unknown): Playlist | null => {
-  if (typeof value !== "object" || value === null) return null;
-  const { id, title } = value as Record<string, unknown>;
+  if (!isRecord(value)) return null;
+  const { id, title } = value;
   if (!isPlaylistId(id) || typeof title !== "string" || title.length > PLAYLIST_TITLE_MAX_LENGTH) return null;
   return { id, title };
 };
@@ -128,14 +84,14 @@ const cancelPendingAuthorizations = () => {
   }
 };
 
-const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> = async (fastify, options) => {
+const CompanionServerAPIv1: FastifyPluginAsync<CompanionServerAPIv1Options> = async (fastify, options) => {
   const authWindowEnabledListener = (key: string, value: unknown) => {
     if (key === "companionServerAuthWindowEnabled" && !value) {
       cancelPendingAuthorizations();
     }
   };
   options.getMemoryStore().onStateChanged(authWindowEnabledListener);
-  fastify.addHook("preClose", done => {
+  fastify.addHook("preClose", (done) => {
     options.getMemoryStore().removeOnStateChanged(authWindowEnabledListener);
     cancelPendingAuthorizations();
     done();
@@ -172,7 +128,7 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
 
         case "setVolume": {
           const volume = commandRequest.data;
-          // Check if Volume is a number and between 0 and 100
+
           if (isNaN(volume) || volume < 0 || volume > 100) {
             throw new InvalidVolumeError(volume);
           }
@@ -210,8 +166,8 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
           ytmView.webContents.send("remoteControl:execute", "navigate", {
             watchEndpoint: {
               videoId: videoId,
-              playlistId: playlistId
-            }
+              playlistId: playlistId,
+            },
           });
           break;
         }
@@ -241,6 +197,7 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
               ytmView.webContents.send("remoteControl:execute", "repeatMode", "ONE");
               break;
             }
+            case RepeatMode.Unknown:
             default: {
               throw new InvalidRepeatModeError(repeatMode);
             }
@@ -256,7 +213,7 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
         case "playQueueIndex": {
           const index = commandRequest.data;
           const queue = playerStateStore.getState().queue;
-          const queueLength = queue ? (queue.items?.length ?? 0) + (queue.automixItems?.length ?? 0) : 0;
+          const queueLength = queue ? queue.items.length + queue.automixItems.length : 0;
 
           if (!Number.isInteger(index) || index < 0 || index >= queueLength) {
             throw new InvalidQueueIndexError(index);
@@ -282,7 +239,7 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
   await fastify.register(fastifyRateLimit, {
     global: true,
     max: 100,
-    timeWindow: 1000 * 60
+    timeWindow: 1000 * 60,
   });
 
   fastify.post<{ Body: APIV1RequestCodeBodyType }>(
@@ -291,25 +248,24 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
       config: {
         rateLimit: {
           max: 5,
-          timeWindow: 1000 * 60
-        }
+          timeWindow: 1000 * 60,
+        },
       },
       schema: {
-        body: APIV1RequestCodeBody
-      }
+        body: APIV1RequestCodeBody,
+      },
     },
     async (request, response) => {
-      const companionServerAuthWindowEnabled = options.getMemoryStore().get("companionServerAuthWindowEnabled") ?? false;
+      const isCompanionAuthWindowEnabled = Boolean(options.getMemoryStore().get("companionServerAuthWindowEnabled"));
 
-      // API Users: The user has companion server authorization disabled, show a feedback error accordingly
-      if (!companionServerAuthWindowEnabled) {
+      if (!isCompanionAuthWindowEnabled) {
         throw new AuthorizationDisabledError();
       }
 
       const code = await getTemporaryAuthCode(request.body.appId, request.body.appVersion, request.body.appName);
       if (code) {
         response.send({
-          code
+          code,
         });
       } else {
         throw new AuthorizationTimeOutError();
@@ -323,28 +279,24 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
       config: {
         rateLimit: {
           max: 5,
-          timeWindow: 1000 * 60
-        }
+          timeWindow: 1000 * 60,
+        },
       },
       schema: {
-        body: APIV1RequestTokenBody
-      }
+        body: APIV1RequestTokenBody,
+      },
     },
     async (request, response) => {
-      const companionServerAuthWindowEnabled = options.getMemoryStore().get("companionServerAuthWindowEnabled") ?? false;
+      const isCompanionAuthWindowEnabled = Boolean(options.getMemoryStore().get("companionServerAuthWindowEnabled"));
 
-      // There's too many authorization windows open and we have to reject this request for now (this is unlikely to occur but this prevents malicious use of spamming auth windows)
-      // API Users: Show a friendly feedback that too many applications are trying to authorize at the same time
       if (authorizationWindows.length >= 5) {
         throw new AuthorizationTooManyError();
       }
 
-      // API Users: The user has companion server authorization disabled, show a feedback error accordingly
-      if (!companionServerAuthWindowEnabled) {
+      if (!isCompanionAuthWindowEnabled) {
         throw new AuthorizationDisabledError();
       }
 
-      // API Users: Make sure you /requestcode above
       const authData = getIsTemporaryAuthCodeValidAndRemove(request.body.appId, request.body.code);
       if (!authData) {
         throw new AuthorizationInvalidError();
@@ -353,9 +305,8 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
       const requestId = crypto.randomUUID();
       const detailsChannel = `companionAuthorization:details:${requestId}`;
 
-      let authorizationWindowClosed = false;
+      const authorizationState = { isClosed: false };
 
-      // Create the authorization browser window.
       const authorizationWindow = createAppWindow({
         width: 640,
         height: 480,
@@ -364,8 +315,8 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
         resizable: false,
         webPreferences: {
           preload: path.join(__dirname, `../renderer/windows/authorize-companion/preload.js`),
-          additionalArguments: [requestId]
-        }
+          additionalArguments: [requestId],
+        },
       });
       loadWindowEntry(authorizationWindow, "authorize-companion", ALL_WINDOWS_VITE_DEV_SERVER_URL);
       authorizationWindow.show();
@@ -374,26 +325,25 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
       authorizationWindows.push(authorizationWindow);
 
       try {
-        ipcMain.handle(detailsChannel, event => {
+        ipcMain.handle(detailsChannel, (event) => {
           if (!senderIsView(authorizationWindow, event.sender)) return null;
           return { appName: authData.appName, code: request.body.code };
         });
 
-        // Open the DevTools.
         if (process.env.NODE_ENV === "development" && !process.env.YTMD_TEST) {
           authorizationWindow.webContents.openDevTools({
-            mode: "detach"
+            mode: "detach",
           });
         }
 
         let promiseResolve: (value: boolean | PromiseLike<boolean>) => void;
         let promiseInterval: string | number | NodeJS.Timeout;
 
-        const resultListener = (event: Electron.IpcMainEvent, authorized: boolean) => {
+        const resultListener = (event: Electron.IpcMainEvent, isAuthorized: boolean) => {
           if (!senderIsView(authorizationWindow, event.sender)) return;
 
           clearInterval(promiseInterval);
-          promiseResolve(authorized === true && options.getMemoryStore().get("companionServerAuthWindowEnabled") === true);
+          promiseResolve(isAuthorized && options.getMemoryStore().get("companionServerAuthWindowEnabled") === true);
         };
 
         const cancel = () => {
@@ -401,7 +351,7 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
           promiseResolve(false);
         };
 
-        const closeListener = (event: Electron.IpcMainEvent) => {
+        const closeListener = (event: Electron.IpcMainEvent | null) => {
           if (event && !senderIsView(authorizationWindow, event.sender)) return;
 
           clearInterval(promiseInterval);
@@ -409,7 +359,7 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
         };
 
         const startTime = Date.now();
-        const authorized = await new Promise<boolean>(resolve => {
+        const isAuthorized = await new Promise<boolean>((resolve) => {
           promiseResolve = resolve;
           promiseInterval = setInterval(() => {
             if (request.socket.destroyed) {
@@ -426,26 +376,26 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
           ipcMain.on(`companionAuthorization:result:${requestId}`, resultListener);
           ipcMain.on(`companionWindow:close:${requestId}`, closeListener);
           authorizationWindow.once("closed", () => {
-            authorizationWindowClosed = true;
+            authorizationState.isClosed = true;
             closeListener(null);
           });
           pendingAuthorizations.add(cancel);
         });
         pendingAuthorizations.delete(cancel);
 
-        if (!authorizationWindowClosed) {
+        if (!authorizationState.isClosed) {
           authorizationWindow.removeAllListeners();
           authorizationWindow.close();
         }
         ipcMain.removeListener(`companionAuthorization:result:${requestId}`, resultListener);
         ipcMain.removeListener(`companionWindow:close:${requestId}`, closeListener);
 
-        if (authorized) {
+        if (isAuthorized) {
           const token = createAuthToken(options.getStore(), authData.appId, authData.appVersion, authData.appName);
 
           clearFailedAuth(request.ip);
           response.send({
-            token
+            token,
           });
           options.getMemoryStore().set("companionServerAuthWindowEnabled", false);
         } else {
@@ -465,21 +415,19 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
     "/playlists",
     {
       config: {
-        // This endpoint sends a real API request to YTM which allows to fetch playlists.
-        // API users: Please cache playlists, they are unlikely to change often. A websocket event will be emitted if a playlist is created or deleted
         rateLimit: {
           max: 1,
           timeWindow: 1000 * 30,
-          keyGenerator: request => {
+          keyGenerator: (request) => {
             return rateLimitKey(options.getStore(), request);
-          }
-        }
+          },
+        },
       },
       preHandler: (request, response, next) => {
-        return isAuthValidMiddleware(options.getStore(), request, response, next);
-      }
+        isAuthValidMiddleware(options.getStore(), request, response, next);
+      },
     },
-    async (request, response) => {
+    async (_request, response) => {
       const ytmView = options.getYtmView();
       if (ytmView) {
         const requestId = crypto.randomUUID();
@@ -513,20 +461,19 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
     "/state",
     {
       config: {
-        // API users: Please utilize the realtime websocket to get the state. Request this endpoint as necessary, such as initial state fetching.
         rateLimit: {
           max: 1,
           timeWindow: 1000 * 5,
-          keyGenerator: request => {
+          keyGenerator: (request) => {
             return rateLimitKey(options.getStore(), request);
-          }
-        }
+          },
+        },
       },
       preHandler: (request, response, next) => {
-        return isAuthValidMiddleware(options.getStore(), request, response, next);
-      }
+        isAuthValidMiddleware(options.getStore(), request, response, next);
+      },
     },
-    (request, response) => {
+    (_request, response) => {
       response.send(transformPlayerState(playerStateStore.getState()));
     }
   );
@@ -538,17 +485,17 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
         rateLimit: {
           max: 2,
           timeWindow: 1000 * 1,
-          keyGenerator: request => {
+          keyGenerator: (request) => {
             return rateLimitKey(options.getStore(), request);
-          }
-        }
+          },
+        },
       },
       schema: {
-        body: APIV1CommandRequestBody
+        body: APIV1CommandRequestBody,
       },
       preHandler: (request, response, next) => {
-        return isAuthValidMiddleware(options.getStore(), request, response, next);
-      }
+        isAuthValidMiddleware(options.getStore(), request, response, next);
+      },
     },
     (request, response) => {
       sendCommand(request.body);
@@ -556,62 +503,63 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
     }
   );
 
-  fastify.ready().then(() => {
-    fastify.io.of("/api/v1/realtime").use((socket, next) => {
-      const address = socket.handshake.address;
-      if (isAuthLockedOut(address)) {
-        next(new UnauthenticatedError());
-        return;
-      }
+  void Promise.resolve(fastify.ready())
+    .then(() => {
+      socketServer(fastify)
+        .of("/api/v1/realtime")
+        .use((socket, next) => {
+          const address = socket.handshake.address;
+          if (isAuthLockedOut(address)) {
+            next(new UnauthenticatedError());
+            return;
+          }
 
-      const token = socket.handshake.auth.token;
-      const [validSession, tokenId] = isAuthValid(options.getStore(), token);
-      if (validSession) {
-        socket.data.tokenId = tokenId;
-        next();
-      } else {
-        recordFailedAuth(address);
-        next(new UnauthenticatedError());
-      }
-    });
-    // Will look into enabling sending commands/requests over the websocket at a later point in time
-    /*fastify.io.of("/api/v1/realtime").on("connection", socket => {
-      socket.on("command", (command: RemoteCommand) => {
-        sendCommand(command);
+          const token: unknown = socket.handshake.auth.token;
+          const [isValidSession, tokenId] = isAuthValid(options.getStore(), typeof token === "string" ? token : undefined);
+          if (isValidSession) {
+            const socketData: unknown = socket.data;
+            if (!isRecord(socketData)) throw new TypeError("Companion socket metadata is unavailable");
+            socketData.tokenId = tokenId;
+            next();
+          } else {
+            recordFailedAuth(address);
+            next(new UnauthenticatedError());
+          }
+        });
+
+      const stateStoreListener = (state: PlayerState) => {
+        socketServer(fastify).of("/api/v1/realtime").emit("state-update", transformPlayerState(state));
+      };
+      playerStateStore.addEventListener(stateStoreListener);
+
+      const isYtmViewPage = (event: SenderEvent) => senderIsView(options.getYtmView(), event.sender) && senderFrameIsMainAt(event, [YTM_ORIGIN]);
+
+      const createPlaylistObservedListener = (event: Electron.IpcMainEvent, value: unknown) => {
+        if (!isYtmViewPage(event)) return;
+        const playlist = toObservedPlaylist(value);
+        if (!playlist) return;
+
+        socketServer(fastify).of("/api/v1/realtime").emit("playlist-created", playlist);
+      };
+      ipcMain.on("ytmView:createPlaylistObserved", createPlaylistObservedListener);
+
+      const deletePlaylistObservedListener = (event: Electron.IpcMainEvent, playlistId: unknown) => {
+        if (!isYtmViewPage(event) || !isPlaylistId(playlistId)) return;
+
+        socketServer(fastify).of("/api/v1/realtime").emit("playlist-deleted", playlistId);
+      };
+      ipcMain.on("ytmView:deletePlaylistObserved", deletePlaylistObservedListener);
+
+      fastify.addHook("onClose", () => {
+        void socketServer(fastify)
+          .close()
+          .catch((error: unknown) => console.warn("Companion socket server could not close", error));
+        playerStateStore.removeEventListener(stateStoreListener);
+        ipcMain.off("ytmView:createPlaylistObserved", createPlaylistObservedListener);
+        ipcMain.off("ytmView:deletePlaylistObserved", deletePlaylistObservedListener);
       });
-    });*/
-
-    const stateStoreListener = (state: PlayerState) => {
-      fastify.io.of("/api/v1/realtime").emit("state-update", transformPlayerState(state));
-    };
-    playerStateStore.addEventListener(stateStoreListener);
-
-    const isYtmViewPage = (event: SenderEvent) => senderIsView(options.getYtmView(), event.sender) && senderFrameIsMainAt(event, [YTM_ORIGIN]);
-
-    const createPlaylistObservedListener = (event: Electron.IpcMainEvent, value: unknown) => {
-      if (!isYtmViewPage(event)) return;
-      const playlist = toObservedPlaylist(value);
-      if (!playlist) return;
-
-      fastify.io.of("/api/v1/realtime").emit("playlist-created", playlist);
-    };
-    ipcMain.on("ytmView:createPlaylistObserved", createPlaylistObservedListener);
-
-    const deletePlaylistObservedListener = (event: Electron.IpcMainEvent, playlistId: unknown) => {
-      if (!isYtmViewPage(event) || !isPlaylistId(playlistId)) return;
-
-      fastify.io.of("/api/v1/realtime").emit("playlist-deleted", playlistId);
-    };
-    ipcMain.on("ytmView:deletePlaylistObserved", deletePlaylistObservedListener);
-
-    fastify.addHook("onClose", () => {
-      // This should normally close on its own but we'll make sure it's closed out
-      fastify.io.close();
-      playerStateStore.removeEventListener(stateStoreListener);
-      ipcMain.off("ytmView:createPlaylistObserved", createPlaylistObservedListener);
-      ipcMain.off("ytmView:deletePlaylistObserved", deletePlaylistObservedListener);
-    });
-  });
+    })
+    .catch((error: unknown) => console.warn("index: operation failed", error));
 };
 
-export default CompanionServerAPIv1;
+export { CompanionServerAPIv1 };

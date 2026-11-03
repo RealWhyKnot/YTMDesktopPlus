@@ -1,3 +1,4 @@
+import { requireValue } from "./helpers/require-value";
 import fs from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
@@ -5,8 +6,6 @@ import { buildExternalDefinition, scanExternalAddons } from "../src/main/addons/
 import { fakeAddonContext, makeManifest } from "./helpers/fake-addon-context";
 import type { AddonManifest } from "../src/shared/addons/sdk";
 import { makeTempDir } from "./helpers/temp-dir";
-
-// Real folders on disk, loaded through the real createRequire path.
 
 function addonDir(id: string, files: Record<string, string>): string {
   const root = makeTempDir("ytmd-loader-test-");
@@ -30,7 +29,7 @@ describe("buildExternalDefinition", () => {
   it.each([
     ["a bare function export", "module.exports = ctx => { ctx.log.info('bare'); };"],
     ["an activate export", "module.exports.activate = ctx => { ctx.log.info('named'); };"],
-    ["a default.activate export", "module.exports.default = { activate: ctx => { ctx.log.info('default'); } };"]
+    ["a default.activate export", "module.exports.default = { activate: ctx => { ctx.log.info('default'); } };"],
   ])("accepts %s", async (_label, source) => {
     const manifest = makeManifest({ id: "shape", main: "index.js" });
     const dir = addonDir("shape", { "index.js": source });
@@ -55,7 +54,7 @@ describe("buildExternalDefinition", () => {
 module.exports.activate = ctx => { ctx.memory.set("sum", helper.two + dep.three); };`,
       "helper.js": "module.exports.two = 2;",
       "node_modules/dep/package.json": JSON.stringify({ name: "dep", version: "1.0.0", main: "index.js" }),
-      "node_modules/dep/index.js": "module.exports.three = 3;"
+      "node_modules/dep/index.js": "module.exports.three = 3;",
     });
     const { definition, fixture } = load(dir, manifest);
 
@@ -67,7 +66,7 @@ module.exports.activate = ctx => { ctx.memory.set("sum", helper.two + dep.three)
     const manifest = makeManifest({ id: "wired", styles: ["look.css"], ytmScripts: ["scripts/tweak.script.js"] });
     const dir = addonDir("wired", {
       "look.css": "body { opacity: 1; }",
-      "scripts/tweak.script.js": "(function () { return true; });"
+      "scripts/tweak.script.js": "(function () { return true; });",
     });
     const { definition, fixture } = load(dir, manifest);
 
@@ -89,7 +88,7 @@ describe("scanExternalAddons", () => {
 
     const scans = scanExternalAddons(root);
     expect(scans).toHaveLength(1);
-    expect(scans[0].error).toBeUndefined();
-    expect(scans[0].warnings?.[0]).toContain("semver");
+    expect(requireValue(scans[0]).error).toBeUndefined();
+    expect(requireValue(scans[0]).warnings?.[0]).toContain("semver");
   });
 });

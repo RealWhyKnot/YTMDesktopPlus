@@ -1,1 +1,6 @@
-lint-staged
+#!/usr/bin/env bash
+set -euo pipefail
+shopt -s inherit_errexit
+
+node .yarn/releases/yarn-4.18.0.cjs lint-staged
+bash .husky/checks

@@ -1,7 +1,7 @@
 import log from "electron-log";
 import { globalShortcut } from "electron";
 import type Conf from "conf";
-import type MemoryStore from "./memory-store";
+import type { MemoryStore } from "./memory-store";
 import type { MemoryStoreSchema, StoreSchema } from "../shared/store/schema";
 
 const SHORTCUT_BINDINGS = [
@@ -11,18 +11,18 @@ const SHORTCUT_BINDINGS = [
   { key: "thumbsUp", command: "toggleLike", flag: "shortcutsThumbsUpRegisterFailed" },
   { key: "thumbsDown", command: "toggleDislike", flag: "shortcutsThumbsDownRegisterFailed" },
   { key: "volumeUp", command: "volumeUp", flag: "shortcutsVolumeUpRegisterFailed" },
-  { key: "volumeDown", command: "volumeDown", flag: "shortcutsVolumeDownRegisterFailed" }
+  { key: "volumeDown", command: "volumeDown", flag: "shortcutsVolumeDownRegisterFailed" },
 ] as const;
 
 export function anyShortcutChanged(newState: Readonly<StoreSchema>, oldState: Readonly<StoreSchema>): boolean {
-  return SHORTCUT_BINDINGS.some(binding => newState.shortcuts[binding.key] !== oldState.shortcuts[binding.key]);
+  return SHORTCUT_BINDINGS.some((binding) => newState.shortcuts[binding.key] !== oldState.shortcuts[binding.key]);
 }
 
-export interface ShortcutDeps {
+export type ShortcutDeps = {
   store: Conf<StoreSchema>;
   memoryStore: MemoryStore<MemoryStoreSchema>;
   sendRemoteCommand(command: string): void;
-}
+};
 
 export function createShortcutRegistrar(deps: ShortcutDeps) {
   return function registerShortcuts(): void {
@@ -38,19 +38,19 @@ export function createShortcutRegistrar(deps: ShortcutDeps) {
         continue;
       }
 
-      let registered = false;
+      let isRegistered = false;
       try {
-        registered = globalShortcut.register(accelerator, () => deps.sendRemoteCommand(binding.command));
-      } catch {
-        /* ignored */
+        isRegistered = globalShortcut.register(accelerator, () => deps.sendRemoteCommand(binding.command));
+      } catch (error) {
+        log.warn("shortcuts: operation failed", error);
       }
 
-      if (!registered) {
+      if (!isRegistered) {
         log.info(`Failed to register shortcut: ${binding.key}`);
       } else {
         log.info(`Registered shortcut: ${binding.key}`);
       }
-      deps.memoryStore.set(binding.flag, !registered);
+      deps.memoryStore.set(binding.flag, !isRegistered);
     }
 
     log.info("Registered shortcuts");

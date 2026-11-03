@@ -1,0 +1,53 @@
+:root {
+  --layer-phone-banner: 999;
+}
+
+.ytmd-phone-banner {
+  position: fixed;
+  right: 16px;
+  bottom: 88px;
+  z-index: var(--layer-phone-banner);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 8px;
+  background: var(--ytmd-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font-family: var(--ytmd-font, inherit);
+  color: var(--ytmd-text);
+}
+
+.ytmd-phone-banner .ytmd-phone-banner-art {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+}
+
+.ytmd-phone-banner .ytmd-phone-banner-title {
+  font-size: 1.3rem;
+  font-weight: 500;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ytmd-phone-banner .ytmd-phone-banner-subtitle {
+  font-size: 1.1rem;
+  color: var(--ytmd-text-muted);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ytmd-phone-banner .ytmd-phone-banner-caption {
+  font-size: 1rem;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+.ytmd-phone-banner-art[data-hidden] {
+  display: none;
+}

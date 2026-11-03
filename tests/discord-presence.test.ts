@@ -1,31 +1,36 @@
+import Conf from "conf";
+import { MemoryStore } from "../src/main/memory-store";
+import type { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
+import { makeTempDir } from "./helpers/temp-dir";
+import { callMethod } from "./helpers/call-method";
+import { requireValue } from "./helpers/require-value";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import DiscordPresence, {
-  connectionRetryDelay,
-  getHighestResThumbnail,
-  type PresenceButtonsProvider,
-  type RemoteTrackActivity
-} from "../src/main/integrations/discord-presence";
+import { DiscordPresence, connectionRetryDelay, getHighestResThumbnail, type PresenceButtonsProvider } from "../src/main/integrations/discord-presence";
+import type { RemoteTrackActivity } from "~shared/addons/sdk";
 import { getIPCPaths } from "../src/main/integrations/discord-presence/minimal-discord-client";
-import IPCClient, { OPCode } from "../src/main/integrations/discord-presence/minimal-discord-client/ipc";
+import { IPCClient, OPCode } from "../src/main/integrations/discord-presence/minimal-discord-client/ipc";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
 import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
+import { partialPlayerState } from "./helpers/partial-player-state";
 
-// The buttons discord shows on the presence. Discord renders at most two
-// buttons and only http(s) urls; anything else silently drops the whole
-// activity frame, so both limits are part of the contract here.
+function provideStores(presence: DiscordPresence, settings: unknown = {}) {
+  const store = new Conf<StoreSchema>({ cwd: makeTempDir("ytmd-presence-") });
+  vi.spyOn(store, "get").mockImplementation(() => settings);
+  const memory = new MemoryStore<MemoryStoreSchema>();
+  presence.provide(store, memory);
+  return memory;
+}
 
-type Buttons = { label: string; url: string }[] | undefined;
-
-function buildButtons(providers: PresenceButtonsProvider[]): Buttons {
+function buildButtons(providers: PresenceButtonsProvider[]): unknown {
   const presence = new DiscordPresence();
   for (const provider of providers) {
     presence.registerButtonsProvider(provider);
   }
-  return (presence as unknown as { buildButtons(): Buttons }).buildButtons();
+  return callMethod(presence, "buildButtons");
 }
 
 describe("buildButtons", () => {
@@ -45,12 +50,12 @@ describe("buildButtons", () => {
         { label: "Bad", url: "ytmdplus://room/abcdefgh" },
         { label: "One", url: "https://ytmdesktopplus.com/r/abcdefgh" },
         { label: "Two", url: "https://ytmdesktopplus.com/r/ijklmnop" },
-        { label: "Three", url: "https://ytmdesktopplus.com/" }
-      ]
+        { label: "Three", url: "https://ytmdesktopplus.com/" },
+      ],
     ]);
     expect(buttons).toEqual([
       { label: "One", url: "https://ytmdesktopplus.com/r/abcdefgh" },
-      { label: "Two", url: "https://ytmdesktopplus.com/r/ijklmnop" }
+      { label: "Two", url: "https://ytmdesktopplus.com/r/ijklmnop" },
     ]);
   });
 
@@ -59,7 +64,7 @@ describe("buildButtons", () => {
       () => {
         throw new Error("provider blew up");
       },
-      () => [{ label: "Listen Along", url: "https://ytmdesktopplus.com/r/abcdefgh" }]
+      () => [{ label: "Listen Along", url: "https://ytmdesktopplus.com/r/abcdefgh" }],
     ]);
     expect(buttons).toEqual([{ label: "Listen Along", url: "https://ytmdesktopplus.com/r/abcdefgh" }]);
   });
@@ -68,7 +73,7 @@ describe("buildButtons", () => {
     const presence = new DiscordPresence();
     const unsubscribe = presence.registerButtonsProvider(() => [{ label: "One", url: "https://ytmdesktopplus.com/" }]);
     unsubscribe();
-    const buttons = (presence as unknown as { buildButtons(): Buttons }).buildButtons();
+    const buttons = callMethod(presence, "buildButtons");
     expect(buttons).toBeUndefined();
   });
 });
@@ -83,11 +88,11 @@ function playingState(): PlayerState {
       durationSeconds: 200,
       thumbnails: [{ url: "https://example.invalid/art.jpg", width: 60, height: 60 }],
       title: "Title",
-      id: "videoid1234"
+      id: "videoid1234",
     }),
     videoProgress: 12,
     trackState: VideoState.Playing,
-    hasFullMetadata: true
+    hasFullMetadata: true,
   });
 }
 
@@ -102,7 +107,7 @@ type PresenceHarness = {
   calls: { set: number; clear: number };
   activities: ActivityPayload[];
   settings: { listenAlongRoomsEnabled: boolean; discordPresenceHideOnPause: boolean };
-  stateChanged(state: PlayerState): void;
+  stateChanged: (state: PlayerState) => void;
 };
 
 function makePresence(settings: Partial<PresenceHarness["settings"]> = {}): PresenceHarness {
@@ -110,23 +115,23 @@ function makePresence(settings: Partial<PresenceHarness["settings"]> = {}): Pres
   const activities: ActivityPayload[] = [];
   const resolved = { listenAlongRoomsEnabled: false, discordPresenceHideOnPause: false, ...settings };
   const presence = new DiscordPresence();
-  presence.provide({ get: () => resolved } as never, { get: (): null => null } as never);
+  provideStores(presence, resolved);
   Object.assign(presence, {
-    ready: true,
+    isReady: true,
     discordClient: {
       setActivity: (activity: ActivityPayload) => {
         calls.set++;
         activities.push(activity);
       },
-      clearActivity: () => calls.clear++
-    }
+      clearActivity: () => calls.clear++,
+    },
   });
   return {
     presence,
     calls,
     activities,
     settings: resolved,
-    stateChanged: state => (presence as unknown as { playerStateChanged(state: PlayerState): void }).playerStateChanged(state)
+    stateChanged: (state) => callMethod(presence, "playerStateChanged", state),
   };
 }
 
@@ -135,26 +140,24 @@ describe("activity updates", () => {
     vi.useRealTimers();
   });
 
-  // A room opening at launch refreshes the activity before any track has
-  // loaded. That refresh must not become the last one of the session.
   it("still reports playback after a refresh with no track loaded", () => {
     vi.useFakeTimers();
     const calls = { set: 0, clear: 0 };
     const presence = new DiscordPresence();
-    presence.provide({ get: () => ({ listenAlongRoomsEnabled: false }) } as never, { get: (): null => null } as never);
+    provideStores(presence, { listenAlongRoomsEnabled: false });
     Object.assign(presence, {
-      ready: true,
+      isReady: true,
       discordClient: {
         setActivity: () => calls.set++,
-        clearActivity: () => calls.clear++
-      }
+        clearActivity: () => calls.clear++,
+      },
     });
 
     presence.refreshActivity();
     vi.advanceTimersByTime(1000);
     expect(calls).toEqual({ set: 0, clear: 1 });
 
-    (presence as unknown as { playerStateChanged(state: PlayerState): void }).playerStateChanged(playingState());
+    callMethod(presence, "playerStateChanged", playingState());
     vi.advanceTimersByTime(1000);
     expect(calls).toEqual({ set: 1, clear: 1 });
   });
@@ -218,8 +221,6 @@ describe("activity updates", () => {
   });
 });
 
-// A remote track (playback outside this app) stands in wherever the activity
-// used to clear, and never displaces a local track.
 describe("remote activity provider", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -230,7 +231,7 @@ describe("remote activity provider", () => {
     author: "Remote Author",
     videoId: "remoteid123",
     thumbnailUrl: "https://example.invalid/remote.jpg",
-    startedAtEpochMs: 1_000_000
+    startedAtEpochMs: 1_000_000,
   };
 
   it("stands in when no track is loaded, with a start-only timestamp", () => {
@@ -241,10 +242,10 @@ describe("remote activity provider", () => {
     presence.refreshActivity();
     vi.advanceTimersByTime(1000);
     expect(calls).toEqual({ set: 1, clear: 0 });
-    expect(activities[0].details).toBe("Remote Title");
-    expect(activities[0].timestamps).toEqual({ start: 1_000_000 });
-    expect(activities[0].assets?.small_text).toBe("Playing on another device");
-    expect(activities[0].assets?.large_image).toBe("https://example.invalid/remote.jpg");
+    expect(requireValue(activities[0]).details).toBe("Remote Title");
+    expect(requireValue(activities[0]).timestamps).toEqual({ start: 1_000_000 });
+    expect(requireValue(activities[0]).assets?.small_text).toBe("Playing on another device");
+    expect(requireValue(activities[0]).assets?.large_image).toBe("https://example.invalid/remote.jpg");
   });
 
   it("never displaces a local track", () => {
@@ -285,7 +286,7 @@ describe("remote activity provider", () => {
 
     stateChanged(playingState());
     vi.advanceTimersByTime(1000);
-    stateChanged({ ...playingState(), videoDetails: null } as PlayerState);
+    stateChanged({ ...playingState(), videoDetails: null });
     expect(activities.at(-1)?.details).toBe("Remote Title");
 
     presence.refreshActivity();
@@ -316,6 +317,15 @@ describe("tracks without artwork", () => {
     vi.useRealTimers();
   });
 
+  it("accepts normalized partial metadata without throwing", () => {
+    vi.useFakeTimers();
+    const { calls, activities, stateChanged } = makePresence();
+    stateChanged(partialPlayerState());
+    expect(() => vi.advanceTimersByTime(1000)).not.toThrow();
+    expect(calls.set).toBe(1);
+    expect(activities[0]).toMatchObject({ details: "\u200b\u200b", state: "\u200b\u200b", assets: { large_image: "icon" } });
+  });
+
   it("picks no thumbnail from an empty or missing list", () => {
     expect(getHighestResThumbnail([])).toBeUndefined();
     expect(getHighestResThumbnail(undefined)).toBeUndefined();
@@ -327,7 +337,7 @@ describe("tracks without artwork", () => {
       getHighestResThumbnail([
         { url: "https://example.invalid/small.jpg", width: 60, height: 60 },
         { url: "https://example.invalid/big.jpg", width: 544, height: 544 },
-        { url: "https://example.invalid/mid.jpg", width: 120, height: 120 }
+        { url: "https://example.invalid/mid.jpg", width: 120, height: 120 },
       ])
     ).toBe("https://example.invalid/big.jpg");
   });
@@ -336,11 +346,11 @@ describe("tracks without artwork", () => {
     vi.useFakeTimers();
     const { calls, activities, stateChanged } = makePresence();
     const state = playingState();
-    stateChanged({ ...state, videoDetails: { ...state.videoDetails, thumbnails: [] } });
+    stateChanged({ ...state, videoDetails: { ...requireValue(state.videoDetails), thumbnails: [] } });
 
     expect(() => vi.advanceTimersByTime(1000)).not.toThrow();
     expect(calls.set).toBe(1);
-    expect(activities[0].assets?.large_image).toBe("icon");
+    expect(requireValue(activities[0]).assets?.large_image).toBe("icon");
   });
 
   it("keeps the debounce timer from throwing when the client does", () => {
@@ -351,8 +361,10 @@ describe("tracks without artwork", () => {
         setActivity: () => {
           throw new Error("socket gone");
         },
-        clearActivity: () => {}
-      }
+        clearActivity: () => {
+          return undefined;
+        },
+      },
     });
     stateChanged(playingState());
 
@@ -366,12 +378,11 @@ describe("connection retries", () => {
   });
 
   function retryingPresence() {
-    const memory: Record<string, unknown> = {};
     const connect = vi.fn(() => Promise.reject(new Error("no discord")));
     const presence = new DiscordPresence();
-    presence.provide({ get: () => ({}) } as never, { set: (key: string, value: unknown) => (memory[key] = value) } as never);
-    Object.assign(presence, { enabled: true, discordClient: { connect } });
-    const retry = () => (presence as unknown as { retryDiscordConnection(): void }).retryDiscordConnection();
+    const memory = provideStores(presence).getState();
+    Object.assign(presence, { isEnabled: true, discordClient: { connect } });
+    const retry = () => callMethod(presence, "retryDiscordConnection");
     return { presence, connect, memory, retry };
   }
 
@@ -399,7 +410,14 @@ describe("connection retries", () => {
   it("stops retrying once disabled", async () => {
     vi.useFakeTimers();
     const { presence, connect, retry } = retryingPresence();
-    Object.assign(presence, { discordClient: { connect, destroy: () => {} } });
+    Object.assign(presence, {
+      discordClient: {
+        connect,
+        destroy: () => {
+          return undefined;
+        },
+      },
+    });
 
     retry();
     await vi.advanceTimersByTimeAsync(5000);
@@ -424,7 +442,8 @@ describe("ipc frames", () => {
     const ipc = new IPCClient();
     const received: [number, unknown][] = [];
     ipc.on("data", (op: number, json: unknown) => received.push([op, json]));
-    const socket = (ipc as unknown as { socket: Socket }).socket;
+    const socket: unknown = Reflect.get(ipc, "socket");
+    if (!(socket instanceof Socket)) throw new TypeError("Expected an IPC socket");
     return { ipc, received, feed: (chunk: Buffer) => socket.emit("data", chunk), socket };
   }
 
@@ -450,7 +469,7 @@ describe("ipc frames", () => {
     feed(Buffer.concat([first, second, third.subarray(0, 5)]));
     expect(received).toEqual([
       [OPCode.FRAME, { evt: "READY" }],
-      [OPCode.PING, { n: 1 }]
+      [OPCode.PING, { n: 1 }],
     ]);
 
     feed(third.subarray(5));
@@ -479,13 +498,8 @@ describe("ipc frames", () => {
   });
 });
 
-// The socket a flatpak discord opens lands under its own runtime dir, not the
-// shared one, and reaching it at all depends on the matching --filesystem in
-// forge.config.ts. Nothing else in the suite would notice it going missing.
-// The posix branch is unreachable on the platform this repo is developed on,
-// hence the override rather than a skip.
 function withPlatform<T>(platform: string, run: () => T): T {
-  const original = Object.getOwnPropertyDescriptor(process, "platform")!;
+  const original = requireValue(Object.getOwnPropertyDescriptor(process, "platform"));
   Object.defineProperty(process, "platform", { value: platform, configurable: true });
   try {
     return run();
@@ -520,7 +534,7 @@ describe("getIPCPaths", () => {
     const paths = withPlatform("linux", getIPCPaths);
 
     expect(paths.slice(0, 2)).toEqual([`${dir}/discord-ipc-0`, `${dir}/app/com.discordapp.Discord/discord-ipc-0`]);
-    expect(paths.some(candidate => candidate.includes("snap.discord"))).toBe(false);
+    expect(paths.some((candidate) => candidate.includes("snap.discord"))).toBe(false);
     expect(paths).toHaveLength(20);
   });
 
@@ -537,7 +551,7 @@ describe("getIPCPaths", () => {
   });
 
   it("uses named pipes on windows", () => {
-    expect(withPlatform("win32", getIPCPaths)).toEqual(Array.from({ length: 10 }, (_unused, id) => String.raw`\\?\pipe\discord-ipc-` + id));
+    expect(withPlatform("win32", getIPCPaths)).toEqual(Array.from({ length: 10 }, (_unused, id) => String.raw`\\?\pipe\discord-ipc-${id}`));
   });
 });
 
@@ -550,7 +564,7 @@ describe("test clients", () => {
 
   it.each([
     ["YTMD_TEST", "1"],
-    ["YTMD_TEST_PROFILE", String.raw`C:\profiles\smoke`]
+    ["YTMD_TEST_PROFILE", String.raw`C:\profiles\smoke`],
   ])("offer no discord socket when %s is set", (variable, value) => {
     vi.stubEnv(variable, value);
 
@@ -563,7 +577,7 @@ describe("test clients", () => {
     vi.stubEnv("YTMD_TEST_PROFILE", String.raw`C:\profiles\smoke`);
     const connect = vi.spyOn(Socket.prototype, "connect");
     const presence = new DiscordPresence();
-    presence.provide({ get: () => ({}) } as never, { set: vi.fn() } as never);
+    provideStores(presence);
 
     presence.enable();
     await vi.advanceTimersByTimeAsync(15_000);

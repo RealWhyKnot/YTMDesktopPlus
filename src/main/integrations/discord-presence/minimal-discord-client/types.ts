@@ -1,17 +1,28 @@
-export enum DiscordActivityType {
-  Game = 0,
-  Streaming = 1,
-  Listening = 2,
-  Watching = 3,
-  Custom = 4,
-  Competing = 5
-}
+export const DiscordActivityType = {
+  Game: 0,
+  [0]: "Game",
+  Streaming: 1,
+  [1]: "Streaming",
+  Listening: 2,
+  [2]: "Listening",
+  Watching: 3,
+  [3]: "Watching",
+  Custom: 4,
+  [4]: "Custom",
+  Competing: 5,
+  [5]: "Competing",
+} as const;
+export type DiscordActivityType = (typeof DiscordActivityType)[Exclude<keyof typeof DiscordActivityType, number>];
 
-export enum DiscordActivityStatusDisplayType {
-  Name = 0,
-  State = 1,
-  Details = 2
-}
+export const DiscordActivityStatusDisplayType = {
+  Name: 0,
+  [0]: "Name",
+  State: 1,
+  [1]: "State",
+  Details: 2,
+  [2]: "Details",
+} as const;
+export type DiscordActivityStatusDisplayType = (typeof DiscordActivityStatusDisplayType)[Exclude<keyof typeof DiscordActivityStatusDisplayType, number>];
 
 export type DiscordActivity = {
   type?: DiscordActivityType;

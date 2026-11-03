@@ -7,7 +7,7 @@ import { makeTempDir } from "./helpers/temp-dir";
 const electronApp = vi.hoisted(() => ({ userData: "" }));
 
 vi.mock("electron", () => ({
-  app: { getPath: () => electronApp.userData, getVersion: () => "2.0.11" }
+  app: { getPath: () => electronApp.userData, getVersion: () => "2.0.11" },
 }));
 
 function openStore(stored?: Record<string, unknown>) {

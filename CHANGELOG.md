@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+
 - docs: count only installer downloads in the badge
 - fix(window): respect the start minimized setting
 - feat(lyrics): highlight lyrics as they're sung
@@ -15,9 +16,11 @@
 - docs: add a README banner, badges, issue templates, SECURITY.md and CONTRIBUTING.md
 
 ## [v2026.1015.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.1015.0-beta) - 2026-10-15
+
 - fix(rooms): log the close code, reason and socket error when a room or audio connection drops
 
 ## [v2026.1011.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.1011.0-beta) - 2026-10-11
+
 - ci(release): upload each leg's files with gh, one at a time, and keep what landed
 - ci(release): judge a leg's publish by what reached the release
 - ci(release): retry a leg's publish after clearing its assets
@@ -37,6 +40,7 @@
 ## [v2026.929.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.929.0-beta) - 2026-09-29
 
 ## [v2026.928.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.928.0-beta) - 2026-09-28
+
 - build(deps): give the appimage maker's mksquashfs version check 60s instead of 3s
 - test(harness): retry changeVideo in the playback scenario and poll state within its rate limit
 - fix(test-seams): block watch history writes from test clients
@@ -87,25 +91,30 @@
 - fix(rooms): keep the leave button inside the listen along window
 
 ## [v2026.919.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.919.1-beta) - 2026-09-19
+
 - fix(rooms): report a capture encode failure instead of going quiet
 - fix(rooms): let a room link be acted on while already in a room
 - fix(rooms): count the people listening in a browser
 - feat(rooms)!: point the Listen Along button at the room
 
 ## [v2026.919.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.919.0-beta) - 2026-09-19
+
 - fix(release): credit authors by profile link instead of a mention
 
 ## [v2026.918.0](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.918.0) - 2026-09-18
+
 - test(harness): check blend cuts and blends a skip live
 - feat(blend): add a blend skips toggle, off by default
 - test(harness): audit player-bar geometry across bundled themes
 - fix(themes): stop pitch repositioning the slider knob
 
 ## [v2026.915.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.915.0-beta) - 2026-09-15
+
 - fix(ytmview): guard rating and playlist scripts against a null player response during preroll ads
 - fix(ytmview): skip the resume video data send while a preroll ad nulls the player response
 
 ## [v2026.914.0](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.914.0) - 2026-09-14
+
 - fix(tools): copy the whole packaged dir so asar integrity fuses accept it
 - feat(tools): script to install the working tree into the local client
 - fix(themes): repaint the light-scheme text YouTube hardcodes
@@ -113,6 +122,7 @@
 - test(harness): add ytm-contrast-audit scenario
 
 ## [v2026.914.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.914.0-beta) - 2026-09-14
+
 - feat(addons): manifest warnings on cards, wider dev reload, panel example
 - feat(themes): per-theme warnings, rescan, scaffold and dev live reload
 - feat(themes): bundle eight new themes with their own motion
@@ -122,13 +132,16 @@
 - ci(nightly): gate betas on functional changes
 
 ## [v2026.911.1](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.911.1) - 2026-09-11
+
 - Stable build of v2026.911.1-beta.
 
 ## [v2026.911.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.911.1-beta) - 2026-09-11
+
 - test(harness): measure how YouTube Music paints itself
 - fix(themes): repaint YouTube Music through its own tokens
 
 ## [v2026.911.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.911.0-beta) - 2026-09-11
+
 - fix(linux): attach the apparmor profile to the real appimage binary
 - fix(blend): stand down when the shadow loaded but never started playing
 - feat(addons)!: replace the dj addon with blend
@@ -152,12 +165,14 @@
 - fix(ytmview): resolve the player api by discovery instead of a pinned name
 
 ## [v2026.909.1](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.909.1) - 2026-09-09
+
 - fix(ytmview): restore playerApi from the async resolvePlayerApi
 - ci: allow the changelog append to be dispatched manually
 - ci: use the shared changelog-append workflow and a tag-based release input
 - ci: use the shared workflows for wiki sync, version guard and dependabot merges
 
 ## [v2026.825.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.825.0-beta) - 2026-08-25
+
 - tools(steamdeck): run the packaged flatpak on an arch wsl distro
 - build(flatpak): stamp the version and arch onto the bundle name
 - fix(volume-ratio): stop the enable script wrapping its own volume descriptor
@@ -165,11 +180,13 @@
 - feat(playback): block ads in the player response instead of only their telemetry
 
 ## [v2026.820.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.820.0-beta) - 2026-08-20
+
 - fix(main): quit on native window close instead of lingering headless
 - fix(flatpak): install the icon into hicolor and ship appstream metadata
 - fix(discord): find the ipc socket a flatpak discord opens
 
 ## [v2026.815.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.815.0-beta) - 2026-08-15
+
 - test(harness): drive dj-automix from a real radio queue on the track clock
 - fix(dj): keep the blend alive through the pause that advancing causes
 - feat(dj): shape the blend into the queue's next track instead of choosing it
@@ -178,6 +195,7 @@
 - fix(ytmview): serve script invokes before player state starts flowing
 
 ## [v2026.813.2-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.813.2-beta) - 2026-08-13
+
 - ci(release): clear a leg's stale assets before publishing so re-runs are safe
 - ci(release): smoke test the published flatpak before attaching notes
 - feat(logging): record whether the music page loaded in the log
@@ -187,6 +205,7 @@
 - fix(dj): keep recently played tracks in the library pool, priced by recency
 
 ## [v2026.813.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.813.1-beta) - 2026-08-13
+
 - feat(addons): dj tempo-matches blends and mixes in library tracks
 - feat(addons): dj learns tracks and picks the next one to mix
 - feat(addons): windows can open hidden for background work
@@ -195,6 +214,7 @@
 - test(harness): add dj stream and queue probe scenarios
 
 ## [v2026.813.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.813.0-beta) - 2026-08-13
+
 - refactor: share powershell self-test preamble
 - refactor: move shared scenario fixtures into harness lib
 - test: manage temp dirs with shared helper
@@ -261,6 +281,7 @@
 - fix(ad-blocker): drop cosmetic filtering so the song menu stops breaking
 
 ## [v2026.811.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.811.1-beta) - 2026-08-11
+
 - feat(addons): duration-aware mirror expiry with a one-shot lookup
 - feat(discord): phone badge asset on the remote track activity
 - feat(addons): phone playback addon mirroring what the phone is playing
@@ -274,6 +295,7 @@
 - feat(discord): hide presence while paused by default
 
 ## [v2026.811.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.811.0-beta) - 2026-08-11
+
 - style(renderer): adopt the shared palette in the room and companion windows
 - feat(addons): confirm before enabling an external addon and document the format
 - feat(addons): ship listen along rooms as a bundled addon
@@ -288,22 +310,27 @@
 - feat(discord): add setting to hide presence while paused
 
 ## [v2026.807.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.807.0-beta) - 2026-08-07
+
 - ci(nightly-beta): skip nights with only changelog bookkeeping
 - feat(playback): optional ad blocking and idle-pause prevention
 - fix(companion-server): pass ws's server class to socket.io
 
 ## [v2026.805.0](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.805.0) - 2026-08-05
+
 - Stable build of v2026.805.0-beta.
 
 ## [v2026.805.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.805.0-beta) - 2026-08-05
+
 - feat(listen-along): show live room listeners in the main window title bar
 - fix(loudness-normalization): inject the gain scripts as callable functions
 - fix(discord-presence): keep updating the activity after a refresh with no track loaded
 
 ## [v2026.804.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.804.1-beta) - 2026-08-04
+
 - feat(listen-along): open a room automatically while discord presence is shared
 
 ## [v2026.804.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.804.0-beta) - 2026-08-04
+
 - ci(release): pre-create the release so platform publishes cannot race, keep builds independent, current action majors
 - test(harness): audio capture capability probe and live stream scenario
 - feat(listen-along): stream room audio and artwork to browser listeners
@@ -329,9 +356,11 @@
 - ci(release): grouped commit notes with author attribution and compare footer
 
 ## [v2026.803.1](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.803.1) - 2026-08-03
+
 - fix(release): publish immediately with prerelease flag and richer notes table
 
 ## [v2026.803.1-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.803.1-beta) - 2026-08-03
 
 ## [v2026.803.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.803.0-beta) - 2026-08-03
+
 - fix(build): align executable name with package name for linux makers

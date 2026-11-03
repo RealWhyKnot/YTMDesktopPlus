@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import type { ThemeManifest, ThemeOrigin } from "~shared/themes/sdk";
-import { themeManifestWarnings, validateThemeManifest } from "./validate-manifest";
+import { isThemeManifest, themeManifestWarnings, validateThemeManifest } from "./validate-manifest";
 
 export const THEME_MANIFEST_NAME = "theme.json";
 export const BASE_LAYER_FOLDER = "_base";
@@ -21,13 +21,13 @@ export function scanThemeFolder(dir: string, origin: ThemeOrigin): ThemeScan {
   try {
     parsed = JSON.parse(fs.readFileSync(path.join(dir, THEME_MANIFEST_NAME), "utf8"));
   } catch (error) {
-    return { dir, folderName, origin, error: `${THEME_MANIFEST_NAME} could not be read: ${error}` };
+    return { dir, folderName, origin, error: `${THEME_MANIFEST_NAME} could not be read: ${String(error)}` };
   }
   const invalid = validateThemeManifest(parsed);
-  if (invalid) {
+  if (invalid || !isThemeManifest(parsed)) {
     return { dir, folderName, origin, error: `${THEME_MANIFEST_NAME} is invalid: ${invalid}` };
   }
-  const manifest = parsed as ThemeManifest;
+  const manifest = parsed;
   if (manifest.id !== folderName) {
     return { dir, folderName, origin, manifest, error: "folder name must match the theme id" };
   }
@@ -44,7 +44,7 @@ export function scanThemes(themesDir: string, origin: ThemeOrigin): ThemeScan[] 
   }
 
   return entries
-    .filter(entry => entry.isDirectory() && !entry.name.startsWith("_") && !entry.name.startsWith("."))
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_") && !entry.name.startsWith("."))
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map(entry => scanThemeFolder(path.join(themesDir, entry.name), origin));
+    .map((entry) => scanThemeFolder(path.join(themesDir, entry.name), origin));
 }

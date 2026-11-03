@@ -53,7 +53,7 @@ jobs:
         if: steps.candidate.outputs.sha != ''
         uses: RealWhyKnot/workflows/beta-gate@v1
         with:
-          tag-glob: 'v20*'
+          tag-glob: "v20*"
           ignore-paths: |
             .husky/**
             .prettierrc

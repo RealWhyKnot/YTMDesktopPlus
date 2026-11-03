@@ -15,7 +15,7 @@ const valid = (overrides: Record<string, unknown> = {}) => ({
   author: "a",
   description: "d",
   styles: ["theme.css"],
-  ...overrides
+  ...overrides,
 });
 
 function writeTheme(dir: string, folder: string, manifest: unknown): string {
@@ -39,17 +39,17 @@ describe("validateThemeManifest", () => {
     ["a missing author", valid({ author: "" })],
     ["a zero apiVersion", valid({ apiVersion: 0 })],
     ["a non array styles", valid({ styles: "theme.css" })],
-    ["a non hex overlay", valid({ titleBarOverlay: { color: "red", symbolColor: "#fff" } })]
+    ["a non hex overlay", valid({ titleBarOverlay: { color: "red", symbolColor: "#fff" } })],
   ])("rejects %s", (_label, manifest) => {
     expect(validateThemeManifest(manifest)).not.toBeNull();
   });
 
-  it.each(["main", "ytmScripts", "defaultEnabled"])("rejects the addon field %s and says to use an addon", field => {
+  it.each(["main", "ytmScripts", "defaultEnabled"])("rejects the addon field %s and says to use an addon", (field) => {
     const reason = validateThemeManifest(valid({ [field]: "index.js" }));
     expect(reason).toContain("belongs to an addon");
   });
 
-  it.each([["styles"], ["appStyles"], ["ytmStyles"]])("refuses a %s path leaving the folder", field => {
+  it.each([["styles"], ["appStyles"], ["ytmStyles"]])("refuses a %s path leaving the folder", (field) => {
     expect(validateThemeManifest(valid({ [field]: ["../outside.css"] }))).toContain("stay inside the theme folder");
     expect(validateThemeManifest(valid({ [field]: ["/etc/x.css"] }))).toContain("stay inside the theme folder");
     expect(validateThemeManifest(valid({ [field]: ["C:/x.css"] }))).toContain("stay inside the theme folder");
@@ -62,7 +62,7 @@ describe("validateThemeManifest", () => {
 
 describe("themeManifestWarnings", () => {
   it("warns about a loose version and a theme that styles nothing", () => {
-    const warnings = themeManifestWarnings({ id: "x", name: "X", version: "1", author: "a", description: "d" } as ThemeManifest);
+    const warnings = themeManifestWarnings({ id: "x", name: "X", version: "1", author: "a", description: "d" });
     expect(warnings.join(" ")).toContain("not semver shaped");
     expect(warnings.join(" ")).toContain("changes nothing");
   });
@@ -104,7 +104,7 @@ describe("scanning", () => {
     fs.mkdirSync(path.join(dir, "_base"));
     fs.mkdirSync(path.join(dir, ".git"));
 
-    expect(scanThemes(dir, "user").map(scan => scan.folderName)).toEqual(["sample"]);
+    expect(scanThemes(dir, "user").map((scan) => scan.folderName)).toEqual(["sample"]);
   });
 
   it("returns nothing for a missing directory", () => {

@@ -1,0 +1,8 @@
+ytmusic-tab-renderer.ytmd-lyrics-on[page-type="MUSIC_PAGE_TYPE_TRACK_LYRICS"] > ytmusic-section-list-renderer {
+  display: none !important;
+}
+
+ytmusic-tab-renderer:not(.ytmd-lyrics-on) > .ytmd-lyrics,
+ytmusic-tab-renderer:not([page-type="MUSIC_PAGE_TYPE_TRACK_LYRICS"]) > .ytmd-lyrics {
+  display: none;
+}

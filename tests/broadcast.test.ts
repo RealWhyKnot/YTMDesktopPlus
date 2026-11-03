@@ -1,15 +1,14 @@
-import type { WebContents } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import { createStoreBroadcaster, type BroadcastTargets } from "../src/main/windows/broadcast";
 
 const liveContents = () => {
   const send = vi.fn();
-  return { contents: { isDestroyed: () => false, send } as unknown as WebContents, send };
+  return { contents: { isDestroyed: () => false, send }, send };
 };
 
 const destroyedContents = () => {
   const send = vi.fn();
-  return { contents: { isDestroyed: () => true, send } as unknown as WebContents, send };
+  return { contents: { isDestroyed: () => true, send }, send };
 };
 
 const targets = (overrides: Partial<BroadcastTargets>): BroadcastTargets => ({
@@ -17,7 +16,7 @@ const targets = (overrides: Partial<BroadcastTargets>): BroadcastTargets => ({
   getSettingsWindow: () => null,
   getYtmView: () => null,
   addonWebContents: () => [],
-  ...overrides
+  ...overrides,
 });
 
 describe("createStoreBroadcaster", () => {
@@ -27,7 +26,7 @@ describe("createStoreBroadcaster", () => {
     const broadcast = createStoreBroadcaster(
       targets({
         getMainWindow: () => ({ webContents: main.contents }),
-        getYtmView: () => ({ webContents: ytm.contents })
+        getYtmView: () => ({ webContents: ytm.contents }),
       })
     );
 
@@ -40,11 +39,9 @@ describe("createStoreBroadcaster", () => {
   });
 
   it("skips a stale view whose webContents is gone", () => {
-    // A BrowserView's webContents getter returns undefined after the owning
-    // window is destroyed; the holder object itself stays non-null.
     const broadcast = createStoreBroadcaster(
       targets({
-        getYtmView: () => ({ webContents: undefined as unknown as WebContents })
+        getYtmView: () => ({ webContents: undefined }),
       })
     );
 
@@ -55,7 +52,7 @@ describe("createStoreBroadcaster", () => {
     const settings = destroyedContents();
     const broadcast = createStoreBroadcaster(
       targets({
-        getSettingsWindow: () => ({ webContents: settings.contents })
+        getSettingsWindow: () => ({ webContents: settings.contents }),
       })
     );
 
@@ -68,7 +65,7 @@ describe("createStoreBroadcaster", () => {
     const live = liveContents();
     const broadcast = createStoreBroadcaster(
       targets({
-        addonWebContents: () => [dead.contents, live.contents]
+        addonWebContents: () => [dead.contents, live.contents],
       })
     );
 

@@ -1,0 +1,47 @@
+:root {
+  --color-history-icon-fallback: rgb(255 255 255 / 50%);
+  --color-history-icon-hover-fallback: #fff;
+}
+
+.ytmd-history-back,
+.ytmd-history-forward {
+  cursor: pointer;
+  margin: 0 18px 0 2px;
+  font-size: 2.4rem;
+  color: var(--ytmd-nav-icon, var(--color-history-icon-fallback));
+}
+
+.ytmd-history-back.pivotbar,
+.ytmd-history-forward.pivotbar {
+  padding-top: 12px;
+}
+
+.ytmd-history-back[aria-disabled="true"],
+.ytmd-history-forward[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+.ytmd-history-back:hover:not([aria-disabled="true"]),
+.ytmd-history-forward:hover:not([aria-disabled="true"]) {
+  color: var(--ytmd-nav-icon-hover, var(--color-history-icon-hover-fallback));
+}
+
+.ytmd-player-bar-control.library-button {
+  margin-left: 8px;
+}
+
+.ytmd-player-bar-control.library-button[hidden] {
+  display: none;
+}
+
+.ytmd-player-bar-control.playlist-button {
+  margin-left: 8px;
+}
+
+.ytmd-player-bar-control.playlist-button[hidden] {
+  display: none;
+}
+
+.ytmd-player-bar-control.sleep-timer-button[aria-pressed="true"] {
+  color: var(--ytmd-control-active, var(--color-history-icon-hover-fallback));
+}

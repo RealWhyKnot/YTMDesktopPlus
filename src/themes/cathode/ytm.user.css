@@ -1,0 +1,25 @@
+:root {
+  --color-cathode-ytm-text-shadow-1: rgb(51 255 136 / 25%);
+  --layer-cathode-ytm-z-index-2: 9999;
+  --color-cathode-ytm-background-3: rgb(0 0 0 / 0%);
+  --color-cathode-ytm-background-4: rgb(0 0 0 / 16%);
+}
+
+ytmusic-app {
+  font-size: 1.7rem;
+  text-shadow: 0 0 6px var(--color-cathode-ytm-text-shadow-1);
+}
+
+ytmusic-app::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: var(--layer-cathode-ytm-z-index-2);
+  background: repeating-linear-gradient(to bottom, var(--color-cathode-ytm-background-3) 0 2px, var(--color-cathode-ytm-background-4) 2px 3px);
+}
+
+ytmusic-player-bar .image,
+ytmusic-thumbnail-renderer img {
+  filter: saturate(0.25) sepia(1) hue-rotate(75deg) brightness(0.95) !important;
+}

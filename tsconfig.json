@@ -1,8 +1,9 @@
 {
+  "extends": "./.github/lint/tsconfig.base.json",
   "compilerOptions": {
     "target": "ESNext",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "preserve",
+    "moduleResolution": "bundler",
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -11,14 +12,10 @@
     "outDir": "dist",
     "resolveJsonModule": true,
     "paths": {
-      "~shared/*": [
-        "./src/shared/*"
-      ],
-      "~assets/*": [
-        "./src/assets/*"
-      ]
+      "~shared/*": ["./src/shared/*"],
+      "~assets/*": ["./src/assets/*"]
     }
   },
-  "include": ["src", "vite.d.ts"],
+  "include": ["src", "vite.d.ts", "*.config.ts", "viteconfig", "forge.env.d.ts"],
   "exclude": ["node_modules", ".vite", "out", "dist"]
 }

@@ -1,20 +1,20 @@
 import type { ProjectedQueue } from "~shared/queue-projection";
 
-type Thumbnail = { url: string; width: number; height: number };
+type Thumbnail = { url: string; width?: unknown; height?: unknown };
 
 export type VideoDetailsPayload = {
   videoId: string;
-  title?: string;
-  author?: string;
-  channelId?: string;
-  lengthSeconds?: string;
-  musicVideoType?: string;
-  isLive?: boolean;
-  album?: string;
+  title?: string | null;
+  author?: string | null;
+  channelId?: string | null;
+  lengthSeconds?: string | null;
+  musicVideoType?: string | null;
+  isLive?: unknown;
+  album?: string | null;
   thumbnail?: { thumbnails: Thumbnail[] } | null;
 };
 
-export type AlbumPayload = { id: string; text: string };
+export type AlbumPayload = { id?: string | null; text?: string | null };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -47,6 +47,14 @@ export function isOptionalString(value: unknown): value is string | null | undef
   return isOptional(value, "string");
 }
 
+export function isOptionalNumber(value: unknown): value is number | null | undefined {
+  return isOptional(value, "number");
+}
+
+export function isOptionalBoolean(value: unknown): value is boolean | null | undefined {
+  return isOptional(value, "boolean");
+}
+
 export function isVideoDetailsPayload(value: unknown): value is VideoDetailsPayload {
   if (!isRecord(value) || typeof value.videoId !== "string") return false;
   for (const key of ["title", "author", "channelId", "lengthSeconds", "musicVideoType", "album"]) {
@@ -76,7 +84,7 @@ export function isQueuePayload(value: unknown): value is ProjectedQueue | null {
 }
 
 export function isStoreStatePayload(likeStatus: unknown, volume: unknown, muted: unknown, adPlaying: unknown): boolean {
-  return isOptional(likeStatus, "string") && isOptional(volume, "number") && isOptional(muted, "boolean") && isOptional(adPlaying, "boolean");
+  return isOptionalString(likeStatus) && isOptionalNumber(volume) && isOptionalBoolean(muted) && isOptionalBoolean(adPlaying);
 }
 
 export function createPayloadRejectLog(warn: (message: string) => void) {

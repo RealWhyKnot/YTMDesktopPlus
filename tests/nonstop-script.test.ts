@@ -1,16 +1,12 @@
-import { readFileSync } from "node:fs";
+import { requireRecord, requireValue } from "./helpers/require-value";
+import { callMethod } from "./helpers/call-method";
+import { readPageScript, runPageScript } from "./helpers/page-script";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installIntentionalPause } from "../src/renderer/ytmview/intentional-pause";
 
-// The enable script runs in YTM's main world against real DOM, so it is
-// exercised here against the smallest stand-in that still exposes the parts it
-// touches. What matters is which pauses it lets through: every pause this app
-// issues arrives as a plain video.pause() from an idle view, and swallowing
-// those is the defect this feature is most likely to introduce.
-
-const enableSource = readFileSync("src/main/integrations/nonstop/script/enable.script.js", "utf8").trim();
-const disableSource = readFileSync("src/main/integrations/nonstop/script/disable.script.js", "utf8").trim();
-const playerBarControlsSource = readFileSync("src/renderer/ytmview/scripts/playerbarcontrols.script.js", "utf8").trim();
+const enableSource = await readPageScript("src/main/integrations/nonstop/script/enable.script.ts");
+const disableSource = await readPageScript("src/main/integrations/nonstop/script/disable.script.ts");
+const playerBarControlsSource = await readPageScript("src/renderer/ytmview/scripts/playerbarcontrols.script.ts");
 
 const IDLE_MS = 5000;
 
@@ -28,7 +24,7 @@ function dispatch(type: string, event: unknown = {}) {
 }
 
 function run(source: string) {
-  return new Function(`return (${source.replace(/;$/, "")})`)()();
+  return runPageScript(source);
 }
 
 beforeEach(() => {
@@ -45,12 +41,12 @@ beforeEach(() => {
       nativePause.call(this);
     }
   }
-  video = Object.assign(Object.create(HTMLMediaElement.prototype), {
+  video = Object.assign(new HTMLMediaElement(), {
     isConnected: true,
     paused: false,
     play: vi.fn(() => {
       video.paused = false;
-    })
+    }),
   });
 
   const doc = {
@@ -63,37 +59,42 @@ beforeEach(() => {
     },
     addEventListener: (type: string, listener: Listener) => {
       if (!listeners.has(type)) listeners.set(type, []);
-      listeners.get(type).push(listener);
+      requireValue(listeners.get(type)).push(listener);
     },
     removeEventListener: (type: string, listener: Listener) => {
       const existing = listeners.get(type) ?? [];
       listeners.set(
         type,
-        existing.filter(entry => entry !== listener)
+        existing.filter((entry) => entry !== listener)
       );
-    }
+    },
   };
 
   const globals = globalThis as Record<string, unknown>;
-  globals.window = { PointerEvent: function () {} };
+  globals.window = {
+    PointerEvent: function () {
+      return undefined;
+    },
+  };
   globals.document = doc;
   globals.HTMLMediaElement = HTMLMediaElement;
-  // Node defines navigator as a getter-only global, so it has to be replaced
-  // rather than assigned.
+
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
     writable: true,
     value: {
       mediaSession: {
-        setActionHandler: (action: string, handler: unknown) => mediaSessionHandlers.set(action, handler)
-      }
-    }
+        setActionHandler: (action: string, handler: unknown) => mediaSessionHandlers.set(action, handler),
+      },
+    },
   });
   globals.MutationObserver = class {
-    observe() {}
+    observe() {
+      return undefined;
+    }
     disconnect = vi.fn();
     constructor() {
-      observers.push(this as unknown as { disconnect: ReturnType<typeof vi.fn> });
+      observers.push(this);
     }
   };
 });
@@ -101,7 +102,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   for (const key of ["window", "document", "HTMLMediaElement", "navigator", "MutationObserver"]) {
-    delete (globalThis as Record<string, unknown>)[key];
+    Reflect.deleteProperty(globalThis, key);
   }
 });
 
@@ -109,21 +110,20 @@ function goIdle() {
   vi.advanceTimersByTime(IDLE_MS);
 }
 
-const pageWindow = () => (globalThis as unknown as { window: Record<string, unknown> }).window;
-const pageMediaSession = () =>
-  (globalThis as unknown as { navigator: { mediaSession: { setActionHandler: (action: string, handler: unknown) => void } } }).navigator.mediaSession;
+const pageWindow = () => requireRecord(Reflect.get(globalThis, "window"));
+const pageMediaSession = () => requireRecord(requireRecord(Reflect.get(globalThis, "navigator")).mediaSession);
 
 describe("nonstop enable script", () => {
   it("lets a pause this app asked for through even when the view is idle", () => {
     run(enableSource);
     goIdle();
 
-    pageWindow()["__ytmdNonStopAllowPause"] = true;
-    video.pause();
+    pageWindow().__ytmdNonStopAllowPause = true;
+    requireValue(video.pause).call(video);
 
     expect(nativePause).toHaveBeenCalledTimes(1);
-    // Consumed, so the next inactivity pause is still held back.
-    expect(pageWindow()["__ytmdNonStopAllowPause"]).toBe(false);
+
+    expect(pageWindow().__ytmdNonStopAllowPause).toBe(false);
   });
 
   it("lets a pause through right after the user interacts", () => {
@@ -131,7 +131,7 @@ describe("nonstop enable script", () => {
     goIdle();
 
     dispatch("pointerdown");
-    video.pause();
+    requireValue(video.pause).call(video);
 
     expect(nativePause).toHaveBeenCalledTimes(1);
   });
@@ -140,7 +140,7 @@ describe("nonstop enable script", () => {
     run(enableSource);
     goIdle();
 
-    video.pause();
+    requireValue(video.pause).call(video);
 
     expect(nativePause).not.toHaveBeenCalled();
   });
@@ -148,7 +148,7 @@ describe("nonstop enable script", () => {
   it("applies a held pause on the next interaction", () => {
     run(enableSource);
     goIdle();
-    video.pause();
+    requireValue(video.pause).call(video);
 
     dispatch("keydown");
 
@@ -158,7 +158,7 @@ describe("nonstop enable script", () => {
   it("drops a held pause that was never the inactivity pause", () => {
     run(enableSource);
     goIdle();
-    video.pause();
+    requireValue(video.pause).call(video);
 
     vi.advanceTimersByTime(5001);
     dispatch("keydown");
@@ -169,7 +169,7 @@ describe("nonstop enable script", () => {
   it("dismisses the still-watching prompt and resumes", () => {
     run(enableSource);
     goIdle();
-    video.pause();
+    requireValue(video.pause).call(video);
     video.paused = true;
 
     dispatch("yt-popup-opened", { detail: { nodeName: "YTMUSIC-YOU-THERE-RENDERER" } });
@@ -192,7 +192,9 @@ describe("nonstop enable script", () => {
     run(enableSource);
     goIdle();
 
-    (mediaSessionHandlers.get("pause") as () => void)();
+    const pause = mediaSessionHandlers.get("pause");
+    if (typeof pause !== "function") throw new TypeError("Pause handler was not registered");
+    Reflect.apply(pause, undefined, []);
 
     expect(nativePause).toHaveBeenCalledTimes(1);
   });
@@ -201,8 +203,8 @@ describe("nonstop enable script", () => {
     run(enableSource);
     const ytmHandler = (): undefined => undefined;
 
-    pageMediaSession().setActionHandler("pause", ytmHandler);
-    pageMediaSession().setActionHandler("play", ytmHandler);
+    callMethod(pageMediaSession(), "setActionHandler", "pause", ytmHandler);
+    callMethod(pageMediaSession(), "setActionHandler", "play", ytmHandler);
 
     expect(mediaSessionHandlers.get("pause")).not.toBe(ytmHandler);
     expect(mediaSessionHandlers.get("play")).toBe(ytmHandler);
@@ -219,15 +221,41 @@ describe("nonstop enable script", () => {
 
 describe("pauses the page issues on its own", () => {
   function pageElement(): Record<string, unknown> {
+    const attributes = new Map<string, string>();
     return {
-      classList: { add: () => {}, remove: () => {}, contains: () => false },
-      setters: { data: () => {}, iconName: () => {} },
-      insertAdjacentElement: () => {},
+      classList: {
+        add: () => {
+          return undefined;
+        },
+        remove: () => {
+          return undefined;
+        },
+        contains: () => false,
+      },
+      setters: {
+        data: () => {
+          return undefined;
+        },
+        iconName: () => {
+          return undefined;
+        },
+      },
+      insertAdjacentElement: () => {
+        return undefined;
+      },
       querySelector: () => pageElement(),
-      appendChild: () => {},
-      setAttribute: () => {},
-      dispatchEvent: () => {},
-      set: () => {}
+      appendChild: () => {
+        return undefined;
+      },
+      setAttribute: (name: string, value: string) => attributes.set(name, value),
+      hasAttribute: (name: string) => attributes.has(name),
+      removeAttribute: (name: string) => attributes.delete(name),
+      dispatchEvent: () => {
+        return undefined;
+      },
+      set: () => {
+        return undefined;
+      },
     };
   }
 
@@ -237,20 +265,42 @@ describe("pauses the page issues on its own", () => {
       ...pageElement(),
       playing: true,
       getMenuRenderer: (): null => null,
-      playerApi: { addEventListener: () => {}, getPlayerResponse: (): null => null, pauseVideo: () => video.pause() }
+      playerApi: {
+        addEventListener: () => {
+          return undefined;
+        },
+        getPlayerResponse: (): null => null,
+        pauseVideo: () => requireValue(video.pause).call(video),
+      },
     };
     const win = pageWindow();
     Object.assign(win, {
-      __YTMD_HOOK__: { ytmStore: { getState: () => ({}), subscribe: () => {}, dispatch: () => {} } },
+      __YTMD_HOOK__: {
+        ytmStore: {
+          getState: () => ({}),
+          subscribe: () => {
+            return undefined;
+          },
+          dispatch: () => {
+            return undefined;
+          },
+        },
+      },
       addEventListener: (type: string, listener: Listener) => pageListeners.set(type, listener),
-      ytmd: { reportContractMiss: () => {} }
+      ytmd: {
+        reportContractMiss: () => {
+          return undefined;
+        },
+      },
     });
-    const doc = (globalThis as unknown as { document: Record<string, unknown> }).document;
-    const baseQuery = doc.querySelector as (selector: string) => unknown;
+    const doc = requireRecord(Reflect.get(globalThis, "document"));
+    const baseQuery = doc.querySelector;
+    if (typeof baseQuery !== "function") throw new TypeError("Document querySelector is missing");
     Object.assign(doc, {
       body: pageElement(),
       createElement: () => pageElement(),
-      querySelector: (selector: string) => (selector === "ytmusic-app-layout>ytmusic-player-bar" ? playerBar : baseQuery(selector))
+      querySelector: (selector: string): unknown =>
+        selector === "ytmusic-app-layout>ytmusic-player-bar" ? playerBar : Reflect.apply(baseQuery, undefined, [selector]),
     });
     installIntentionalPause();
     run(playerBarControlsSource);
@@ -261,21 +311,25 @@ describe("pauses the page issues on its own", () => {
     run(enableSource);
     const { pageListeners } = installPage();
 
-    pageListeners.get("yt-action")({ detail: { actionName: "yt-service-request", args: [null, { ytmdSleepTimerServiceEndpoint: { time: 5 } }] } });
+    requireValue(pageListeners.get("yt-action"))({
+      detail: { actionName: "yt-service-request", args: [null, { ytmdSleepTimerServiceEndpoint: { time: 5 } }] },
+    });
     vi.advanceTimersByTime(5 * 60 * 1000);
 
     expect(nativePause).toHaveBeenCalledTimes(1);
-    expect(pageWindow()["__ytmdNonStopAllowPause"]).toBe(false);
+    expect(pageWindow().__ytmdNonStopAllowPause).toBe(false);
   });
 
   it("still holds back the inactivity pause after the sleep timer fired", () => {
     run(enableSource);
     const { pageListeners } = installPage();
-    pageListeners.get("yt-action")({ detail: { actionName: "yt-service-request", args: [null, { ytmdSleepTimerServiceEndpoint: { time: 5 } }] } });
+    requireValue(pageListeners.get("yt-action"))({
+      detail: { actionName: "yt-service-request", args: [null, { ytmdSleepTimerServiceEndpoint: { time: 5 } }] },
+    });
     vi.advanceTimersByTime(5 * 60 * 1000);
     nativePause.mockClear();
 
-    video.pause();
+    requireValue(video.pause).call(video);
 
     expect(nativePause).not.toHaveBeenCalled();
   });
@@ -287,11 +341,11 @@ describe("nonstop disable script", () => {
     run(disableSource);
     goIdle();
 
-    video.pause();
+    requireValue(video.pause).call(video);
 
     expect(nativePause).toHaveBeenCalledTimes(1);
-    expect(pageWindow()["__ytmdNonStop"]).toBeUndefined();
-    expect(observers.every(observer => observer.disconnect.mock.calls.length > 0)).toBe(true);
+    expect(pageWindow().__ytmdNonStop).toBeUndefined();
+    expect(observers.every((observer) => observer.disconnect.mock.calls.length > 0)).toBe(true);
   });
 
   it("is safe to run without the enable script", () => {

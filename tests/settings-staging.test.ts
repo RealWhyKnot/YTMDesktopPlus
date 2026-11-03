@@ -1,51 +1,54 @@
+import { requireValue } from "./helpers/require-value";
 import { describe, expect, it } from "vitest";
 import {
   RESTART_REQUIRED_KEYS,
   STAGED_SETTING_KEYS,
-  SettingsSnapshot,
+  type SettingsSnapshot,
   diffSnapshots,
   mergeExternalState,
   normalizeSettingValue,
   restartRequiredIn,
-  snapshotFromState
+  snapshotFromState,
 } from "../src/shared/settings-staging";
 
 function stateFixture(overrides: Record<string, unknown> = {}) {
-  const state: Record<string, Record<string, unknown>> = {
-    general: {
-      hideToTrayOnClose: true,
-      showNotificationOnSongChange: false,
-      startOnBoot: false,
-      startMinimized: false,
-      disableHardwareAcceleration: false
-    },
-    developer: { debugLogging: false },
-    appearance: { alwaysShowVolumeSlider: false, zoom: 100, trayIconStyle: 0 },
-    playback: {
-      continueWhereYouLeftOff: true,
-      continueWhereYouLeftOffPaused: true,
-      progressInTaskbar: false,
-      enableSpeakerFill: false,
-      ratioVolume: false,
-      adBlockerEnabled: false,
-      preventIdlePause: false
-    },
-    integrations: {
-      companionServerEnabled: false,
-      companionServerCORSWildcardEnabled: false,
-      discordPresenceEnabled: true,
-      discordPresenceHideOnPause: false,
-      lastFMEnabled: false
-    },
-    lastfm: { scrobblePercent: 50 },
-    shortcuts: { playPause: "", next: "", previous: "", thumbsUp: "", thumbsDown: "", volumeUp: "", volumeDown: "" },
-    updates: { autoUpdateEnabled: false, channel: 0 }
-  };
+  const state = new Map(
+    Object.entries({
+      general: {
+        hideToTrayOnClose: true,
+        showNotificationOnSongChange: false,
+        startOnBoot: false,
+        startMinimized: false,
+        disableHardwareAcceleration: false,
+      },
+      developer: { debugLogging: false },
+      appearance: { alwaysShowVolumeSlider: false, zoom: 100, trayIconStyle: 0 },
+      playback: {
+        continueWhereYouLeftOff: true,
+        continueWhereYouLeftOffPaused: true,
+        progressInTaskbar: false,
+        enableSpeakerFill: false,
+        ratioVolume: false,
+        adBlockerEnabled: false,
+        preventIdlePause: false,
+      },
+      integrations: {
+        companionServerEnabled: false,
+        companionServerCORSWildcardEnabled: false,
+        discordPresenceEnabled: true,
+        discordPresenceHideOnPause: false,
+        lastFMEnabled: false,
+      },
+      lastfm: { scrobblePercent: 50 },
+      shortcuts: { playPause: "", next: "", previous: "", thumbsUp: "", thumbsDown: "", volumeUp: "", volumeDown: "" },
+      updates: { autoUpdateEnabled: false, channel: 0 },
+    }).map(([key, value]) => [key, new Map<string, unknown>(Object.entries(value))])
+  );
   for (const [path, value] of Object.entries(overrides)) {
     const [section, key] = path.split(".");
-    state[section][key] = value;
+    requireValue(state.get(requireValue(section))).set(requireValue(key), value);
   }
-  return state;
+  return Object.fromEntries([...state].map(([key, value]) => [key, Object.fromEntries(value)]));
 }
 
 describe("snapshotFromState", () => {
@@ -118,7 +121,7 @@ describe("mergeExternalState", () => {
     const merged = mergeExternalState(pristine, draft, incoming);
     expect(merged.followedKeys).toEqual([]);
     expect(merged.pristine["general.startOnBoot"]).toBe(true);
-    // The draft now matches the new pristine, so the key reads clean afterwards.
+
     expect(diffSnapshots(merged.pristine, draft)).toEqual([]);
   });
 
@@ -140,6 +143,6 @@ describe("restartRequiredIn", () => {
   });
 
   it("matches the exported set", () => {
-    expect([...RESTART_REQUIRED_KEYS].every(key => restartRequiredIn([key]))).toBe(true);
+    expect([...RESTART_REQUIRED_KEYS].every((key) => restartRequiredIn([key]))).toBe(true);
   });
 });

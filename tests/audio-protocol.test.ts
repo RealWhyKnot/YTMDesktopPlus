@@ -11,7 +11,7 @@ import {
   encodeBatch,
   isCoverUrl,
   parseAudioServerFrame,
-  sanitizeMetaText
+  sanitizeMetaText,
 } from "../src/shared/audio-protocol";
 
 describe("audio urls", () => {
@@ -25,7 +25,7 @@ describe("batch encoding", () => {
     const wire = encodeBatch(
       [
         { timestampUs: 1_000_000, payload: new Uint8Array([1, 2, 3]) },
-        { timestampUs: 1_020_000, payload: new Uint8Array([4, 5]) }
+        { timestampUs: 1_020_000, payload: new Uint8Array([4, 5]) },
       ],
       42,
       { discontinuity: true }
@@ -53,7 +53,7 @@ describe("batch encoding", () => {
       encodeBatch(
         [
           { timestampUs: 5, payload: new Uint8Array(1) },
-          { timestampUs: 0, payload: new Uint8Array(1) }
+          { timestampUs: 0, payload: new Uint8Array(1) },
         ],
         1
       )

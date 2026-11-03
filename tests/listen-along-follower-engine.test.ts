@@ -1,6 +1,7 @@
+import { requireValue } from "./helpers/require-value";
 import { describe, expect, it, vi } from "vitest";
 import { FollowerEngine, type FollowerPhaseEvent } from "../src/main/integrations/listen-along/follower-engine";
-import type { CueResult } from "../src/main/playback/cue-track";
+import type { CueResult } from "~shared/addons/sdk";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
 import { makePlayerState, makeVideoDetails } from "./helpers/fake-addon-context";
 
@@ -11,21 +12,21 @@ function local(videoId: string, progress: number): PlayerState {
     videoDetails: makeVideoDetails({ id: videoId, durationSeconds: 300 }),
     videoProgress: progress,
     trackState: VideoState.Playing,
-    hasFullMetadata: true
+    hasFullMetadata: true,
   });
 }
 
 function harness() {
   let nowMs = NOW;
-  const cues: Array<(result: CueResult) => void> = [];
+  const cues: ((result: CueResult) => void)[] = [];
   const phases: FollowerPhaseEvent[] = [];
   const cancelCue = vi.fn();
   const engine = new FollowerEngine({
-    cueTrack: () => new Promise<CueResult>(resolve => cues.push(resolve)),
+    cueTrack: () => new Promise<CueResult>((resolve) => cues.push(resolve)),
     sendCommand: vi.fn(),
-    onPhase: event => phases.push(event),
+    onPhase: (event) => phases.push(event),
     now: () => nowMs,
-    cancelCue
+    cancelCue,
   });
   const follow = (videoId: string) => {
     nowMs += 1000;
@@ -50,7 +51,7 @@ describe("FollowerEngine track cues", () => {
     const h = harness();
     h.engine.updateLocal(local("localTrack1", 5));
     h.follow("hostTrack01");
-    h.cues[0]("seeked");
+    requireValue(h.cues[0]).call(h.cues, "seeked");
     await Promise.resolve();
 
     h.engine.reset();
@@ -68,13 +69,13 @@ describe("FollowerEngine track cues", () => {
     expect(h.engine.currentPhase).toBe("loading");
     const before = h.phases.length;
 
-    h.cues[0]("seeked");
+    requireValue(h.cues[0]).call(h.cues, "seeked");
     await Promise.resolve();
 
     expect(h.engine.currentPhase).toBe("loading");
     expect(h.phases).toHaveLength(before);
 
-    h.cues[1]("seeked");
+    requireValue(h.cues[1]).call(h.cues, "seeked");
     await Promise.resolve();
     expect(h.engine.currentPhase).toBe("synced");
   });

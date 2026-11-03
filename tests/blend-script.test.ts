@@ -1,95 +1,28 @@
-import { readFileSync } from "node:fs";
+import { readPageScript, runPageScript } from "./helpers/page-script";
+import { requireValue, requireRecord } from "./helpers/require-value";
+import { createAudio, fakeGainParam, createVideo } from "./helpers/blend-audio";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const source = readFileSync("src/addons/bundled/blend/scripts/blend.script.js", "utf8").trim();
-const disableSource = readFileSync("src/addons/bundled/blend/scripts/blend-disable.script.js", "utf8").trim();
+const source = await readPageScript("src/addons/bundled/blend/scripts/blend.script.ts");
+const disableSource = await readPageScript("src/addons/bundled/blend/scripts/blend-disable.script.ts");
 
 const SEGMENT_URL = "https://rr1.googlevideo.com/videoplayback?itag=141&mime=audio%2Fmp4&range=0-9999&rn=5&ump=1&pot=abc&sig=xyz";
 
-type GainRecord = { method: string; value?: number | Float32Array; time?: number; duration?: number };
-
-function fakeGainParam() {
-  const calls: GainRecord[] = [];
-  return {
-    value: 1,
-    calls,
-    cancelScheduledValues: vi.fn((time: number) => calls.push({ method: "cancel", time })),
-    setValueAtTime: vi.fn((value: number, time: number) => calls.push({ method: "set", value, time })),
-    setTargetAtTime: vi.fn((value: number, time: number, duration: number) => calls.push({ method: "target", value, time, duration })),
-    setValueCurveAtTime: vi.fn((value: Float32Array, time: number, duration: number) => calls.push({ method: "curve", value, time, duration }))
-  };
-}
-
-class FakeAudio {
-  volume = 1;
-  currentTime = 0;
-  paused = true;
-  readyState = 0;
-  preload = "";
-  src = "";
-  error: { code: number } | null = null;
-  played: number[] = [];
-  refusePlay = false;
-  private handlers = new Map<string, ((...args: unknown[]) => void)[]>();
-
-  constructor() {
-    audios.push(this);
-  }
-  addEventListener(type: string, listener: (...args: unknown[]) => void) {
-    if (!this.handlers.has(type)) this.handlers.set(type, []);
-    this.handlers.get(type)!.push(listener);
-  }
-  removeEventListener() {}
-  pause() {
-    this.paused = true;
-  }
-  play() {
-    if (this.refusePlay) return Promise.reject(new Error("NotAllowedError"));
-    this.paused = false;
-    this.played.push(this.currentTime);
-    return Promise.resolve();
-  }
-  load() {}
-  removeAttribute(name: string) {
-    if (name === "src") this.src = "";
-  }
-  emit(type: string) {
-    for (const listener of [...(this.handlers.get(type) ?? [])]) listener();
-    if (type === "canplay" || type === "error") this.handlers.delete(type);
-  }
-  ready() {
-    this.readyState = 4;
-    this.emit("canplay");
-  }
-}
-
 let outGain: ReturnType<typeof fakeGainParam>;
 let context: { currentTime: number };
-let audios: FakeAudio[];
+let audios: ReturnType<typeof createAudio>[];
 let listeners: Map<string, (() => void)[]>;
-let video: {
-  paused: boolean;
-  muted: boolean;
-  readyState: number;
-  volume: number;
-  currentTime: number;
-  duration: number;
-  addEventListener: (type: string, listener: () => void) => void;
-  removeEventListener: (type: string, listener: () => void) => void;
-};
+let video: ReturnType<typeof createVideo>;
 let advanced: ReturnType<typeof vi.fn>;
 let apiNextVideo: ReturnType<typeof vi.fn>;
-let nextButtonPresent: boolean;
+let isNextButtonPresent: boolean;
 let currentId: string;
-// YTM concatenates tracks into one MediaSource: the element's clock counts
-// every track buffered so far, while playerApi stays track-relative. Both are
-// zero by default so a test that does not care reads one clock; the timeline
-// test sets them to the values measured on the live page.
+
 let priorTracksS: number;
 let appendedNextS: number;
-// 1 playing, 2 paused by the user, -1 unstarted, 3 buffering.
+
 let playerState: number;
-let clockReadable: boolean;
+let isClockReadable: boolean;
 let resourceEntries: { name: string }[];
 let perf: { bufferSize: number | null; cleared: number; bufferFull: (() => void)[] };
 let nowMs: number;
@@ -98,33 +31,33 @@ function dispatch(type: string) {
   for (const listener of [...(listeners.get(type) ?? [])]) listener();
 }
 
+const postAddonMessage = vi.fn<(addon: string, name: string, data: unknown) => void>();
+
 function pageWindow() {
-  return (globalThis as unknown as { window: Record<string, unknown> & { ytmd: { postAddonMessage: ReturnType<typeof vi.fn> } } }).window;
+  return requireRecord(globalThis.window);
 }
 
 function diags(): Record<string, unknown>[] {
-  return pageWindow()
-    .ytmd.postAddonMessage.mock.calls.filter(call => call[1] === "diag")
-    .map(call => call[2] as Record<string, unknown>);
+  return postAddonMessage.mock.calls.filter((call) => call[1] === "diag").map((call) => requireRecord(call[2]));
 }
 
 function events() {
-  return diags().map(diag => diag.event);
+  return diags().map((diag) => diag.event);
 }
 
 function run(config: Record<string, unknown> = {}) {
-  return new Function(`return (${source.replace(/;$/, "")})`)()({
+  return runPageScript(source, {
     seconds: 5,
     blendSkips: false,
     repeatOne: false,
     adPlaying: false,
     hasNext: true,
-    ...config
+    ...config,
   });
 }
 
 function runDisable() {
-  return new Function(`return (${disableSource.replace(/;$/, "")})`)()();
+  return runPageScript(disableSource);
 }
 
 function armAt(positionS: number) {
@@ -147,10 +80,11 @@ function advance(ms: number) {
 }
 
 function lastGainValue() {
-  return outGain.calls.filter(call => call.method !== "cancel").at(-1);
+  return outGain.calls.filter((call) => call.method !== "cancel").at(-1);
 }
 
 beforeEach(() => {
+  postAddonMessage.mockClear();
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
   listeners = new Map();
   audios = [];
@@ -158,40 +92,27 @@ beforeEach(() => {
   priorTracksS = 0;
   appendedNextS = 0;
   playerState = 1;
-  clockReadable = true;
+  isClockReadable = true;
   nowMs = 10_000;
   advanced = vi.fn();
   apiNextVideo = vi.fn();
-  nextButtonPresent = true;
+  isNextButtonPresent = true;
   resourceEntries = [{ name: SEGMENT_URL }];
   perf = { bufferSize: null, cleared: 0, bufferFull: [] };
   outGain = fakeGainParam();
   context = { currentTime: 100 };
 
-  video = {
-    paused: false,
-    muted: false,
-    readyState: 4,
-    volume: 0.83,
-    currentTime: 0,
-    duration: 200,
-    addEventListener: (type, listener) => {
-      if (!listeners.has(type)) listeners.set(type, []);
-      listeners.get(type)!.push(listener);
-    },
-    removeEventListener: (type, listener) => {
-      listeners.set(
-        type,
-        (listeners.get(type) ?? []).filter(entry => entry !== listener)
-      );
-    }
-  };
+  video = createVideo(listeners);
 
   const globals = globalThis as Record<string, unknown>;
-  globals.Audio = FakeAudio;
+  globals.Audio = vi.fn(function () {
+    const audio = createAudio();
+    audios.push(audio);
+    return audio;
+  });
   globals.window = {
     __ytmdEnsureAudioGraph: () => ({ context, source: {}, out: { gain: outGain } }),
-    ytmd: { postAddonMessage: vi.fn() }
+    ytmd: { postAddonMessage },
   };
   globals.document = {
     querySelector: (selector: string) => {
@@ -202,18 +123,16 @@ beforeEach(() => {
             getVideoData: () => ({ video_id: currentId }),
             getPlayerState: () => playerState,
             getCurrentTime: () => video.currentTime - priorTracksS,
-            // Deliberately the buffered extent, which is what YTM reports and
-            // why the engine must not use it: it grows by the next track's
-            // length shortly before the change.
+
             getDuration: () => video.duration - priorTracksS,
-            getPlayerResponse: () => (clockReadable ? { videoDetails: { lengthSeconds: String(video.duration - priorTracksS - appendedNextS) } } : undefined),
-            nextVideo: apiNextVideo
+            getPlayerResponse: () => (isClockReadable ? { videoDetails: { lengthSeconds: String(video.duration - priorTracksS - appendedNextS) } } : undefined),
+            nextVideo: apiNextVideo,
           },
-          querySelector: (inner: string) => (inner === ".next-button" && nextButtonPresent ? { click: advanced } : null)
+          querySelector: (inner: string) => (inner === ".next-button" && isNextButtonPresent ? { click: advanced } : null),
         };
       }
       return null;
-    }
+    },
   };
   globals.performance = {
     now: () => nowMs,
@@ -227,7 +146,7 @@ beforeEach(() => {
     },
     addEventListener: (type: string, listener: () => void) => {
       if (type === "resourcetimingbufferfull") perf.bufferFull.push(listener);
-    }
+    },
   };
 });
 
@@ -255,7 +174,7 @@ describe("blend script", () => {
   it("keeps the resource timing buffer large enough to survive a long session", () => {
     run();
     expect(perf.bufferSize).toBe(1000);
-    perf.bufferFull[0]();
+    requireValue(perf.bufferFull[0]).call(perf.bufferFull);
     expect(perf.cleared).toBe(1);
   });
 
@@ -263,25 +182,25 @@ describe("blend script", () => {
     run();
     armAt(30);
     expect(audios).toHaveLength(1);
-    const url = new URL(audios[0].src);
+    const url = new URL(requireValue(audios[0]).src);
     for (const param of ["range", "rn", "ump", "rbuf", "srfvp", "alr"]) expect(url.searchParams.has(param)).toBe(false);
     expect(url.searchParams.get("itag")).toBe("141");
-    expect(audios[0].volume).toBe(0);
-    expect(audios[0].currentTime).toBe(30);
-    expect(audios[0].paused).toBe(false);
+    expect(requireValue(audios[0]).volume).toBe(0);
+    expect(requireValue(audios[0]).currentTime).toBe(30);
+    expect(requireValue(audios[0]).paused).toBe(false);
     expect(events()).toContain("armed");
   });
 
   it("arms from the audio entry that matches this track's length, not a newer prefetch of the next one", () => {
     resourceEntries = [
       { name: "https://rr1.googlevideo.com/videoplayback?itag=141&mime=audio%2Fmp4&dur=200.090&id=current&range=0-9999" },
-      { name: "https://rr1.googlevideo.com/videoplayback?itag=141&mime=audio%2Fmp4&dur=238.190&id=next&range=0-9999" }
+      { name: "https://rr1.googlevideo.com/videoplayback?itag=141&mime=audio%2Fmp4&dur=238.190&id=next&range=0-9999" },
     ];
     run();
     armAt(30);
 
     expect(audios).toHaveLength(1);
-    expect(new URL(audios[0].src).searchParams.get("id")).toBe("current");
+    expect(new URL(requireValue(audios[0]).src).searchParams.get("id")).toBe("current");
   });
 
   it("waits for this track's audio rather than arming another song's", () => {
@@ -293,42 +212,42 @@ describe("blend script", () => {
 
     resourceEntries.push({ name: "https://rr1.googlevideo.com/videoplayback?itag=141&mime=audio%2Fmp4&dur=200.090&id=current" });
     armAt(31);
-    expect(new URL(audios[0].src).searchParams.get("id")).toBe("current");
+    expect(new URL(requireValue(audios[0]).src).searchParams.get("id")).toBe("current");
   });
 
   it("does not re-arm a segment URL that already failed, only a fresh one", () => {
     run();
     video.currentTime = 30;
     dispatch("timeupdate");
-    audios[0].error = { code: 4 };
-    audios[0].emit("error");
+    requireValue(audios[0]).error = { code: 4 };
+    requireValue(audios[0]).emit("error");
     for (let i = 0; i < 50; i++) {
       video.currentTime += 0.25;
       dispatch("timeupdate");
     }
     expect(audios).toHaveLength(1);
-    expect(events().filter(event => event === "armFailed")).toHaveLength(1);
+    expect(events().filter((event) => event === "armFailed")).toHaveLength(1);
 
     resourceEntries.push({ name: SEGMENT_URL.replace("sig=xyz", "sig=fresh") });
     armAt(45);
     expect(audios).toHaveLength(2);
-    expect(new URL(audios[1].src).searchParams.get("sig")).toBe("fresh");
+    expect(new URL(requireValue(audios[1]).src).searchParams.get("sig")).toBe("fresh");
     expect(events()).toContain("armed");
   });
 
   it("corrects shadow drift while it is silent, and never during a blend", () => {
     run();
     armAt(30);
-    audios[0].currentTime = 30.5;
+    requireValue(audios[0]).currentTime = 30.5;
     video.currentTime = 31;
     dispatch("timeupdate");
-    expect(audios[0].currentTime).toBe(31);
+    expect(requireValue(audios[0]).currentTime).toBe(31);
 
     armAt(195.5);
-    audios[0].currentTime = 100;
+    requireValue(audios[0]).currentTime = 100;
     video.currentTime = 196;
     dispatch("timeupdate");
-    expect(audios[0].currentTime).toBe(100);
+    expect(requireValue(audios[0]).currentTime).toBe(100);
   });
 
   it("blends at the end: shadow up to the ear level, out gain to zero, player advanced", () => {
@@ -337,10 +256,10 @@ describe("blend script", () => {
     armAt(195.5);
 
     expect(audios).toHaveLength(1);
-    expect(audios[0].volume).toBe(0.83);
+    expect(requireValue(audios[0]).volume).toBe(0.83);
     expect(lastGainValue()).toMatchObject({ method: "target", value: 0 });
     expect(advanced).toHaveBeenCalledTimes(1);
-    expect(diags().find(diag => diag.event === "blend")).toMatchObject({ kind: "end", seconds: 5 });
+    expect(diags().find((diag) => diag.event === "blend")).toMatchObject({ kind: "end", seconds: 5 });
   });
 
   it("advances through the player bar's Next button, not the player API", () => {
@@ -353,7 +272,7 @@ describe("blend script", () => {
   });
 
   it("falls back to the player API when the Next button is gone, and says so", () => {
-    nextButtonPresent = false;
+    isNextButtonPresent = false;
     run();
     armAt(30);
     armAt(195.5);
@@ -362,11 +281,6 @@ describe("blend script", () => {
     expect(events()).toContain("advanceFallback");
   });
 
-  // Measured on the live page: YTM appends the next track into the same
-  // MediaSource ~10s before the current one ends. The element then reported
-  // duration 161 for a track ending at 112.4, and playerApi.getDuration()
-  // jumped 183.62 -> 199.91 on a track whose lengthSeconds stayed 184. Timing
-  // off either one misses the window by whatever has been appended.
   it("blends on the track length, not the element clock or the buffered extent", () => {
     priorTracksS = 112.33;
     appendedNextS = 49;
@@ -389,9 +303,9 @@ describe("blend script", () => {
     dispatch("timeupdate");
 
     expect(audios).toHaveLength(1);
-    expect(audios[0].volume).toBe(0.83);
+    expect(requireValue(audios[0]).volume).toBe(0.83);
     expect(advanced).not.toHaveBeenCalled();
-    expect(diags().find(diag => diag.event === "blend")).toMatchObject({ kind: "skip" });
+    expect(diags().find((diag) => diag.event === "blend")).toMatchObject({ kind: "skip" });
   });
 
   it("fades the incoming track in while a skip blend is still running", () => {
@@ -404,9 +318,9 @@ describe("blend script", () => {
     advance(1000);
     dispatch("timeupdate");
 
-    const curve = outGain.calls.filter(call => call.method === "curve").at(-1);
+    const curve = outGain.calls.filter((call) => call.method === "curve").at(-1);
     expect(curve).toBeDefined();
-    expect(curve!.duration).toBeCloseTo(4, 1);
+    expect(requireValue(curve).duration).toBeCloseTo(4, 1);
   });
 
   it("does not lift the gain before our own advance has landed", () => {
@@ -416,30 +330,30 @@ describe("blend script", () => {
 
     advance(1000);
     dispatch("timeupdate");
-    expect(outGain.calls.some(call => call.method === "curve")).toBe(false);
+    expect(outGain.calls.some((call) => call.method === "curve")).toBe(false);
   });
 
   it("stands down when the shadow loaded but was never allowed to play", () => {
     run();
     armAt(30);
-    audios[0].refusePlay = true;
-    audios[0].paused = true;
+    requireValue(audios[0]).isRefusePlay = true;
+    requireValue(audios[0]).paused = true;
 
     armAt(195.5);
     expect(advanced).not.toHaveBeenCalled();
-    expect(diags().find(diag => diag.event === "suppressed")).toMatchObject({ reason: "shadow not ready" });
+    expect(diags().find((diag) => diag.event === "suppressed")).toMatchObject({ reason: "shadow not ready" });
   });
 
   it("blends a skip before the incoming track reports its length", () => {
     run({ blendSkips: true });
     armAt(30);
 
-    clockReadable = false;
+    isClockReadable = false;
     changeTrackTo("trackB");
     dispatch("timeupdate");
 
-    expect(audios[0].volume).toBe(0.83);
-    expect(diags().find(diag => diag.event === "blend")).toMatchObject({ kind: "skip" });
+    expect(requireValue(audios[0]).volume).toBe(0.83);
+    expect(diags().find((diag) => diag.event === "blend")).toMatchObject({ kind: "skip" });
   });
 
   it("cuts a skip when blend skips is off", () => {
@@ -449,9 +363,9 @@ describe("blend script", () => {
     changeTrackTo("trackB");
     dispatch("timeupdate");
 
-    expect(diags().find(diag => diag.event === "cut")).toMatchObject({ reason: "skip" });
+    expect(diags().find((diag) => diag.event === "cut")).toMatchObject({ reason: "skip" });
     expect(events()).not.toContain("blend");
-    expect(audios[0].volume).toBe(0);
+    expect(requireValue(audios[0]).volume).toBe(0);
     expect(advanced).not.toHaveBeenCalled();
   });
 
@@ -464,18 +378,18 @@ describe("blend script", () => {
     changeTrackTo("trackB");
     dispatch("timeupdate");
 
-    expect(diags().find(diag => diag.event === "blend")).toMatchObject({ kind: "skip" });
+    expect(diags().find((diag) => diag.event === "blend")).toMatchObject({ kind: "skip" });
   });
 
   it("cuts a skip when the outgoing clock was unreadable", () => {
     run();
     armAt(30);
 
-    clockReadable = false;
+    isClockReadable = false;
     changeTrackTo("trackB");
     dispatch("timeupdate");
 
-    expect(diags().find(diag => diag.event === "cut")).toMatchObject({ reason: "skip" });
+    expect(diags().find((diag) => diag.event === "cut")).toMatchObject({ reason: "skip" });
     expect(events()).not.toContain("blend");
   });
 
@@ -486,7 +400,7 @@ describe("blend script", () => {
 
     changeTrackTo("trackB");
     dispatch("timeupdate");
-    expect(diags().find(diag => diag.event === "cut")).toBeDefined();
+    expect(diags().find((diag) => diag.event === "cut")).toBeDefined();
     expect(events()).not.toContain("blend");
   });
 
@@ -497,10 +411,10 @@ describe("blend script", () => {
     const shadow = audios[0];
 
     advance(2500);
-    expect(shadow.volume).toBeCloseTo(0.83 * Math.cos(Math.PI / 4), 3);
+    expect(requireValue(shadow).volume).toBeCloseTo(0.83 * Math.cos(Math.PI / 4), 3);
 
     advance(2600);
-    expect(shadow.src).toBe("");
+    expect(requireValue(shadow).src).toBe("");
     expect(events()).toContain("done");
   });
 
@@ -513,11 +427,13 @@ describe("blend script", () => {
     changeTrackTo("trackB");
     dispatch("timeupdate");
 
-    const curve = outGain.calls.filter(call => call.method === "curve").at(-1);
+    const curve = outGain.calls.filter((call) => call.method === "curve").at(-1);
     expect(curve).toBeDefined();
-    expect(curve!.duration).toBeCloseTo(2, 1);
-    expect((curve!.value as Float32Array)[0]).toBeCloseTo(0, 5);
-    expect((curve!.value as Float32Array).at(-1)).toBeCloseTo(1, 5);
+    expect(requireValue(curve).duration).toBeCloseTo(2, 1);
+    const curveValues = requireValue(curve).value;
+    if (!(curveValues instanceof Float32Array)) throw new TypeError("Expected a volume curve");
+    expect(curveValues[0]).toBeCloseTo(0, 5);
+    expect(curveValues.at(-1)).toBeCloseTo(1, 5);
   });
 
   describe("reading how loud the track actually is", () => {
@@ -527,7 +443,7 @@ describe("blend script", () => {
       run();
       armAt(30);
       armAt(195.5);
-      expect(audios[0].volume).toBe(0.42);
+      expect(requireValue(audios[0]).volume).toBe(0.42);
     });
 
     it("opens the shadow silent when the player is muted", () => {
@@ -535,17 +451,17 @@ describe("blend script", () => {
       run();
       armAt(30);
       armAt(195.5);
-      expect(audios[0].volume).toBe(0);
+      expect(requireValue(audios[0]).volume).toBe(0);
     });
 
     it("silences the shadow if the player is muted mid blend", () => {
       run();
       armAt(30);
       armAt(195.5);
-      expect(audios[0].volume).toBe(0.83);
+      expect(requireValue(audios[0]).volume).toBe(0.83);
       video.muted = true;
       dispatch("volumechange");
-      expect(audios[0].volume).toBe(0);
+      expect(requireValue(audios[0]).volume).toBe(0);
     });
 
     it("uses the room capture level, and still blends, while a broadcast is live", () => {
@@ -554,7 +470,7 @@ describe("blend script", () => {
       run();
       armAt(30);
       armAt(195.5);
-      expect(audios[0].volume).toBe(0.27);
+      expect(requireValue(audios[0]).volume).toBe(0.27);
       expect(advanced).toHaveBeenCalledTimes(1);
     });
 
@@ -563,12 +479,12 @@ describe("blend script", () => {
         stopped: false,
         effectiveVolume: () => {
           throw new Error("capture context closed");
-        }
+        },
       };
       run();
       armAt(30);
       armAt(195.5);
-      expect(audios[0].volume).toBe(0.83);
+      expect(requireValue(audios[0]).volume).toBe(0.83);
       expect(advanced).toHaveBeenCalledTimes(1);
     });
 
@@ -577,7 +493,7 @@ describe("blend script", () => {
       run();
       armAt(30);
       armAt(195.5);
-      expect(audios[0].volume).toBe(0.83);
+      expect(requireValue(audios[0]).volume).toBe(0.83);
     });
   });
 
@@ -585,18 +501,18 @@ describe("blend script", () => {
     it.each([
       ["ad playing", { adPlaying: true }],
       ["repeat one", { repeatOne: true }],
-      ["no next track", { hasNext: false }]
+      ["no next track", { hasNext: false }],
     ])("stands down for %s", (reason, config) => {
       run(config);
       armAt(30);
       armAt(195.5);
       expect(advanced).not.toHaveBeenCalled();
-      expect(diags().find(diag => diag.event === "suppressed")).toMatchObject({ reason });
+      expect(diags().find((diag) => diag.event === "suppressed")).toMatchObject({ reason });
     });
 
     it("stands down when the track clock is unreadable", () => {
       (globalThis as Record<string, unknown>).document = {
-        querySelector: (selector: string) => (selector === "video" ? video : null)
+        querySelector: (selector: string) => (selector === "video" ? video : null),
       };
       run();
       video.currentTime = 195.5;
@@ -633,7 +549,7 @@ describe("blend script", () => {
 
       playerState = 2;
       dispatch("pause");
-      expect(diags().find(diag => diag.event === "aborted")).toMatchObject({ reason: "paused" });
+      expect(diags().find((diag) => diag.event === "aborted")).toMatchObject({ reason: "paused" });
       expect(lastGainValue()).toMatchObject({ value: 1 });
     });
 
@@ -667,7 +583,7 @@ describe("blend script", () => {
     expect(runDisable()).toBe(true);
     expect(pageWindow().__ytmdBlend).toBeUndefined();
     expect(listeners.get("timeupdate")).toHaveLength(0);
-    expect(audios[0].src).toBe("");
+    expect(requireValue(audios[0]).src).toBe("");
     expect(lastGainValue()).toMatchObject({ value: 1 });
   });
 });

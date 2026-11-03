@@ -1,29 +1,22 @@
 import type { AdPruneContract } from "~shared/ad-contract";
 
-// Ad metadata rides inline in the POST /youtubei/v1/player JSON and the ad media
-// streams from the same googlevideo hosts as the music, so no network filter can
-// separate the two. YouTube Music parses that payload with JSON.parse over XHR
-// and defines no ytInitialPlayerResponse, so this is the only point the ad can be
-// taken out.
-//
-// Serialized by contextBridge.executeInMainWorld: it may reference nothing
-// outside its own arguments and page globals.
-export function installAdPrune(enabled: boolean, contract: AdPruneContract): void {
+export function installAdPrune(isEnabled: boolean, contract: AdPruneContract): void {
   type PruneState = { enabled: boolean; count: number; reported: boolean; unknown: string[] };
-  const pruneWindow = window as typeof window & {
+  type PruneWindow = {
     __ytmdAdPrune?: PruneState;
     ytmd?: {
       sendAdBlockEvent?: (kind: string, detail?: unknown) => void;
       reportContractMiss?: (what: string, detail?: unknown) => void;
     };
   };
+  const pruneWindow: PruneWindow = window as typeof window & PruneWindow;
 
   if (pruneWindow.__ytmdAdPrune) {
-    pruneWindow.__ytmdAdPrune.enabled = enabled;
+    pruneWindow.__ytmdAdPrune.enabled = isEnabled;
     return;
   }
 
-  const state: PruneState = { enabled, count: 0, reported: false, unknown: [] };
+  const state: PruneState = { enabled: isEnabled, count: 0, reported: false, unknown: [] };
   pruneWindow.__ytmdAdPrune = state;
 
   const adKeys = contract.keys;
@@ -31,17 +24,15 @@ export function installAdPrune(enabled: boolean, contract: AdPruneContract): voi
   const unknownAdKey = new RegExp(contract.unknownKeyPattern);
   const nativeParse = JSON.parse;
 
-  const asRecord = (value: unknown): Record<string, unknown> | null => {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
-    return value as Record<string, unknown>;
-  };
+  const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
+  const asRecord = (value: unknown): Record<string, unknown> | null => (isRecord(value) ? value : null);
 
   const pruneObject = (record: Record<string, unknown> | null, removed: string[]): void => {
     if (!record) return;
 
     for (const key of adKeys) {
       if (!(key in record)) continue;
-      delete record[key];
+      if (!Reflect.deleteProperty(record, key)) throw new TypeError(`Cannot delete property '${key}'`);
       removed.push(key);
     }
   };
@@ -58,10 +49,9 @@ export function installAdPrune(enabled: boolean, contract: AdPruneContract): voi
   };
 
   JSON.parse = function (text: string, reviver?: (this: unknown, key: string, value: unknown) => unknown): unknown {
-    const result = nativeParse(text, reviver);
+    const result: unknown = nativeParse(text, reviver);
     if (!state.enabled) return result;
 
-    // A throw here would break every JSON.parse on the page.
     try {
       const root = asRecord(result);
       const nested = asRecord(root?.playerResponse);
@@ -80,8 +70,8 @@ export function installAdPrune(enabled: boolean, contract: AdPruneContract): voi
 
       auditObject(root);
       auditObject(nested);
-    } catch {
-      // Nothing to do; the payload goes back as it came.
+    } catch (error) {
+      console.warn("ad-prune: operation failed", error);
     }
 
     return result;

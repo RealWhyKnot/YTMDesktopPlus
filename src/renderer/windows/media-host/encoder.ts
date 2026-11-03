@@ -24,13 +24,13 @@ export function createUplink() {
     sendStatus(status: CaptureStatus) {
       if (status.cfg) cfg = status;
       port?.postMessage({ status });
-    }
+    },
   };
 }
 
 export type EncoderApi = {
   AudioEncoder: new (init: AudioEncoderInit) => Pick<AudioEncoder, "configure" | "encode" | "close" | "state">;
-  AudioData: new (init: AudioDataInit) => Pick<AudioData, "close">;
+  AudioData: new (init: AudioDataInit) => AudioData;
 };
 
 export function createCaptureEncoder(deps: { api: EncoderApi; sendPackets(packets: EncodedPacket[]): void; sendStatus(status: CaptureStatus): void }) {
@@ -38,22 +38,22 @@ export function createCaptureEncoder(deps: { api: EncoderApi; sendPackets(packet
   let sampleRate = 0;
   let clockUs = 0;
   let pending: EncodedPacket[] = [];
-  let failed = false;
+  let isFailed = false;
 
   const fail = (error: unknown) => {
-    failed = true;
+    isFailed = true;
     deps.sendStatus({ error: String(error) });
   };
 
   const configure = (rate: number) => {
     if (encoder && encoder.state !== "closed") encoder.close();
     encoder = new deps.api.AudioEncoder({
-      output: chunk => {
+      output: (chunk) => {
         const data = new ArrayBuffer(chunk.byteLength);
         chunk.copyTo(data);
         pending.push({ t: chunk.timestamp, d: data });
       },
-      error: fail
+      error: fail,
     });
     encoder.configure({ codec: "opus", sampleRate: rate, numberOfChannels: CHANNELS, bitrate: BITRATE });
     sampleRate = rate;
@@ -62,7 +62,7 @@ export function createCaptureEncoder(deps: { api: EncoderApi; sendPackets(packet
 
   return {
     push(chunk: CaptureChunk) {
-      if (failed) return;
+      if (isFailed) return;
       try {
         if (!encoder || chunk.sampleRate !== sampleRate) configure(chunk.sampleRate);
         const frames = chunk.left.length;
@@ -75,11 +75,12 @@ export function createCaptureEncoder(deps: { api: EncoderApi; sendPackets(packet
           numberOfFrames: frames,
           numberOfChannels: CHANNELS,
           timestamp: Math.round(clockUs),
-          data
+          data,
         });
         clockUs += (frames * 1e6) / chunk.sampleRate;
         try {
-          encoder.encode(audio as AudioData);
+          if (encoder === null) throw new Error("Audio encoder is not configured");
+          encoder.encode(audio);
         } finally {
           audio.close();
         }
@@ -92,6 +93,6 @@ export function createCaptureEncoder(deps: { api: EncoderApi; sendPackets(packet
       const packets = pending;
       pending = [];
       deps.sendPackets(packets);
-    }
+    },
   };
 }

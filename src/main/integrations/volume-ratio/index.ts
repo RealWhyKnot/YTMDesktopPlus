@@ -1,25 +1,20 @@
-import type { BrowserView } from "electron";
-import IIntegration from "../integration";
+import type { WebContents } from "electron";
+import type { Integration } from "../integration";
 
 import enableScript from "./script/enable.script?raw";
 import disableScript from "./script/disable.script?raw";
 import forceUpdateVolume from "./script/forceupdatevolume.script?raw";
 
-export default class VolumeRatio implements IIntegration {
-  // This integration is based upon the following GreasyFork script:
-  // https://greasyfork.org/en/scripts/397686-youtube-music-fix-volume-ratio
-  // Made by: Marco Pfeiffer <git@marco.zone>
-
-  private ytmView: BrowserView;
+export class VolumeRatio implements Integration {
+  private ytmView: { webContents: Pick<WebContents, "send"> } | null = null;
   private hasInjected = false;
   private isEnabled = false;
-  private waitForYTMView = true;
+  private isWaitForYTMView = true;
 
-  public provide(ytmView: BrowserView): void {
+  public provide(ytmView: { webContents: Pick<WebContents, "send"> } | null): void {
     if (ytmView !== this.ytmView) {
-      // The YTM view object has changed from what we knew it was. Invalidate the state as the YTM view was recreated
       this.hasInjected = false;
-      this.waitForYTMView = true;
+      this.isWaitForYTMView = true;
     }
     this.ytmView = ytmView;
 
@@ -30,7 +25,7 @@ export default class VolumeRatio implements IIntegration {
 
   public enable(): void {
     this.isEnabled = true;
-    if ((this.isEnabled && this.hasInjected) || this.waitForYTMView || this.ytmView === null) return;
+    if (this.hasInjected || this.isWaitForYTMView || this.ytmView === null) return;
 
     this.ytmView.webContents.send("ytmView:executeScript", "ratioVolume", "enable");
 
@@ -41,7 +36,7 @@ export default class VolumeRatio implements IIntegration {
 
   public disable(): void {
     this.isEnabled = false;
-    if (!this.hasInjected) return;
+    if (!this.hasInjected || this.ytmView === null) return;
 
     this.ytmView.webContents.send("ytmView:executeScript", "ratioVolume", "disable");
 
@@ -53,26 +48,27 @@ export default class VolumeRatio implements IIntegration {
     return [
       {
         name: "enable",
-        script: enableScript
+        script: enableScript,
       },
       {
         name: "disable",
-        script: disableScript
+        script: disableScript,
       },
       {
         name: "forceUpdateVolume",
-        script: forceUpdateVolume
-      }
+        script: forceUpdateVolume,
+      },
     ];
   }
 
   private forceUpdateVolume(): void {
+    if (this.ytmView === null) throw new Error("YouTube Music view is unavailable");
     this.ytmView.webContents.send("ytmView:executeScript", "ratioVolume", "forceUpdateVolume");
   }
 
   public ytmViewLoaded(): void {
-    this.waitForYTMView = false;
-    // A navigation within the same view builds a fresh main world, so the script this held is gone.
+    this.isWaitForYTMView = false;
+
     this.hasInjected = false;
     if (this.isEnabled) this.enable();
   }

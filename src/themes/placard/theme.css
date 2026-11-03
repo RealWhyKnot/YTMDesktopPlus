@@ -6,24 +6,24 @@
 
 :root {
   --bg: #f2f0eb;
-  --bg-raised: #ffffff;
+  --bg-raised: #fff;
   --bg-control: #e4e1d8;
   --bg-control-hover: #d6d2c6;
   --border: #c9c5ba;
-  --border-strong: #111111;
-  --text: #111111;
+  --border-strong: #111;
+  --text: #111;
   --text-muted: #44443f;
   --text-faint: #6d6d66;
-  --accent: #111111;
-  --on-accent: #ffffff;
+  --accent: #111;
+  --on-accent: #fff;
   --success: #1f7a33;
   --danger: #d92d20;
   --danger-hover: #a81e13;
-  --knob: #ffffff;
-  --overlay: rgba(17, 17, 17, 0.5);
+  --knob: #fff;
+  --overlay: rgb(17 17 17 / 50%);
   --scrollbar-thumb: #a9a498;
-  --titlebar-symbol: #111111;
-  --titlebar-separator: #111111;
+  --titlebar-symbol: #111;
+  --titlebar-separator: #111;
   --radius: 0px;
   --radius-lg: 0px;
   --ytmd-scheme: light;

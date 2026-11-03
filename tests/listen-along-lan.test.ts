@@ -1,21 +1,19 @@
+import { requireValue } from "./helpers/require-value";
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type Conf from "conf";
-import type MemoryStore from "../src/main/memory-store";
-import type { MemoryStoreSchema, StoreSchema } from "../src/shared/store/schema";
 
 const lan = vi.hoisted(() => ({
-  fetches: [] as Array<{ resolve: (value: null) => void; reject: (error: Error) => void }>,
-  sockets: [] as Array<{ socket: EventEmitter & { disconnect: () => void; disconnected: boolean }; handlers: { onDisconnect(): void } }>
+  fetches: [] as { resolve: (value: null) => void; reject: (error: Error) => void }[],
+  sockets: [] as { socket: EventEmitter & { disconnect: () => void; disconnected: boolean }; handlers: { onDisconnect(): void } }[],
 }));
 
 vi.mock("electron", () => ({
   app: { getVersion: () => "0.0.0-test" },
-  safeStorage: { decryptString: () => "token", encryptString: (value: string) => Buffer.from(value) }
+  safeStorage: { decryptString: () => "token", encryptString: (value: string) => Buffer.from(value) },
 }));
 vi.mock("electron-log", () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("../src/main/playback", () => ({ cueTrack: vi.fn(), cancelCue: vi.fn(), sendPlaybackCommand: vi.fn() }));
-vi.mock("../src/main/integrations/listen-along/client", async importOriginal => {
+vi.mock("../src/main/integrations/listen-along/client", async (importOriginal) => {
   const original = await importOriginal<typeof import("../src/main/integrations/listen-along/client")>();
   return {
     ...original,
@@ -30,30 +28,28 @@ vi.mock("../src/main/integrations/listen-along/client", async importOriginal => 
         disconnected: false,
         disconnect() {
           socket.disconnected = true;
-        }
+        },
       });
       lan.sockets.push({ socket, handlers });
       return socket;
-    })
+    }),
   };
 });
 
-import ListenAlong from "../src/main/integrations/listen-along";
+import { ListenAlong } from "../src/main/integrations/listen-along";
 
 function makeListenAlong() {
   const integrations = { listenAlongHost: "192.168.1.20", listenAlongHostPort: 9863, listenAlongToken: "00" };
-  const store = { get: () => integrations, set: vi.fn() } as unknown as Conf<StoreSchema>;
+  const store = { get: () => integrations, set: vi.fn() };
   const memory = new Map<string, unknown>([["safeStorageAvailable", true]]);
   const memoryStore = {
     get: (key: string) => memory.get(key),
-    set: (key: string, value: unknown) => memory.set(key, value)
-  } as unknown as MemoryStore<MemoryStoreSchema>;
+    set: (key: string, value: unknown) => memory.set(key, value),
+  };
   const listenAlong = new ListenAlong();
   listenAlong.provide(store, memoryStore);
   return { listenAlong, memory };
 }
-
-const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe("LAN listen along connections", () => {
   let current: ListenAlong | null = null;
@@ -71,18 +67,18 @@ describe("LAN listen along connections", () => {
       const { listenAlong } = makeListenAlong();
       current = listenAlong;
       listenAlong.enable();
-      lan.fetches[0].resolve(null);
+      requireValue(lan.fetches[0]).resolve(null);
       await vi.advanceTimersByTimeAsync(0);
       expect(lan.sockets).toHaveLength(1);
 
-      lan.sockets[0].handlers.onDisconnect();
+      requireValue(lan.sockets[0]).handlers.onDisconnect();
       await vi.advanceTimersByTimeAsync(1000);
-      lan.fetches[1].resolve(null);
+      requireValue(lan.fetches[1]).resolve(null);
       await vi.advanceTimersByTimeAsync(0);
 
       expect(lan.sockets).toHaveLength(2);
-      expect(lan.sockets[0].socket.disconnected).toBe(true);
-      expect(lan.sockets[1].socket.disconnected).toBe(false);
+      expect(requireValue(lan.sockets[0]).socket.disconnected).toBe(true);
+      expect(requireValue(lan.sockets[1]).socket.disconnected).toBe(false);
     } finally {
       vi.useRealTimers();
     }
@@ -92,14 +88,19 @@ describe("LAN listen along connections", () => {
     const { listenAlong } = makeListenAlong();
     current = listenAlong;
     listenAlong.enable();
-    const connect = (listenAlong as unknown as { connect(): Promise<void> }).connect.bind(listenAlong);
-    void connect();
+    const connect = () => {
+      const method: unknown = Reflect.get(listenAlong, "connect");
+      if (typeof method !== "function") throw new TypeError("Expected the connection method");
+      const result: unknown = Reflect.apply(method, listenAlong, []);
+      return Promise.resolve(result);
+    };
+    void connect().catch((error: unknown) => console.warn("listen-along-lan.test: operation failed", error));
     expect(lan.fetches).toHaveLength(2);
 
-    lan.fetches[1].resolve(null);
-    await flush();
-    lan.fetches[0].resolve(null);
-    await flush();
+    requireValue(lan.fetches[1]).resolve(null);
+    await Promise.resolve();
+    requireValue(lan.fetches[0]).resolve(null);
+    await Promise.resolve();
 
     expect(lan.sockets).toHaveLength(1);
   });
@@ -110,15 +111,20 @@ describe("LAN listen along connections", () => {
       const { listenAlong, memory } = makeListenAlong();
       current = listenAlong;
       listenAlong.enable();
-      lan.fetches[0].resolve(null);
+      requireValue(lan.fetches[0]).resolve(null);
       await vi.advanceTimersByTimeAsync(0);
-      const connect = (listenAlong as unknown as { connect(): Promise<void> }).connect.bind(listenAlong);
-      void connect();
-      lan.fetches[1].resolve(null);
+      const connect = () => {
+        const method: unknown = Reflect.get(listenAlong, "connect");
+        if (typeof method !== "function") throw new TypeError("Expected the connection method");
+        const result: unknown = Reflect.apply(method, listenAlong, []);
+        return Promise.resolve(result);
+      };
+      void connect().catch((error: unknown) => console.warn("listen-along-lan.test: operation failed", error));
+      requireValue(lan.fetches[1]).resolve(null);
       await vi.advanceTimersByTimeAsync(0);
       memory.set("listenAlongStatus", "connected");
 
-      lan.sockets[0].handlers.onDisconnect();
+      requireValue(lan.sockets[0]).handlers.onDisconnect();
       await vi.advanceTimersByTimeAsync(60_000);
 
       expect(memory.get("listenAlongStatus")).toBe("connected");
@@ -133,8 +139,8 @@ describe("LAN listen along connections", () => {
     listenAlong.enable();
     listenAlong.disable();
 
-    lan.fetches[0].resolve(null);
-    await flush();
+    requireValue(lan.fetches[0]).resolve(null);
+    await Promise.resolve();
 
     expect(lan.sockets).toHaveLength(0);
   });

@@ -94,7 +94,7 @@ yarn install
 yarn start
 ```
 
-You'll need Node.js 22.12 or newer and Git. [CONTRIBUTING.md](CONTRIBUTING.md) covers the checks a pull request has to pass and how to build the installers.
+You need Git and Node.js 22.18 or later. If you're on Node 23, use 23.6 or later. [CONTRIBUTING.md](CONTRIBUTING.md) covers the checks a pull request has to pass and how to build the installers.
 
 ## License
 

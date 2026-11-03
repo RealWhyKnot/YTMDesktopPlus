@@ -4,10 +4,10 @@
 
 button,
 .app-button {
-  transition: none !important;
+  transition: none;
 }
 
-button.primary:active {
+.primary:active {
   transform: translate(2px, 2px);
 }
 

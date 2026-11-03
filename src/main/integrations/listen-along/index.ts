@@ -1,24 +1,48 @@
 import { app, safeStorage } from "electron";
-import Conf from "conf";
 import log from "electron-log";
 import type { Socket } from "socket.io-client";
 
-import IIntegration from "../integration";
-import MemoryStore from "../../memory-store";
-import playerStateStore, { type PlayerState } from "../../player-state-store";
+import type { Integration } from "../integration";
+import { playerStateStore, type PlayerState } from "../../player-state-store";
 import { cancelCue, cueTrack, sendPlaybackCommand } from "../../playback";
 import type { ListenAlongStatus, MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
 import { ListenAlongError, connectRealtime, fetchState, pair, sampleFromRemoteState } from "./client";
 import { FollowerEngine, type FollowerPhaseEvent } from "./follower-engine";
 
+type ListenAlongStore = {
+  get(key: "integrations"): Pick<StoreSchema["integrations"], "listenAlongHost" | "listenAlongHostPort" | "listenAlongToken">;
+  set(key: string, value: unknown): void;
+};
+
+type ListenAlongMemory = {
+  get(key: keyof MemoryStoreSchema): unknown;
+  set(key: keyof MemoryStoreSchema, value: unknown): void;
+};
+
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000, 30000];
 const MAX_CONNECTION_ATTEMPTS = 30;
 
-export default class ListenAlong implements IIntegration {
-  private store: Conf<StoreSchema>;
-  private memoryStore: MemoryStore<MemoryStoreSchema>;
+export class ListenAlong implements Integration {
+  private storeValue: ListenAlongStore | undefined;
+  private get store(): ListenAlongStore {
+    const value = this.storeValue;
+    if (value === undefined) throw new Error("Integration store has not been provided");
+    return value;
+  }
+  private set store(value: ListenAlongStore) {
+    this.storeValue = value;
+  }
+  private memoryStoreValue: ListenAlongMemory | undefined;
+  private get memoryStore(): ListenAlongMemory {
+    const value = this.memoryStoreValue;
+    if (value === undefined) throw new Error("Integration memoryStore has not been provided");
+    return value;
+  }
+  private set memoryStore(value: ListenAlongMemory) {
+    this.memoryStoreValue = value;
+  }
 
-  private enabled = false;
+  private isEnabled = false;
   private socket: Socket | null = null;
   private stateCallback: ((state: PlayerState) => void) | null = null;
   private reconnectTimeout: NodeJS.Timeout | null = null;
@@ -27,14 +51,14 @@ export default class ListenAlong implements IIntegration {
   private connectGeneration = 0;
 
   private engine = new FollowerEngine({
-    cueTrack: request => cueTrack(request),
+    cueTrack: (request) => cueTrack(request),
     sendCommand: (command, value) => sendPlaybackCommand(command, value),
-    onPhase: event => this.onEnginePhase(event),
+    onPhase: (event) => this.onEnginePhase(event),
     now: () => Date.now(),
-    cancelCue: () => cancelCue()
+    cancelCue: () => cancelCue(),
   });
 
-  public provide(store: Conf<StoreSchema>, memoryStore: MemoryStore<MemoryStoreSchema>): void {
+  public provide(store: ListenAlongStore, memoryStore: ListenAlongMemory): void {
     this.store = store;
     this.memoryStore = memoryStore;
   }
@@ -45,7 +69,7 @@ export default class ListenAlong implements IIntegration {
   }
 
   private onEnginePhase(event: FollowerPhaseEvent) {
-    if (!this.enabled) return;
+    if (!this.isEnabled) return;
     if (event.phase === "loading") {
       this.setStatus("loading");
       return;
@@ -55,8 +79,7 @@ export default class ListenAlong implements IIntegration {
       this.setStatus("suspended", event.reason);
       return;
     }
-    // Only promote to synced from states that mean we are actually following;
-    // never clobber connecting/failed/pairing.
+
     const status = this.memoryStore.get("listenAlongStatus");
     if (status === "connected" || status === "loading" || status === "synced" || status === "suspended") {
       this.setStatus("synced");
@@ -74,7 +97,7 @@ export default class ListenAlong implements IIntegration {
   }
 
   private target() {
-    const integrations = this.store.get("integrations");
+    const integrations: Partial<StoreSchema["integrations"]> = this.store.get("integrations");
     return { host: integrations.listenAlongHost, port: integrations.listenAlongHostPort ?? 9863 };
   }
 
@@ -89,14 +112,14 @@ export default class ListenAlong implements IIntegration {
 
     this.setStatus("pairing");
     try {
-      const token = await pair(host, port, app.getVersion(), code => this.memoryStore.set("listenAlongPairingCode", code));
+      const token = await pair(host, port, app.getVersion(), (code) => this.memoryStore.set("listenAlongPairingCode", code));
       this.store.set("integrations.listenAlongHost", host);
       this.store.set("integrations.listenAlongHostPort", port);
       this.store.set("integrations.listenAlongToken", safeStorage.encryptString(token).toString("hex"));
       this.memoryStore.set("listenAlongPairingCode", null);
       log.info(`Listen along paired with ${host}:${port}`);
 
-      if (this.enabled) this.connect();
+      if (this.isEnabled) void this.connect().catch((error: unknown) => log.warn("startPairing failed", error));
       return true;
     } catch (error) {
       const detail = error instanceof ListenAlongError ? error.detail : "Pairing failed";
@@ -112,7 +135,7 @@ export default class ListenAlong implements IIntegration {
     this.store.set("integrations.listenAlongToken", null);
     this.store.set("integrations.listenAlongHost", null);
     this.disconnect();
-    this.setStatus(this.enabled ? "failed" : "disabled", this.enabled ? "Not paired with a host yet" : null);
+    this.setStatus(this.isEnabled ? "failed" : "disabled", this.isEnabled ? "Not paired with a host yet" : null);
   }
 
   public resume() {
@@ -139,7 +162,7 @@ export default class ListenAlong implements IIntegration {
   }
 
   private scheduleReconnect() {
-    if (!this.enabled) return;
+    if (!this.isEnabled) return;
     if (this.connectionAttempts >= MAX_CONNECTION_ATTEMPTS) {
       this.setStatus("failed", "Could not reach the host");
       return;
@@ -147,12 +170,15 @@ export default class ListenAlong implements IIntegration {
     const delay = BACKOFF_MS[Math.min(this.connectionAttempts, BACKOFF_MS.length - 1)];
     this.connectionAttempts++;
     if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
-    this.reconnectTimeout = setTimeout(() => this.connect(), delay);
+    this.reconnectTimeout = setTimeout(() => {
+      void this.connect().catch((error: unknown) => log.warn("Listen along could not reconnect", error));
+    }, delay);
   }
 
   private async connect() {
-    if (!this.enabled) return;
+    if (!this.isEnabled) return;
     const generation = ++this.connectGeneration;
+    const current = () => this.isEnabled && generation === this.connectGeneration;
     if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
     this.reconnectTimeout = null;
     this.closeSocket();
@@ -167,15 +193,15 @@ export default class ListenAlong implements IIntegration {
     this.setStatus("connecting");
     try {
       const seed = await fetchState(host, port, token);
-      if (!this.enabled || generation !== this.connectGeneration) return;
+      if (!current()) return;
       if (seed) {
         this.oneWayMs = seed.oneWayMs;
         this.engine.updateRemote(seed.sample);
       }
     } catch (error) {
-      if (!this.enabled || generation !== this.connectGeneration) return;
+      if (!current()) return;
       const detail = error instanceof ListenAlongError ? error.detail : "Could not reach the host";
-      // A revoked token will never start working again on its own.
+
       if (detail.includes("revoked")) {
         this.setStatus("failed", detail);
         return;
@@ -185,14 +211,13 @@ export default class ListenAlong implements IIntegration {
       return;
     }
 
-    const current = () => this.enabled && generation === this.connectGeneration;
     this.socket = connectRealtime(host, port, token, {
-      onState: state => {
+      onState: (state) => {
         if (current()) this.onRemoteState(state);
       },
       onDisconnect: () => {
         if (!current()) return;
-        // Keep playing: silence is worse than drift.
+
         this.setStatus("connecting", "Lost contact with the host");
         this.scheduleReconnect();
       },
@@ -200,7 +225,7 @@ export default class ListenAlong implements IIntegration {
         if (!current()) return;
         this.disconnect();
         this.setStatus("failed", "The host revoked access. Pair again.");
-      }
+      },
     });
 
     this.socket.on("connect", () => {
@@ -212,18 +237,18 @@ export default class ListenAlong implements IIntegration {
   }
 
   public enable(): void {
-    if (this.enabled) return;
-    this.enabled = true;
+    if (this.isEnabled) return;
+    this.isEnabled = true;
     this.connectionAttempts = 0;
 
-    this.stateCallback = state => this.engine.updateLocal(state);
+    this.stateCallback = (state) => this.engine.updateLocal(state);
     playerStateStore.addEventListener(this.stateCallback);
 
-    void this.connect();
+    void this.connect().catch((error: unknown) => log.warn("enable failed", error));
   }
 
   public disable(): void {
-    this.enabled = false;
+    this.isEnabled = false;
     this.disconnect();
 
     if (this.stateCallback) {

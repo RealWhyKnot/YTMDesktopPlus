@@ -1,3 +1,4 @@
+import { requireValue } from "./helpers/require-value";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTrackCue, LOAD_TIMEOUT_MS, SETTLE_MS, VERIFY_MS, type CueDeps } from "../src/main/playback/cue-track";
 import { VideoState, type PlayerState } from "../src/main/player-state-store";
@@ -14,7 +15,7 @@ function playerState(overrides: Partial<PlayerState> & { id?: string; durationSe
     videoProgress: 0,
     volume: 100,
     hasFullMetadata: true,
-    ...rest
+    ...rest,
   });
 }
 
@@ -23,34 +24,33 @@ function harness(initial: PlayerState | null = null) {
   const sent: { command: string; value?: unknown }[] = [];
   let state = initial;
   let now = NOW;
-  let viewAvailable = true;
+  let isViewAvailable = true;
 
   const deps: CueDeps = {
     getState: () => state,
-    addEventListener: listener => listeners.add(listener),
-    removeEventListener: listener => listeners.delete(listener),
+    addEventListener: (listener) => listeners.add(listener),
+    removeEventListener: (listener) => listeners.delete(listener),
     send: (command, value) => {
-      if (!viewAvailable) return false;
+      if (!isViewAvailable) return false;
       sent.push({ command, value });
       return true;
     },
-    now: () => now
+    now: () => now,
   };
 
   return {
     deps,
     sent,
     listenerCount: () => listeners.size,
-    setViewAvailable: (available: boolean) => (viewAvailable = available),
+    setViewAvailable: (isAvailable: boolean) => (isViewAvailable = isAvailable),
     advanceClock: (ms: number) => (now += ms),
     emit(next: PlayerState) {
       state = next;
       for (const listener of [...listeners]) listener(next);
-    }
+    },
   };
 }
 
-// A live anchor 60s old against a 200s track resolves to position 60.
 const anchor = { kind: "anchor" as const, epochMs: NOW - 60_000 };
 
 describe("createTrackCue", () => {
@@ -90,7 +90,9 @@ describe("createTrackCue", () => {
 
   it("waits for a usable duration before seeking", async () => {
     const h = harness(playerState({ id: "old999" }));
-    createTrackCue(h.deps).cue({ videoId: "abc123", anchor });
+    void createTrackCue(h.deps)
+      .cue({ videoId: "abc123", anchor })
+      .catch((error: unknown) => console.warn("cue-track.test: operation failed", error));
 
     h.emit(playerState({ id: "abc123", durationSeconds: 0 }));
     await vi.advanceTimersByTimeAsync(SETTLE_MS);
@@ -103,7 +105,9 @@ describe("createTrackCue", () => {
 
   it("does not seek while buffering or on an ad", async () => {
     const h = harness(playerState({ id: "old999" }));
-    createTrackCue(h.deps).cue({ videoId: "abc123", anchor });
+    void createTrackCue(h.deps)
+      .cue({ videoId: "abc123", anchor })
+      .catch((error: unknown) => console.warn("cue-track.test: operation failed", error));
 
     h.emit(playerState({ id: "abc123", trackState: VideoState.Buffering }));
     h.emit(playerState({ id: "abc123", adPlaying: true }));
@@ -115,7 +119,9 @@ describe("createTrackCue", () => {
 
   it("recomputes a live anchor across navigation latency", async () => {
     const h = harness(playerState({ id: "old999" }));
-    createTrackCue(h.deps).cue({ videoId: "abc123", anchor });
+    void createTrackCue(h.deps)
+      .cue({ videoId: "abc123", anchor })
+      .catch((error: unknown) => console.warn("cue-track.test: operation failed", error));
 
     h.advanceClock(8000);
     h.emit(playerState({ id: "abc123" }));
@@ -126,7 +132,9 @@ describe("createTrackCue", () => {
 
   it("skips the navigate when the target is loading already", async () => {
     const h = harness(playerState({ id: "abc123", hasFullMetadata: false }));
-    createTrackCue(h.deps).cue({ videoId: "abc123", anchor });
+    void createTrackCue(h.deps)
+      .cue({ videoId: "abc123", anchor })
+      .catch((error: unknown) => console.warn("cue-track.test: operation failed", error));
 
     expect(h.sent).toEqual([]);
 
@@ -180,14 +188,13 @@ describe("createTrackCue", () => {
 
     await vi.advanceTimersByTimeAsync(VERIFY_MS);
     expect(h.sent).toHaveLength(3);
-    expect(h.sent[2].command).toBe("seekTo");
+    expect(requireValue(h.sent[2]).command).toBe("seekTo");
 
     await vi.advanceTimersByTimeAsync(VERIFY_MS);
     await expect(result).resolves.toBe("timeout");
     expect(h.sent).toHaveLength(3);
   });
 
-  // A paused track emits no progress, so the seek cannot be confirmed.
   it("accepts an unconfirmed seek on a paused track", async () => {
     const h = harness(playerState({ id: "old999" }));
     const result = createTrackCue(h.deps).cue({ videoId: "abc123", anchor });
@@ -211,9 +218,11 @@ describe("createTrackCue", () => {
     expect(h.listenerCount()).toBe(0);
   });
 
-  it("passes a playlist through to the endpoint", async () => {
+  it("passes a playlist through to the endpoint", () => {
     const h = harness(playerState({ id: "old999" }));
-    createTrackCue(h.deps).cue({ videoId: "abc123", playlistId: "PLxyz", anchor: null });
+    void createTrackCue(h.deps)
+      .cue({ videoId: "abc123", playlistId: "PLxyz", anchor: null })
+      .catch((error: unknown) => console.warn("cue-track.test: operation failed", error));
     expect(h.sent).toEqual([{ command: "navigate", value: { watchEndpoint: { videoId: "abc123", playlistId: "PLxyz" } } }]);
   });
 

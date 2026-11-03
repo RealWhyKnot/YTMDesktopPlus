@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("electron", () => ({ BrowserWindow: class {}, shell: { openExternal: vi.fn() } }));
+vi.mock("electron", () => ({ BrowserWindow: vi.fn(), shell: { openExternal: vi.fn() } }));
 
 import { isDevServerUrl } from "../src/main/windows/window-factory";
 

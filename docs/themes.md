@@ -50,6 +50,9 @@ my-theme/
 A palette theme is `theme.json` plus one `theme.css` of about forty lines. The
 other files are there for when you want to go further.
 
+The bundled themes use `ytm.user.css` for page styles. Your theme can use any
+filenames listed in its manifest, such as `ytm.css` under `ytmStyles`.
+
 ### theme.json
 
 ```json
@@ -101,64 +104,67 @@ there instead of in your theme.
 
 App tokens:
 
-| Token | What it colours |
-| --- | --- |
-| `--bg` | Window background |
-| `--bg-raised` | Cards, the player bar, panels |
-| `--bg-control` | Buttons and inputs |
-| `--bg-control-hover` | Those, hovered |
-| `--border` | Hairlines and dividers |
-| `--border-strong` | Focused and emphasised edges |
-| `--text` | Body text |
-| `--text-muted` | Secondary text |
-| `--text-faint` | Captions and hints |
-| `--accent` | The colour the app leans on |
-| `--on-accent` | Text drawn on top of the accent |
-| `--success` | Confirmations |
-| `--danger` | Destructive actions and the close button |
-| `--danger-hover` | Those, hovered |
-| `--knob` | The dot in a toggle switch |
-| `--overlay` | The scrim behind a modal |
-| `--scrollbar-thumb` | Scrollbar thumb |
-| `--titlebar-symbol` | Title bar glyphs |
-| `--titlebar-separator` | Title bar dividers |
-| `--shadow` | Default box shadow |
-| `--radius` | Corner radius. Set `0px` for a squared off look |
-| `--radius-lg` | Corner radius for larger surfaces |
-| `--space-xs` | Spacing step |
-| `--space-sm` | Spacing step |
-| `--space-md` | Spacing step |
-| `--space-lg` | Spacing step |
-| `--titlebar-height` | Title bar height |
-| `--font-ui` | Body font |
-| `--font-title` | Title bar and headings |
-| `--font-mono` | Room codes and anything monospaced |
-| `--motion-fast` | Duration for hovers and presses |
-| `--motion-base` | Duration for ordinary transitions |
-| `--motion-slow` | Duration for entrances and larger movement |
-| `--ease` | The easing curve motion uses |
+| Token                   | What it colours                                 |
+| ----------------------- | ----------------------------------------------- |
+| `--bg`                  | Window background                               |
+| `--bg-raised`           | Cards, the player bar, panels                   |
+| `--bg-control`          | Buttons and inputs                              |
+| `--bg-control-hover`    | Those, hovered                                  |
+| `--border`              | Hairlines and dividers                          |
+| `--border-strong`       | Focused and emphasised edges                    |
+| `--text`                | Body text                                       |
+| `--text-muted`          | Secondary text                                  |
+| `--text-faint`          | Captions and hints                              |
+| `--accent`              | The colour the app leans on                     |
+| `--on-accent`           | Text drawn on top of the accent                 |
+| `--success`             | Confirmations                                   |
+| `--danger`              | Destructive actions and the close button        |
+| `--danger-hover`        | Those, hovered                                  |
+| `--knob`                | The dot in a toggle switch                      |
+| `--overlay`             | The scrim behind a modal                        |
+| `--scrollbar-thumb`     | Scrollbar thumb                                 |
+| `--titlebar-symbol`     | Title bar glyphs                                |
+| `--titlebar-separator`  | Title bar dividers                              |
+| `--shadow`              | Default box shadow                              |
+| `--radius`              | Corner radius. Set `0px` for a squared off look |
+| `--radius-lg`           | Corner radius for larger surfaces               |
+| `--space-xs`            | Spacing step                                    |
+| `--space-sm`            | Spacing step                                    |
+| `--space-md`            | Spacing step                                    |
+| `--space-lg`            | Spacing step                                    |
+| `--titlebar-height`     | Title bar height                                |
+| `--layer-close-confirm` | Unsaved settings dialog stacking level          |
+| `--layer-toggle-knob`   | Toggle switch knob stacking level               |
+| `--font-size-reference` | Root font size at the default browser text size |
+| `--font-ui`             | Body font                                       |
+| `--font-title`          | Title bar and headings                          |
+| `--font-mono`           | Room codes and anything monospaced              |
+| `--motion-fast`         | Duration for hovers and presses                 |
+| `--motion-base`         | Duration for ordinary transitions               |
+| `--motion-slow`         | Duration for entrances and larger movement      |
+| `--ease`                | The easing curve motion uses                    |
 
 YouTube Music page tokens. Each one defaults to the matching app token, and you
 usually don't need to touch them:
 
-| Token | What it colours |
-| --- | --- |
-| `--ytmd-bg` | Page background |
-| `--ytmd-surface` | Player bar and raised shelves |
-| `--ytmd-elevated` | Search field and menu surfaces |
-| `--ytmd-hover` | Hover and pressed fills, chip backgrounds |
-| `--ytmd-border` | Dividers, outlines, the progress track |
-| `--ytmd-text` | Page text |
-| `--ytmd-text-muted` | Secondary page text, card subtitles |
-| `--ytmd-text-faint` | Disabled text |
-| `--ytmd-icon` | Icons |
-| `--ytmd-icon-muted` | Disabled icons |
-| `--ytmd-accent` | Progress bar and selected items |
-| `--ytmd-on-accent` | Text drawn on top of the accent |
-| `--ytmd-danger` | Warnings on the page, such as the boosted part of the volume bar |
-| `--ytmd-overlay` | Scrims over artwork |
-| `--ytmd-scheme` | `light` or `dark`. Controls native scrollbars and form controls. Set it in `styles`, not `ytmStyles`, and the app's own windows switch too |
-| `--ytmd-font` | Page font. Leave it alone to keep YouTube's own |
+| Token               | What it colours                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--ytmd-bg`         | Page background                                                                                                                            |
+| `--ytmd-surface`    | Player bar and raised shelves                                                                                                              |
+| `--ytmd-elevated`   | Search field and menu surfaces                                                                                                             |
+| `--ytmd-hover`      | Hover and pressed fills, chip backgrounds                                                                                                  |
+| `--ytmd-border`     | Dividers, outlines, the progress track                                                                                                     |
+| `--ytmd-text`       | Page text                                                                                                                                  |
+| `--ytmd-text-muted` | Secondary page text, card subtitles                                                                                                        |
+| `--ytmd-text-faint` | Disabled text                                                                                                                              |
+| `--ytmd-icon`       | Icons                                                                                                                                      |
+| `--ytmd-icon-muted` | Disabled icons                                                                                                                             |
+| `--ytmd-accent`     | Progress bar and selected items                                                                                                            |
+| `--ytmd-on-accent`  | Text drawn on top of the accent                                                                                                            |
+| `--ytmd-danger`     | Warnings on the page, such as the boosted part of the volume bar                                                                           |
+| `--ytmd-overlay`    | Scrims over artwork                                                                                                                        |
+| `--ytmd-scheme`     | `light` or `dark`. Controls native scrollbars and form controls. Set it in `styles`, not `ytmStyles`, and the app's own windows switch too |
+| `--ytmd-font`       | Page font. Leave it alone to keep YouTube's own                                                                                            |
 
 A palette theme is one `:root` block setting the ones it cares about:
 

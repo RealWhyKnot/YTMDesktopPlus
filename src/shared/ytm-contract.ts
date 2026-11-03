@@ -16,7 +16,7 @@ export const PLAYER_API_MEMBERS = [
   "previousVideo",
   "seekTo",
   "setVolume",
-  "unMute"
+  "unMute",
 ] as const;
 
 export const PLAYER_API_DUCK_TYPE = ["isReady", "getPlayerState", "getVolume"] as const;
@@ -29,6 +29,5 @@ export const PLAYER_API_RESOLVER_PATTERN = /^(resolve|get|fetch|ensure|load|awai
 
 export function missingPlayerApiMembers(api: unknown): string[] {
   if (!api || (typeof api !== "object" && typeof api !== "function")) return [];
-  const target = api as Record<string, unknown>;
-  return PLAYER_API_MEMBERS.filter(name => typeof target[name] !== "function");
+  return PLAYER_API_MEMBERS.filter((name) => typeof Reflect.get(api, name) !== "function");
 }

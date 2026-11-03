@@ -1,29 +1,21 @@
 import type { PlayerState } from "../../player-state-store";
-import type { CueResult } from "../../playback/cue-track";
+import type { CueResult } from "~shared/addons/sdk";
 import { BREAKER_WINDOW_MS, decide } from "./sync-engine";
 import type { Decision, Expectation, Sample, SyncPhase } from "./types";
 
-// The follower half of Listen Along, shared by the LAN follow and relay rooms:
-// takes local player state and remote samples, runs the sync engine, and turns
-// its decisions into playback commands. Everything side-effecting is injected
-// so this stays testable and free of Electron.
-
-// How long a command we issued stays attributable to us before a matching local
-// change counts as the user reaching for the controls.
 export const EXPECTATION_TTL_MS = 1500;
-// Local state fires on every player mutation, including queue changes carrying
-// the full queue, so the decision loop runs on a floor rather than per message.
+
 export const DECISION_INTERVAL_MS = 200;
 
 export type FollowerPhaseEvent = { phase: "loading" } | { phase: "synced" } | { phase: "suspended"; reason: string };
 
-export interface FollowerDeps {
+export type FollowerDeps = {
   cueTrack(request: { videoId: string; anchor: { kind: "anchor"; epochMs: number } | null }): Promise<CueResult>;
   sendCommand(command: "seekTo" | "play" | "pause", value?: number): void;
   onPhase(event: FollowerPhaseEvent): void;
   now(): number;
   cancelCue?(): void;
-}
+};
 
 export class FollowerEngine {
   private remote: Sample | null = null;
@@ -37,9 +29,12 @@ export class FollowerEngine {
   private lastDecisionAtMs = 0;
   private pendingDecision: NodeJS.Timeout | null = null;
   private cueGeneration = 0;
-  private cuePending = false;
+  private isCuePending = false;
 
-  constructor(private readonly deps: FollowerDeps) {}
+  private readonly deps: FollowerDeps;
+  constructor(deps: FollowerDeps) {
+    this.deps = deps;
+  }
 
   get currentPhase(): SyncPhase {
     return this.phase;
@@ -53,7 +48,7 @@ export class FollowerEngine {
       progress: state.videoProgress,
       trackState: state.trackState,
       adPlaying: state.adPlaying,
-      asOfMs: this.deps.now()
+      asOfMs: this.deps.now(),
     };
     this.runDecision();
   }
@@ -70,8 +65,6 @@ export class FollowerEngine {
     this.phase = "idle";
   }
 
-  // Rejoining after the user took over is a deliberate action, so it clears the
-  // breaker as well as the phase.
   resume() {
     if (this.phase !== "suspended") return;
     this.seekTimestamps = [];
@@ -87,8 +80,8 @@ export class FollowerEngine {
 
   reset() {
     this.cueGeneration++;
-    if (this.cuePending) {
-      this.cuePending = false;
+    if (this.isCuePending) {
+      this.isCuePending = false;
       this.deps.cancelCue?.();
     }
     this.clearRemote();
@@ -103,7 +96,7 @@ export class FollowerEngine {
 
   private expect(kind: Expectation["kind"], target?: string | number) {
     const now = this.deps.now();
-    this.expectations = this.expectations.filter(expectation => expectation.expiresAtMs > now);
+    this.expectations = this.expectations.filter((expectation) => expectation.expiresAtMs > now);
     this.expectations.push({ kind, target, expiresAtMs: now + EXPECTATION_TTL_MS });
   }
 
@@ -112,30 +105,30 @@ export class FollowerEngine {
       case "navigate": {
         this.expect("navigate", decision.videoId);
         this.deps.onPhase({ phase: "loading" });
-        // The track cue owns the navigate and the seek that follows it, and
-        // supersedes itself when the host skips again.
+
         const generation = ++this.cueGeneration;
-        this.cuePending = true;
+        this.isCuePending = true;
         void this.deps
           .cueTrack({
             videoId: decision.videoId,
-            anchor: this.remote ? { kind: "anchor", epochMs: this.remote.asOfMs - this.remote.progress * 1000 } : null
+            anchor: this.remote ? { kind: "anchor", epochMs: this.remote.asOfMs - this.remote.progress * 1000 } : null,
           })
-          .then(result => {
+          .then((result) => {
             if (generation !== this.cueGeneration) return;
-            this.cuePending = false;
+            this.isCuePending = false;
             if (this.phase === "loading") {
               this.phase = result === "no-view" ? "idle" : "synced";
               if (this.phase === "synced") this.deps.onPhase({ phase: "synced" });
             }
-          });
+          })
+          .catch((error: unknown) => console.warn("apply failed", error));
         break;
       }
       case "seek": {
         const now = this.deps.now();
         this.expect("seek", decision.seconds);
         this.lastSeekAtMs = now;
-        this.seekTimestamps = [...this.seekTimestamps.filter(at => now - at < BREAKER_WINDOW_MS), now];
+        this.seekTimestamps = [...this.seekTimestamps.filter((at) => now - at < BREAKER_WINDOW_MS), now];
         this.deps.sendCommand("seekTo", decision.seconds);
         break;
       }
@@ -156,20 +149,16 @@ export class FollowerEngine {
     }
   }
 
-  private runDecision(force = false) {
+  private runDecision(isForce = false) {
     const now = this.deps.now();
-    if (!force && now - this.lastDecisionAtMs < DECISION_INTERVAL_MS) {
-      // Room anchors arrive once, not per mutation, so a decision swallowed by
-      // the floor must be retried or it would never run at all.
-      if (!this.pendingDecision) {
-        this.pendingDecision = setTimeout(
-          () => {
-            this.pendingDecision = null;
-            this.runDecision(true);
-          },
-          DECISION_INTERVAL_MS - (now - this.lastDecisionAtMs) + 1
-        );
-      }
+    if (!isForce && now - this.lastDecisionAtMs < DECISION_INTERVAL_MS) {
+      this.pendingDecision ??= setTimeout(
+        () => {
+          this.pendingDecision = null;
+          this.runDecision(true);
+        },
+        DECISION_INTERVAL_MS - (now - this.lastDecisionAtMs) + 1
+      );
       return;
     }
     this.lastDecisionAtMs = now;
@@ -183,7 +172,7 @@ export class FollowerEngine {
       lastSeekAtMs: this.lastSeekAtMs,
       lastRemoteUpdateMs: this.lastRemoteUpdateMs,
       seekTimestamps: this.seekTimestamps,
-      expectations: this.expectations
+      expectations: this.expectations,
     });
 
     const previousPhase = this.phase;

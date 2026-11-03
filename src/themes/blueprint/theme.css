@@ -7,7 +7,7 @@
 
 :root {
   --bg: #f4f7fa;
-  --bg-raised: #ffffff;
+  --bg-raised: #fff;
   --bg-control: #e3ecf4;
   --bg-control-hover: #d3e1ee;
   --border: #c9d8e6;
@@ -16,12 +16,12 @@
   --text-muted: #46607a;
   --text-faint: #6d84a0;
   --accent: #1e5fbf;
-  --on-accent: #ffffff;
+  --on-accent: #fff;
   --success: #1a7f4e;
   --danger: #c2410c;
   --danger-hover: #9a3407;
-  --knob: #ffffff;
-  --overlay: rgba(24, 44, 64, 0.45);
+  --knob: #fff;
+  --overlay: rgb(24 44 64 / 45%);
   --scrollbar-thumb: #b6c9db;
   --titlebar-symbol: #46607a;
   --titlebar-separator: #d3e1ee;

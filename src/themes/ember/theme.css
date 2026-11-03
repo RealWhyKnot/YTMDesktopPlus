@@ -14,7 +14,7 @@
   --danger: #ff3b30;
   --danger-hover: #d32f27;
   --knob: #f2e6e6;
-  --overlay: rgba(12, 8, 9, 0.65);
+  --overlay: rgb(12 8 9 / 65%);
   --scrollbar-thumb: #453137;
   --titlebar-symbol: #c9adaf;
   --titlebar-separator: #3d2c32;

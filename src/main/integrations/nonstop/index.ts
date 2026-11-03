@@ -1,20 +1,19 @@
-import type { BrowserView } from "electron";
-import IIntegration from "../integration";
+import type { WebContents } from "electron";
+import type { Integration } from "../integration";
 
 import enableScript from "./script/enable.script?raw";
 import disableScript from "./script/disable.script?raw";
 
-export default class NonStop implements IIntegration {
-  private ytmView: BrowserView;
+export class NonStop implements Integration {
+  private ytmView: { webContents: Pick<WebContents, "send"> } | null = null;
   private hasInjected = false;
   private isEnabled = false;
-  private waitForYTMView = true;
+  private isWaitForYTMView = true;
 
-  public provide(ytmView: BrowserView): void {
+  public provide(ytmView: { webContents: Pick<WebContents, "send"> } | null): void {
     if (ytmView !== this.ytmView) {
-      // The YTM view object has changed from what we knew it was. Invalidate the state as the YTM view was recreated
       this.hasInjected = false;
-      this.waitForYTMView = true;
+      this.isWaitForYTMView = true;
     }
     this.ytmView = ytmView;
 
@@ -25,7 +24,7 @@ export default class NonStop implements IIntegration {
 
   public enable(): void {
     this.isEnabled = true;
-    if (this.hasInjected || this.waitForYTMView || this.ytmView === null) return;
+    if (this.hasInjected || this.isWaitForYTMView || this.ytmView === null) return;
 
     this.ytmView.webContents.send("ytmView:executeScript", "nonStop", "enable");
     this.hasInjected = true;
@@ -33,7 +32,7 @@ export default class NonStop implements IIntegration {
 
   public disable(): void {
     this.isEnabled = false;
-    if (!this.hasInjected) return;
+    if (!this.hasInjected || this.ytmView === null) return;
 
     this.ytmView.webContents.send("ytmView:executeScript", "nonStop", "disable");
     this.hasInjected = false;
@@ -43,18 +42,18 @@ export default class NonStop implements IIntegration {
     return [
       {
         name: "enable",
-        script: enableScript
+        script: enableScript,
       },
       {
         name: "disable",
-        script: disableScript
-      }
+        script: disableScript,
+      },
     ];
   }
 
   public ytmViewLoaded(): void {
-    this.waitForYTMView = false;
-    // A navigation within the same view builds a fresh main world, so the script this held is gone.
+    this.isWaitForYTMView = false;
+
     this.hasInjected = false;
     if (this.isEnabled) this.enable();
   }

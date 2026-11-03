@@ -1,5 +1,8 @@
+import { EventEmitter } from "node:events";
+import type { IpcMainInvokeEvent } from "electron";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerStoreBridgeIpc, type StoreBridgeIpcDeps } from "../src/main/ipc/store-bridge";
+import type { SenderEvent } from "../src/main/ipc/sender-guards";
 import type { IpcRegistrar } from "../src/main/ipc/registrar";
 import { CachedConf } from "../src/main/store/cached-conf";
 import { makeTempDir } from "./helpers/temp-dir";
@@ -8,29 +11,56 @@ type Schema = { general: { startOnBoot: boolean; startMinimized: boolean }; appe
 
 const stores: CachedConf<Schema>[] = [];
 
+function bridgeDeps(overrides: Partial<StoreBridgeIpcDeps> = {}): StoreBridgeIpcDeps {
+  return {
+    store: { get: vi.fn<(key: string) => unknown>(), set: vi.fn(), reset: vi.fn() },
+    memoryStore: { get: vi.fn<(key: string) => unknown>(), set: vi.fn(), getState: vi.fn<() => unknown>() },
+    isSettingsSender: () => true,
+    isMemoryStoreSender: () => false,
+    isSettingsReader: () => false,
+    decryptString: (value) => value,
+    encryptString: (value) => value,
+    ...overrides,
+  };
+}
+
 function bridge() {
   const store = new CachedConf<Schema>({
     cwd: makeTempDir("ytmd-bridge-"),
     configName: "config",
     defaults: { general: { startOnBoot: false, startMinimized: false }, appearance: { zoom: 100 } },
-    projectVersion: "1.0.0"
+    projectVersion: "1.0.0",
   });
   stores.push(store);
-  const listeners = new Map<string, (event: unknown, ...args: unknown[]) => void>();
+  const listeners = new EventEmitter();
   const ipc: IpcRegistrar = {
     on: (channel, listener) => {
-      listeners.set(channel, listener);
+      listeners.on(channel, listener);
     },
-    handle: () => {}
+    handle: () => {
+      return undefined;
+    },
   };
-  registerStoreBridgeIpc(ipc, { store, isSettingsSender: () => true } as unknown as StoreBridgeIpcDeps);
+  registerStoreBridgeIpc(
+    ipc,
+    bridgeDeps({
+      store: {
+        get: (key) => store.get(key),
+        set(key: string | Record<string, unknown>, value?: unknown) {
+          if (typeof key === "string") store.set(key, value);
+          else store.set(key);
+        },
+        reset: vi.fn(),
+      },
+    })
+  );
   const changes = vi.fn();
   store.events.addEventListener("change", changes);
-  return { store, changes, setMany: (entries: unknown) => listeners.get("settings:setMany")({ sender: {} }, entries) };
+  return { store, changes, setMany: (entries: unknown) => listeners.emit("settings:setMany", { sender: {} }, entries) };
 }
 
 afterEach(async () => {
-  await Promise.all(stores.splice(0).map(store => store.flush()));
+  await Promise.all(stores.splice(0).map((store) => store.flush()));
 });
 
 describe("settings:setMany", () => {
@@ -44,15 +74,15 @@ describe("settings:setMany", () => {
     setMany([
       ["general.startOnBoot", true],
       ["general.startMinimized", true],
-      ["appearance.zoom", 120]
+      ["appearance.zoom", 120],
     ]);
 
     expect(changes).toHaveBeenCalledOnce();
     expect(general.mock.calls).toEqual([
       [
         { startOnBoot: true, startMinimized: true },
-        { startOnBoot: false, startMinimized: false }
-      ]
+        { startOnBoot: false, startMinimized: false },
+      ],
     ]);
     expect(appearance.mock.calls).toEqual([[{ zoom: 120 }, { zoom: 100 }]]);
   });
@@ -69,21 +99,26 @@ describe("settings:setMany", () => {
 });
 
 describe("memoryStore:subscribe", () => {
-  function subscriber(allowed: boolean) {
-    const listeners = new Map<string, (event: unknown, ...args: unknown[]) => void>();
+  function subscriber(isAllowed: boolean) {
+    const listeners = new EventEmitter();
     const ipc: IpcRegistrar = {
       on: (channel, listener) => {
-        listeners.set(channel, listener);
+        listeners.on(channel, listener);
       },
-      handle: () => {}
+      handle: () => {
+        return undefined;
+      },
     };
     const state = { ytmViewLoading: true, ytmViewLoadingStatus: "Loaded" };
-    registerStoreBridgeIpc(ipc, {
-      memoryStore: { getState: () => state },
-      isMemoryStoreSender: () => allowed
-    } as unknown as StoreBridgeIpcDeps);
+    registerStoreBridgeIpc(
+      ipc,
+      bridgeDeps({
+        memoryStore: { get: vi.fn(), set: vi.fn(), getState: () => state },
+        isMemoryStoreSender: () => isAllowed,
+      })
+    );
     const sender = { send: vi.fn() };
-    listeners.get("memoryStore:subscribe")({ sender });
+    listeners.emit("memoryStore:subscribe", { sender });
     return { sender, state };
   }
 
@@ -99,20 +134,34 @@ describe("memoryStore:subscribe", () => {
 });
 
 describe("settings:get", () => {
-  function reader(allowed: (event: unknown) => boolean) {
-    const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
+  function reader(allowed: (event: SenderEvent) => boolean) {
+    const handlers = new EventEmitter();
+    let result: unknown;
     const ipc: IpcRegistrar = {
-      on: () => {},
+      on: () => {
+        return undefined;
+      },
       handle: (channel, listener) => {
-        handlers.set(channel, listener);
-      }
+        handlers.on(channel, (event: IpcMainInvokeEvent, ...args: unknown[]) => {
+          result = listener(event, ...args);
+        });
+      },
     };
     const isSettingsReader = vi.fn(allowed);
-    registerStoreBridgeIpc(ipc, {
-      store: { get: (key: string) => `value of ${key}` },
-      isSettingsReader
-    } as unknown as StoreBridgeIpcDeps);
-    return { get: (event: unknown) => handlers.get("settings:get")(event, "lastfm"), isSettingsReader };
+    registerStoreBridgeIpc(
+      ipc,
+      bridgeDeps({
+        store: { get: (key: string) => `value of ${key}`, set: vi.fn(), reset: vi.fn() },
+        isSettingsReader,
+      })
+    );
+    return {
+      get: (event: unknown) => {
+        handlers.emit("settings:get", event, "lastfm");
+        return result;
+      },
+      isSettingsReader,
+    };
   }
 
   it("checks the whole event so the frame can be judged, not just the sender", () => {
@@ -124,7 +173,7 @@ describe("settings:get", () => {
   });
 
   it("returns nothing to a frame the reader check refuses", () => {
-    const { get } = reader(event => (event as { senderFrame: { parent: unknown } }).senderFrame.parent === null);
+    const { get } = reader((event) => event.senderFrame?.parent === null);
 
     expect(get({ sender: {}, senderFrame: { url: "https://evil.example/", parent: {} } })).toBeUndefined();
   });

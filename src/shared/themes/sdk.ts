@@ -54,3 +54,5 @@ export type ThemeCss = {
 };
 
 export const EMPTY_THEME_CSS: ThemeCss = { app: "", ytm: "", addonWindow: "" };
+
+export type ThemeActionResult = { ok: true; id?: string } | { ok: false; reason: string };

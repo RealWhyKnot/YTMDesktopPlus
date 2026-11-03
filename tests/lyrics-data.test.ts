@@ -1,3 +1,4 @@
+import { requireValue } from "./helpers/require-value";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,7 +11,7 @@ import {
   pickLrclib,
   plainLines,
   textMatch,
-  type LrclibRecord
+  type LrclibRecord,
 } from "../src/addons/bundled/lyrics/lyrics-data";
 
 const VERSE = ["I walked along the river", "the water running cold", "you said the night was ours", "and never let it go", "we sang until the morning"];
@@ -35,7 +36,7 @@ function record(overrides: Partial<LrclibRecord> = {}): LrclibRecord {
     instrumental: false,
     plainLyrics: VERSE.join("\n"),
     syncedLyrics: lrc(VERSE),
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -45,36 +46,36 @@ describe("parseLrc", () => {
     expect(lines).toEqual([
       { text: "one", start: 1500, end: 3250 },
       { text: "two", start: 3250, end: 60000 },
-      { text: "three", start: 60000, end: null }
+      { text: "three", start: 60000, end: null },
     ]);
   });
 
   it("repeats a line that carries several timestamps and keeps time order", () => {
     const lines = parseLrc("[00:20.00][00:05.00]chorus\n[00:10.00]verse");
-    expect(lines.map(line => [line.text, line.start])).toEqual([
+    expect(lines.map((line) => [line.text, line.start])).toEqual([
       ["chorus", 5000],
       ["verse", 10000],
-      ["chorus", 20000]
+      ["chorus", 20000],
     ]);
   });
 
   it("applies the offset tag and never goes below zero", () => {
     const lines = parseLrc("[offset:+500]\n[00:00.20]early\n[00:02.00]later");
-    expect(lines.map(line => line.start)).toEqual([0, 1500]);
+    expect(lines.map((line) => line.start)).toEqual([0, 1500]);
   });
 
   it("keeps blank timed lines as instrumental breaks and skips metadata", () => {
     const lines = parseLrc("[ar:Someone]\n[ti:River]\n[00:01.00]sung\n[00:04.00]\n[00:09.00]back");
-    expect(lines.map(line => line.text)).toEqual(["sung", "", "back"]);
+    expect(lines.map((line) => line.text)).toEqual(["sung", "", "back"]);
   });
 
   it("reads per-word timings from enhanced LRC", () => {
     const [line] = parseLrc("[00:10.00]<00:10.00>hold <00:10.50>me <00:11.20>close");
-    expect(line.text).toBe("hold me close");
-    expect(line.words).toEqual([
+    expect(requireValue(line).text).toBe("hold me close");
+    expect(requireValue(line).words).toEqual([
       { text: "hold", start: 10000 },
       { text: "me", start: 10500 },
-      { text: "close", start: 11200 }
+      { text: "close", start: 11200 },
     ]);
   });
 
@@ -82,7 +83,7 @@ describe("parseLrc", () => {
     const many = Array.from({ length: MAX_LINES + 50 }, (_, index) => `[00:${String(index % 60).padStart(2, "0")}.00]x`).join("\n");
     expect(parseLrc(many)).toHaveLength(MAX_LINES);
     const [long] = parseLrc(`[00:01.00]${"a".repeat(MAX_LINE_LENGTH * 3)}`);
-    expect(long.text).toHaveLength(MAX_LINE_LENGTH);
+    expect(requireValue(long).text).toHaveLength(MAX_LINE_LENGTH);
   });
 });
 
@@ -90,28 +91,28 @@ describe("fromYtmTimed", () => {
   it("maps cue ranges to timed lines", () => {
     const lyrics = fromYtmTimed([
       { lyricLine: "first", cueRange: { startTimeMilliseconds: "1000", endTimeMilliseconds: "2500" } },
-      { lyricLine: "second", cueRange: { startTimeMilliseconds: "2500", endTimeMilliseconds: "4000" } }
+      { lyricLine: "second", cueRange: { startTimeMilliseconds: "2500", endTimeMilliseconds: "4000" } },
     ]);
     expect(lyrics).toEqual({
       timed: true,
       source: "",
       lines: [
         { text: "first", start: 1000, end: 2500 },
-        { text: "second", start: 2500, end: 4000 }
-      ]
+        { text: "second", start: 2500, end: 4000 },
+      ],
     });
   });
 
   it("drops all timing when any line lacks a cue range", () => {
     const lyrics = fromYtmTimed([{ lyricLine: "first", cueRange: { startTimeMilliseconds: "1000" } }, { lyricLine: "second" }]);
     expect(lyrics?.timed).toBe(false);
-    expect(lyrics?.lines.every(line => line.start === null && line.end === null)).toBe(true);
+    expect(lyrics?.lines.every((line) => line.start === null && line.end === null)).toBe(true);
   });
 
   it("returns null for nothing and tolerates junk entries", () => {
     expect(fromYtmTimed([])).toBeNull();
-    expect(fromYtmTimed(null as never)).toBeNull();
-    expect(fromYtmTimed([{ lyricLine: 5 } as never])?.lines[0].text).toBe("");
+    expect(fromYtmTimed(null)).toBeNull();
+    expect(requireValue(fromYtmTimed([{ lyricLine: 5 }])?.lines[0]).text).toBe("");
   });
 });
 
@@ -120,7 +121,7 @@ describe("plainLines", () => {
     expect(plainLines("a  b\r\n\nc")).toEqual([
       { text: "a b", start: null, end: null },
       { text: "", start: null, end: null },
-      { text: "c", start: null, end: null }
+      { text: "c", start: null, end: null },
     ]);
   });
 });
@@ -139,7 +140,7 @@ describe("title and artist cleanup", () => {
     ["River [Lyrics]", "River"],
     ["River (Remastered 2011)", "River"],
     ["River | Live at Home", "River"],
-    ["River (feat. Someone Else)", "River (feat. Someone Else)"]
+    ["River (feat. Someone Else)", "River (feat. Someone Else)"],
   ])("cleans %s", (title, expected) => {
     expect(cleanTitle(title)).toBe(expected);
   });
@@ -149,7 +150,7 @@ describe("title and artist cleanup", () => {
     ["SomeoneVEVO", "Someone"],
     ["Someone & Another", "Someone"],
     ["Someone feat. Another", "Someone"],
-    ["Someone, Another", "Someone"]
+    ["Someone, Another", "Someone"],
   ])("cleans %s", (artist, expected) => {
     expect(cleanArtist(artist)).toBe(expected);
   });
@@ -161,7 +162,7 @@ describe("pickLrclib", () => {
   it("takes a synced record whose length and words match", () => {
     const picked = pickLrclib([record()], target);
     expect(picked?.timed).toBe(true);
-    expect(picked?.lines.map(line => line.text)).toEqual(VERSE);
+    expect(picked?.lines.map((line) => line.text)).toEqual(VERSE);
   });
 
   it("rejects a record more than two seconds off the track length", () => {
@@ -190,11 +191,11 @@ describe("pickLrclib", () => {
     const other = ["completely unrelated words here", "nothing alike at all", "different song entirely", "more filler text", "end of it"];
     expect(pickLrclib([record()], noReference)).not.toBeNull();
     expect(pickLrclib([record(), record({ id: 2, syncedLyrics: lrc(other) })], noReference)).toBeNull();
-    expect(pickLrclib([record(), record({ id: 2 }), record({ id: 3, syncedLyrics: lrc(other) })], noReference)?.lines[0].text).toBe(VERSE[0]);
+    expect(requireValue(pickLrclib([record(), record({ id: 2 }), record({ id: 3, syncedLyrics: lrc(other) })], noReference)?.lines[0]).text).toBe(VERSE[0]);
   });
 
   it("ignores junk input", () => {
-    expect(pickLrclib(null as never, target)).toBeNull();
-    expect(pickLrclib([null as never, { ...record(), duration: Number.NaN }], target)).toBeNull();
+    expect(pickLrclib(null, target)).toBeNull();
+    expect(pickLrclib([null, { ...record(), duration: Number.NaN }], target)).toBeNull();
   });
 });

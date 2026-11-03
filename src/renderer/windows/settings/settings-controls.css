@@ -1,0 +1,40 @@
+.settings-container button {
+  margin: 3px 3px 3px 4px;
+  border-radius: 4px;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  background-color: var(--bg-control);
+  cursor: pointer;
+  border: none;
+}
+
+.settings-container button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.settings-container .setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-container .setting.indented {
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+
+.settings-container .setting[aria-disabled="true"] {
+  color: var(--text-muted);
+}
+
+.settings-container .name-with-description .name {
+  margin-bottom: unset;
+}
+
+.settings-container .name-with-description .description {
+  margin-top: 4px;
+  color: var(--text-faint);
+}

@@ -2,17 +2,25 @@ import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
 import { createRequire } from "node:module";
-import type { AddonManifest } from "~shared/addons/types";
-import { manifestWarnings, validateManifest } from "./validate-manifest";
-import type { BundledAddonDefinition } from "./manager";
-import type { AddonInstance } from "./context";
+import type { AddonManifest, AddonContext, AddonInstance } from "~shared/addons/sdk";
+import { isAddonManifest, manifestWarnings, validateManifest } from "./validate-manifest";
+import type { BundledAddonDefinition } from "./managed-addon";
+import { isRecord } from "~shared/unknown";
+
+function isActivation(value: unknown): value is (context: AddonContext) => unknown {
+  return typeof value === "function";
+}
+
+function isAddonInstance(value: unknown): value is AddonInstance {
+  return isRecord(value) && (value.destroy === undefined || typeof value.destroy === "function");
+}
 
 export type ExternalAddonScan = {
   dir: string;
   folderName: string;
   manifest?: AddonManifest;
   error?: string;
-  /** Non-fatal manifest problems, logged at registration */
+
   warnings?: string[];
   fingerprint?: string;
 };
@@ -34,7 +42,6 @@ function fingerprintAddon(dir: string, manifestBytes: Buffer, manifest: AddonMan
   return hash.digest("hex");
 }
 
-/** Reads and validates one addon folder. Never throws. */
 export function scanAddonFolder(dir: string): ExternalAddonScan {
   const folderName = path.basename(dir);
   let parsed: unknown;
@@ -43,13 +50,13 @@ export function scanAddonFolder(dir: string): ExternalAddonScan {
     manifestBytes = fs.readFileSync(path.join(dir, "manifest.json"));
     parsed = JSON.parse(manifestBytes.toString("utf8"));
   } catch (error) {
-    return { dir, folderName, error: `manifest.json could not be read: ${error}` };
+    return { dir, folderName, error: `manifest.json could not be read: ${String(error)}` };
   }
   const invalid = validateManifest(parsed);
-  if (invalid) {
+  if (invalid || !isAddonManifest(parsed)) {
     return { dir, folderName, error: `manifest.json is invalid: ${invalid}` };
   }
-  const manifest = parsed as AddonManifest;
+  const manifest = parsed;
   if (manifest.id !== folderName) {
     return { dir, folderName, manifest, error: "folder name must match the addon id" };
   }
@@ -57,8 +64,6 @@ export function scanAddonFolder(dir: string): ExternalAddonScan {
   return { dir, folderName, manifest, warnings: warnings.length > 0 ? warnings : undefined, fingerprint: fingerprintAddon(dir, manifestBytes, manifest) };
 }
 
-/** Reads every folder in the addons directory and validates its manifest.
- *  Never throws: a broken folder comes back as an entry with an error. */
 export function scanExternalAddons(addonsDir: string): ExternalAddonScan[] {
   let entries: fs.Dirent[];
   try {
@@ -68,26 +73,21 @@ export function scanExternalAddons(addonsDir: string): ExternalAddonScan[] {
   }
 
   return entries
-    .filter(entry => entry.isDirectory())
+    .filter((entry) => entry.isDirectory())
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map(entry => scanAddonFolder(path.join(addonsDir, entry.name)));
+    .map((entry) => scanAddonFolder(path.join(addonsDir, entry.name)));
 }
 
-/** Drops every module the addon's folder ever loaded from the shared
- *  CommonJS cache, so the next require reads fresh sources. */
 export function bustAddonRequireCache(dir: string): void {
   const requireFromAddon = createRequire(path.join(dir, "manifest.json"));
   const prefix = path.normalize(dir + path.sep).toLowerCase();
-  for (const key of Object.keys(requireFromAddon.cache ?? {})) {
+  for (const key of Object.keys(requireFromAddon.cache)) {
     if (path.normalize(key).toLowerCase().startsWith(prefix)) {
-      delete requireFromAddon.cache[key];
+      Reflect.deleteProperty(requireFromAddon.cache, key);
     }
   }
 }
 
-/** Turns a scanned folder into a runnable definition. Styles are injected and
- *  watched; page scripts run on every view load; a main entry is required in
- *  and may export activate() for the full context. */
 export function buildExternalDefinition(dir: string, manifest: AddonManifest): BundledAddonDefinition {
   return {
     manifest,
@@ -103,13 +103,19 @@ export function buildExternalDefinition(dir: string, manifest: AddonManifest): B
       }
       if (manifest.main) {
         const requireFromAddon = createRequire(path.join(dir, "manifest.json"));
-        const entry = requireFromAddon(path.join(dir, manifest.main));
-        const activateFn = typeof entry === "function" ? entry : typeof entry?.activate === "function" ? entry.activate : entry?.default?.activate;
-        if (typeof activateFn !== "function") {
+        const entry: unknown = requireFromAddon(path.join(dir, manifest.main));
+        const direct = isRecord(entry) ? entry.activate : undefined;
+        const fallback = isRecord(entry) && isRecord(entry.default) ? entry.default.activate : undefined;
+        const activateFn = isActivation(entry) ? entry : isActivation(direct) ? direct : fallback;
+        if (!isActivation(activateFn)) {
           throw new Error(`${manifest.main} does not export an activate function`);
         }
-        return (await activateFn(ctx)) as AddonInstance | undefined;
+        const instance = await activateFn(ctx);
+        if (instance === undefined || instance === null) return undefined;
+        if (!isAddonInstance(instance)) throw new TypeError(`${manifest.main} returned an invalid addon instance`);
+        return instance;
       }
-    }
+      return undefined;
+    },
   };
 }

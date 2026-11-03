@@ -1,15 +1,15 @@
 import { nativeImage, type NativeImage } from "electron";
 import type Conf from "conf";
-import playerStateStore, { PlayerState, VideoState } from "./player-state-store";
+import { playerStateStore, type PlayerState, VideoState } from "./player-state-store";
 import type { StoreSchema } from "../shared/store/schema";
 import { stallTasks } from "./stall-watch";
 
-export interface TaskbarDeps {
+export type TaskbarDeps = {
   store: Conf<StoreSchema>;
-  getMainWindow(): Electron.BrowserWindow | null;
-  sendRemoteCommand(command: string): void;
-  getControlsIconPath(icon: string): string;
-}
+  getMainWindow: () => Electron.BrowserWindow | null;
+  sendRemoteCommand: (command: string) => void;
+  getControlsIconPath: (icon: string) => string;
+};
 
 export type TaskbarIcons = { previous: NativeImage; play: NativeImage; pause: NativeImage; next: NativeImage };
 
@@ -49,7 +49,7 @@ export function createTaskbarUpdater(deps: TaskbarUpdaterDeps) {
     return [
       { tooltip: "Previous", icon: icons.previous, flags, click: () => deps.sendRemoteCommand("previous") },
       { tooltip: "Play/Pause", icon: isPlaying ? icons.pause : icons.play, flags, click: () => deps.sendRemoteCommand("playPause") },
-      { tooltip: "Next", icon: icons.next, flags, click: () => deps.sendRemoteCommand("next") }
+      { tooltip: "Next", icon: icons.next, flags, click: () => deps.sendRemoteCommand("next") },
     ];
   };
 
@@ -67,10 +67,11 @@ export function createTaskbarUpdater(deps: TaskbarUpdaterDeps) {
 
     const hasVideo = !!state.videoDetails;
     const isPlaying = state.trackState === VideoState.Playing;
-    if (deps.icons && target.isVisible()) {
+    const icons = deps.icons;
+    if (icons && target.isVisible()) {
       const key = `${hasVideo}:${isPlaying}`;
       if (key !== appliedButtons) {
-        stallTasks.timeSync("taskbar setThumbarButtons", () => target.setThumbarButtons(buttons(hasVideo, isPlaying, deps.icons)));
+        stallTasks.timeSync("taskbar setThumbarButtons", () => target.setThumbarButtons(buttons(hasVideo, isPlaying, icons)));
         appliedButtons = key;
       }
     }
@@ -102,21 +103,21 @@ export function setupTaskbarFeatures(deps: TaskbarDeps): void {
           previous: nativeImage.createFromPath(getControlsIconPath("play-previous-button.png")),
           play: nativeImage.createFromPath(getControlsIconPath("play-button.png")),
           pause: nativeImage.createFromPath(getControlsIconPath("pause-button.png")),
-          next: nativeImage.createFromPath(getControlsIconPath("play-next-button.png"))
+          next: nativeImage.createFromPath(getControlsIconPath("play-next-button.png")),
         }
       : null;
 
-  let progressInTaskbar = store.get("playback").progressInTaskbar;
-  const updater = createTaskbarUpdater({ icons, sendRemoteCommand, progressEnabled: () => progressInTaskbar });
+  let isProgressInTaskbar = store.get("playback").progressInTaskbar;
+  const updater = createTaskbarUpdater({ icons, sendRemoteCommand, progressEnabled: () => isProgressInTaskbar });
 
   updater.update(getMainWindow(), playerStateStore.getState());
-  playerStateStore.addEventListener(state => updater.update(getMainWindow(), state));
+  playerStateStore.addEventListener((state) => updater.update(getMainWindow(), state));
 
-  store.onDidChange("playback", newValue => {
-    const enabled = newValue?.progressInTaskbar === true;
-    if (enabled === progressInTaskbar) return;
-    progressInTaskbar = enabled;
-    if (!enabled) updater.clearProgress();
+  store.onDidChange("playback", (newValue) => {
+    const isEnabled = newValue?.progressInTaskbar === true;
+    if (isEnabled === isProgressInTaskbar) return;
+    isProgressInTaskbar = isEnabled;
+    if (!isEnabled) updater.clearProgress();
     else updater.update(getMainWindow(), playerStateStore.getState());
   });
 }

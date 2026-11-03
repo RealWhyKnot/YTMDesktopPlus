@@ -1,3 +1,4 @@
+import { requireValue, requireRecord } from "./helpers/require-value";
 import crypto from "crypto";
 import Conf from "conf";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,25 +12,24 @@ import {
   getTemporaryAuthCode,
   isAuthLockedOut,
   isAuthValid,
-  recordFailedAuth
+  recordFailedAuth,
 } from "../src/main/integrations/companion-server/api-shared/auth";
-import type { StoreSchema } from "../src/shared/store/schema";
 import { makeTempDir } from "./helpers/temp-dir";
 
 const safeStorage = vi.hoisted(() => ({
   encryptString: vi.fn((value: string) => Buffer.from(value)),
-  decryptString: vi.fn((value: Buffer) => value.toString())
+  decryptString: vi.fn((value: Buffer) => value.toString()),
 }));
 
 vi.mock("electron", () => ({ safeStorage }));
 
-function makeStore(integrations: Record<string, unknown> = { companionServerAuthTokens: null }) {
+function makeStore(integrations: { companionServerAuthTokens?: string | null } = { companionServerAuthTokens: null }) {
   return new Conf({
     cwd: makeTempDir("ytmd-auth-"),
     configName: "config",
     defaults: { integrations },
-    projectVersion: "1.0.0"
-  }) as unknown as Conf<StoreSchema>;
+    projectVersion: "1.0.0",
+  });
 }
 
 describe("companion auth tokens", () => {
@@ -102,7 +102,7 @@ describe("companion token last used", () => {
     vi.useFakeTimers({ now: 1_000_000 });
     const store = makeStore();
     const token = createAuthToken(store, "app", "1.0.0", "App");
-    expect(getAuthTokens(store)[0].lastUsed).toBe(1_000_000);
+    expect(requireValue(getAuthTokens(store)[0]).lastUsed).toBe(1_000_000);
 
     vi.setSystemTime(1_000_000 + LAST_USED_RESOLUTION_MS - 1);
     safeStorage.encryptString.mockClear();
@@ -111,10 +111,10 @@ describe("companion token last used", () => {
 
     vi.setSystemTime(1_000_000 + LAST_USED_RESOLUTION_MS);
     expect(isAuthValid(store, token)[0]).toBe(true);
-    expect(getAuthTokens(store)[0].lastUsed).toBe(1_000_000 + LAST_USED_RESOLUTION_MS);
-    expect(JSON.parse(Buffer.from(store.get("integrations.companionServerAuthTokens"), "hex").toString())[0].lastUsed).toBe(
-      1_000_000 + LAST_USED_RESOLUTION_MS
-    );
+    expect(requireValue(getAuthTokens(store)[0]).lastUsed).toBe(1_000_000 + LAST_USED_RESOLUTION_MS);
+    const saved: unknown = JSON.parse(Buffer.from(requireValue(store.get("integrations.companionServerAuthTokens")), "hex").toString());
+    if (!Array.isArray(saved)) throw new TypeError("Expected stored auth tokens");
+    expect(requireRecord(saved[0]).lastUsed).toBe(1_000_000 + LAST_USED_RESOLUTION_MS);
   });
 
   it("adds the stamp to a token stored before it existed and keeps the other fields", () => {
@@ -125,7 +125,7 @@ describe("companion token last used", () => {
       appVersion: "0.1.0",
       id: "id-1",
       token: crypto.createHash("sha256").update("secret").digest("hex"),
-      metadata: { version: 1 }
+      metadata: { version: 1 },
     };
     const store = makeStore({ companionServerAuthTokens: Buffer.from(JSON.stringify([legacy])).toString("hex") });
 

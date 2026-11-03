@@ -1,17 +1,18 @@
-import type { BundledAddonDefinition } from "../../../main/addons/manager";
+import type { BundledAddonDefinition } from "../../../main/addons/managed-addon";
+import { isRecord } from "~shared/unknown";
 import { RepeatMode } from "../../../shared/addons/sdk";
 
 import blendScript from "./scripts/blend.script?raw";
 import blendDisableScript from "./scripts/blend-disable.script?raw";
 
-const blendAddon: BundledAddonDefinition = {
+const blendAddon = {
   manifest: {
     id: "blend",
     name: "Blend",
     version: "1.0.0",
     author: "WhyKnot",
     description: "Overlaps the end of one song with the start of the next, whether it ran out or you skipped it.",
-    defaultEnabled: false
+    defaultEnabled: false,
   },
 
   activate(ctx) {
@@ -27,16 +28,16 @@ const blendAddon: BundledAddonDefinition = {
             min: 1,
             max: 12,
             step: 0.5,
-            display: "slider"
+            display: "slider",
           },
           {
             key: "blendSkips",
             type: "toggle",
             label: "Blend skips",
-            description: "Overlap songs when you skip, not only when one ends."
-          }
-        ]
-      }
+            description: "Overlap songs when you skip, not only when one ends.",
+          },
+        ],
+      },
     ]);
 
     ctx.ytmview.registerScript("blend", blendScript);
@@ -46,18 +47,18 @@ const blendAddon: BundledAddonDefinition = {
       queue ? queue.selectedItemIndex < queue.items.length - 1 || queue.automixItems.length > 0 || queue.isInfinite : false;
 
     const initialQueue = ctx.player.getQueue();
-    let repeatOne = initialQueue?.repeatMode === RepeatMode.One;
-    let adPlaying = ctx.player.getState().adPlaying;
+    let isRepeatOne = initialQueue?.repeatMode === RepeatMode.One;
+    let isAdPlaying = ctx.player.getState().adPlaying;
     let hasNext = nextAvailable(initialQueue);
 
     const apply = async () => {
       try {
         const applied = await ctx.ytmview.invokeScript("blend", {
-          seconds: ctx.settings.get<number>("seconds") ?? 5,
-          blendSkips: ctx.settings.get<boolean>("blendSkips") === true,
-          repeatOne,
-          adPlaying,
-          hasNext
+          seconds: ctx.settings.get("seconds") ?? 5,
+          blendSkips: ctx.settings.get("blendSkips"),
+          repeatOne: isRepeatOne,
+          adPlaying: isAdPlaying,
+          hasNext,
         });
         if (applied !== true) ctx.log.info("Blend could not attach yet; the page has no audio graph");
       } catch (error) {
@@ -66,32 +67,32 @@ const blendAddon: BundledAddonDefinition = {
     };
 
     const unsubscribes = [
-      ctx.settings.onDidChange("seconds", () => void apply()),
-      ctx.settings.onDidChange("blendSkips", () => void apply()),
+      ctx.settings.onDidChange("seconds", () => void apply().catch((error: unknown) => console.warn("activate failed", error))),
+      ctx.settings.onDidChange("blendSkips", () => void apply().catch((error: unknown) => console.warn("activate failed", error))),
       ctx.ytmview.onLoaded(apply),
-      ctx.ytmview.onMessage("diag", payload => {
-        const data = payload as Record<string, unknown>;
-        if (typeof data?.event !== "string") return;
+      ctx.ytmview.onMessage("diag", (payload) => {
+        if (!isRecord(payload) || typeof payload.event !== "string") return;
+        const data = payload;
         const detail = Object.entries(data)
           .filter(([key]) => key !== "event")
           .map(([key, value]) => `${key}=${String(value)}`)
           .join(" ");
-        ctx.log.info(`blend ${data.event}${detail ? ` ${detail}` : ""}`);
+        ctx.log.info(`blend ${payload.event}${detail ? ` ${detail}` : ""}`);
       }),
-      ctx.player.on("adStateChanged", payload => {
-        adPlaying = payload.adPlaying;
-        void apply();
+      ctx.player.on("adStateChanged", (payload) => {
+        isAdPlaying = payload.adPlaying;
+        void apply().catch((error: unknown) => console.warn("activate failed", error));
       }),
-      ctx.player.on("repeatModeChanged", payload => {
-        repeatOne = payload.repeatMode === RepeatMode.One;
-        void apply();
+      ctx.player.on("repeatModeChanged", (payload) => {
+        isRepeatOne = payload.repeatMode === RepeatMode.One;
+        void apply().catch((error: unknown) => console.warn("activate failed", error));
       }),
-      ctx.player.on("queueChanged", payload => {
-        const next = nextAvailable(payload.queue);
-        if (next === hasNext) return;
-        hasNext = next;
-        void apply();
-      })
+      ctx.player.on("queueChanged", (payload) => {
+        const isNext = nextAvailable(payload.queue);
+        if (isNext === hasNext) return;
+        hasNext = isNext;
+        void apply().catch((error: unknown) => console.warn("activate failed", error));
+      }),
     ];
 
     return {
@@ -99,12 +100,12 @@ const blendAddon: BundledAddonDefinition = {
         for (const unsubscribe of unsubscribes) unsubscribe();
         try {
           ctx.ytmview.runScript("blend-disable");
-        } catch {
-          // View already gone.
+        } catch (error) {
+          console.warn("index: operation failed", error);
         }
-      }
+      },
     };
-  }
-};
+  },
+} satisfies BundledAddonDefinition;
 
-export default blendAddon;
+export { blendAddon };

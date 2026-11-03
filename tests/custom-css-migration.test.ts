@@ -1,3 +1,4 @@
+import { requireValue } from "./helpers/require-value";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -21,12 +22,11 @@ describe("migrateCustomCssSetting", () => {
     expect(result.enabled).toBe(true);
     expect(fs.readFileSync(path.join(result.addonDir, "styles.css"), "utf8")).toContain("background: black");
 
-    // The generated folder must pass the same scan real addons go through
     const scans = scanExternalAddons(addonsDir);
     expect(scans).toHaveLength(1);
-    expect(scans[0].error).toBeUndefined();
-    expect(scans[0].manifest.id).toBe(CUSTOM_CSS_ADDON_ID);
-    expect(scans[0].manifest.styles).toEqual(["styles.css"]);
+    expect(requireValue(scans[0]).error).toBeUndefined();
+    expect(requireValue(requireValue(scans[0]).manifest).id).toBe(CUSTOM_CSS_ADDON_ID);
+    expect(requireValue(requireValue(scans[0]).manifest).styles).toEqual(["styles.css"]);
   });
 
   it("keeps the disabled flag", () => {
@@ -43,7 +43,7 @@ describe("migrateCustomCssSetting", () => {
     const addonsDir = tempDir();
     expect(migrateCustomCssSetting({ customCSSPath: null, customCSSEnabled: true }, addonsDir)).toEqual({ migrated: false });
     expect(migrateCustomCssSetting({ customCSSPath: path.join(addonsDir, "missing.css"), customCSSEnabled: true }, addonsDir)).toEqual({
-      migrated: false
+      migrated: false,
     });
   });
 

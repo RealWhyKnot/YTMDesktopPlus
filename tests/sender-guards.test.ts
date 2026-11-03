@@ -1,8 +1,7 @@
-import type { WebContents } from "electron";
 import { describe, expect, it } from "vitest";
 import { createSenderGuards } from "../src/main/ipc/sender-guards";
 
-const contents = () => ({}) as WebContents;
+const contents = () => ({});
 
 describe("sender guards", () => {
   it("matches the YTM view's own contents and nothing else", () => {
@@ -11,7 +10,7 @@ describe("sender guards", () => {
       getMainWindow: () => null,
       getSettingsWindow: () => null,
       getYtmView: () => view,
-      ownsAddonContents: () => false
+      ownsAddonContents: () => false,
     });
     expect(isYtmViewSender(view.webContents)).toBe(true);
     expect(isYtmViewSender(contents())).toBe(false);
@@ -22,7 +21,7 @@ describe("sender guards", () => {
       getMainWindow: () => null,
       getSettingsWindow: () => null,
       getYtmView: () => null,
-      ownsAddonContents: () => false
+      ownsAddonContents: () => false,
     });
     expect(() => isYtmViewSender(contents())).not.toThrow();
     expect(isYtmViewSender(contents())).toBe(false);

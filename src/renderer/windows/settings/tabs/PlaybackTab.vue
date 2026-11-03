@@ -1,18 +1,17 @@
 <script setup lang="ts">
-import { inject } from "vue";
 import YTMDSetting from "../../../components/YTMDSetting.vue";
-import { stagedSettingsKey } from "../useStagedSettings";
+import { useStagedSettings } from "../use-staged-settings";
 
-const staged = inject(stagedSettingsKey);
+const staged = useStagedSettings();
 const stageChanged = staged.stageChanged;
 
-const continueWhereYouLeftOff = staged.refs["playback.continueWhereYouLeftOff"];
-const continueWhereYouLeftOffPaused = staged.refs["playback.continueWhereYouLeftOffPaused"];
-const progressInTaskbar = staged.refs["playback.progressInTaskbar"];
-const enableSpeakerFill = staged.refs["playback.enableSpeakerFill"];
-const ratioVolume = staged.refs["playback.ratioVolume"];
-const preventIdlePause = staged.refs["playback.preventIdlePause"];
-const adBlockerEnabled = staged.refs["playback.adBlockerEnabled"];
+const continueWhereYouLeftOff = staged.modelBoolean("playback.continueWhereYouLeftOff");
+const continueWhereYouLeftOffPaused = staged.modelBoolean("playback.continueWhereYouLeftOffPaused");
+const progressInTaskbar = staged.modelBoolean("playback.progressInTaskbar");
+const enableSpeakerFill = staged.modelBoolean("playback.enableSpeakerFill");
+const ratioVolume = staged.modelBoolean("playback.ratioVolume");
+const preventIdlePause = staged.modelBoolean("playback.preventIdlePause");
+const adBlockerEnabled = staged.modelBoolean("playback.adBlockerEnabled");
 </script>
 
 <template>

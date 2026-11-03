@@ -2,19 +2,19 @@ import { describe, expect, it, vi } from "vitest";
 import { applyLaunchVisibility, startsHidden } from "../src/main/windows/launch-visibility";
 
 function fakeWindow() {
-  const handlers = new Map<string, Array<{ fn: () => void; once: boolean }>>();
-  const add = (event: string, fn: () => void, once: boolean) => handlers.set(event, [...(handlers.get(event) ?? []), { fn, once }]);
+  const handlers = new Map<string, { fn: () => void; once: boolean }[]>();
+  const add = (event: string, fn: () => void, isOnce: boolean) => handlers.set(event, [...(handlers.get(event) ?? []), { fn, once: isOnce }]);
   const window = {
     show: vi.fn(),
     maximize: vi.fn(),
     on: vi.fn((event: string, fn: () => void) => add(event, fn, false)),
-    once: vi.fn((event: string, fn: () => void) => add(event, fn, true))
+    once: vi.fn((event: string, fn: () => void) => add(event, fn, true)),
   };
   const emit = (event: string) => {
     const list = handlers.get(event) ?? [];
     handlers.set(
       event,
-      list.filter(handler => !handler.once)
+      list.filter((handler) => !handler.once)
     );
     for (const handler of list) handler.fn();
   };
@@ -37,7 +37,7 @@ describe("startsHidden", () => {
 describe("applyLaunchVisibility", () => {
   it("shows the window once it is ready", () => {
     const { window, emit } = fakeWindow();
-    applyLaunchVisibility(window as never, { hidden: false, maximized: false });
+    applyLaunchVisibility(window, { hidden: false, maximized: false });
     expect(window.show).not.toHaveBeenCalled();
     emit("ready-to-show");
     expect(window.show).toHaveBeenCalledTimes(1);
@@ -46,7 +46,7 @@ describe("applyLaunchVisibility", () => {
 
   it("maximizes straight away when the window will be shown", () => {
     const { window, emit } = fakeWindow();
-    applyLaunchVisibility(window as never, { hidden: false, maximized: true });
+    applyLaunchVisibility(window, { hidden: false, maximized: true });
     expect(window.maximize).toHaveBeenCalledTimes(1);
     emit("ready-to-show");
     expect(window.show).toHaveBeenCalledTimes(1);
@@ -54,7 +54,7 @@ describe("applyLaunchVisibility", () => {
 
   it("stays hidden when started minimized", () => {
     const { window, emit } = fakeWindow();
-    applyLaunchVisibility(window as never, { hidden: true, maximized: false });
+    applyLaunchVisibility(window, { hidden: true, maximized: false });
     emit("ready-to-show");
     expect(window.show).not.toHaveBeenCalled();
     expect(window.maximize).not.toHaveBeenCalled();
@@ -62,7 +62,7 @@ describe("applyLaunchVisibility", () => {
 
   it("waits for the first show to maximize a hidden window", () => {
     const { window, emit } = fakeWindow();
-    applyLaunchVisibility(window as never, { hidden: true, maximized: true });
+    applyLaunchVisibility(window, { hidden: true, maximized: true });
     emit("ready-to-show");
     expect(window.maximize).not.toHaveBeenCalled();
     expect(window.show).not.toHaveBeenCalled();

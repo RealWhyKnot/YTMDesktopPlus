@@ -56,7 +56,7 @@ const SYSTEM_EVENTS: [source: "screen" | "powerMonitor", event: string, label: s
   ["powerMonitor", "suspend", "suspend"],
   ["powerMonitor", "resume", "resume"],
   ["powerMonitor", "lock-screen", "screen locked"],
-  ["powerMonitor", "unlock-screen", "screen unlocked"]
+  ["powerMonitor", "unlock-screen", "screen unlocked"],
 ];
 
 export function createTaskRing(capacity: number, now: () => number = () => performance.now()): TaskRing {
@@ -75,7 +75,7 @@ export function createTaskRing(capacity: number, now: () => number = () => perfo
   }
 
   function overlapping(windowStart: number, windowEnd: number): LabelledTask[] {
-    return tasks.filter(task => task.start < windowEnd && task.start + task.duration > windowStart);
+    return tasks.filter((task) => task.start < windowEnd && task.start + task.duration > windowStart);
   }
 
   function mark(label: string): void {
@@ -84,7 +84,7 @@ export function createTaskRing(capacity: number, now: () => number = () => perfo
   }
 
   function marksNear(windowStart: number, windowEnd: number): string[] {
-    return marks.filter(entry => entry.at >= windowStart - MARK_LOOKBACK_MS && entry.at <= windowEnd).map(entry => entry.label);
+    return marks.filter((entry) => entry.at >= windowStart - MARK_LOOKBACK_MS && entry.at <= windowEnd).map((entry) => entry.label);
   }
 
   function timeSync<T>(label: string, fn: () => T): T {
@@ -123,7 +123,7 @@ export function markSystemEvents(sources: Record<"screen" | "powerMonitor", Even
 
 export function markWindowMessages(window: WindowMessageSource, ring: Pick<TaskRing, "mark">): void {
   window.hookWindowMessage(WM_DISPLAYCHANGE, () => ring.mark("display change"));
-  window.hookWindowMessage(WM_DEVICECHANGE, wParam => {
+  window.hookWindowMessage(WM_DEVICECHANGE, (wParam) => {
     if (wParam.readUInt32LE(0) === DBT_DEVNODES_CHANGED) ring.mark("device change");
   });
 }
@@ -134,7 +134,7 @@ function summarizeWork(tasks: LabelledTask[]): string {
     .slice()
     .sort((a, b) => b.duration - a.duration)
     .slice(0, MAX_REPORTED_TASKS)
-    .map(task => `${task.label} ${Math.round(task.duration)}ms`)
+    .map((task) => `${task.label} ${Math.round(task.duration)}ms`)
     .join(", ");
 }
 
@@ -162,6 +162,6 @@ export function watchMainThreadStalls(options: StallWatchOptions): () => void {
       options.report(Math.round(late), summarize(tasks.overlapping(windowStart, current), tasks.marksNear?.(windowStart, current) ?? []));
     }
   }, intervalMs);
-  timer.unref?.();
+  timer.unref();
   return () => clearInterval(timer);
 }

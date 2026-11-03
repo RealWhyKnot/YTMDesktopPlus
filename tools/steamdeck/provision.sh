@@ -1,11 +1,11 @@
 #!/bin/sh
-# Provisions the Arch WSL distro used to test the Linux flatpak build. Idempotent.
 set -eu
 
 RUNTIME_VERSION=25.08
 MARKER=/var/lib/ytmdplus-provisioned
 
-if [ "$(id -u)" -ne 0 ]; then
+user_id=$(id -u)
+if [ "${user_id}" -ne 0 ]; then
   echo "provision.sh must run as root" >&2
   exit 1
 fi
@@ -41,7 +41,6 @@ else
   exit 1
 fi
 
-# The Deck's own user, so paths in logs and bug reports line up with a real device.
 if ! id deck >/dev/null 2>&1; then
   echo "==> Creating user deck"
   useradd --create-home --shell /bin/bash deck
@@ -55,11 +54,10 @@ runuser -u deck -- flatpak install --user --noninteractive \
   flathub "org.freedesktop.Platform//${RUNTIME_VERSION}" \
   "org.freedesktop.Sdk//${RUNTIME_VERSION}" "org.electronjs.Electron2.BaseApp//${RUNTIME_VERSION}"
 
-# WSL starts every distro as root; the flatpak install above is per-user.
 if ! grep -q '^default=' /etc/wsl.conf 2>/dev/null; then
   echo "==> Setting deck as the default WSL user"
   printf '\n[user]\ndefault=deck\n' >>/etc/wsl.conf
 fi
 
-date -u +%Y-%m-%dT%H:%M:%SZ >"$MARKER"
+date -u +%Y-%m-%dT%H:%M:%SZ >"${MARKER}"
 echo "==> Provisioned"

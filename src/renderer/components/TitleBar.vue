@@ -1,30 +1,23 @@
 <script setup lang="ts">
+import type { AppWindow } from "../app-window";
+declare const window: AppWindow;
 import { onBeforeMount, ref } from "vue";
-import type { AddonTitlebarBadge } from "~shared/addons/types";
+import type { AddonTitlebarBadge } from "~shared/addons/sdk";
 
-const props = defineProps({
-  title: {
-    type: String,
-    default: null
-  },
-  icon: {
-    type: String,
-    default: null
-  },
-  iconFile: {
-    type: String,
-    default: null
-  },
-  hasHomeButton: Boolean,
-  hasSettingsButton: Boolean,
-  hasMinimizeButton: Boolean,
-  hasMaximizeButton: Boolean,
-  centerTitleText: Boolean,
-  isMainWindow: {
-    type: Boolean,
-    default: false
-  }
-});
+const props = withDefaults(
+  defineProps<{
+    title?: string | null;
+    icon?: string | null;
+    iconFile?: string | null;
+    hasHomeButton?: boolean;
+    hasSettingsButton?: boolean;
+    hasMinimizeButton?: boolean;
+    hasMaximizeButton?: boolean;
+    centerTitleText?: boolean;
+    isMainWindow?: boolean;
+  }>(),
+  { title: null, icon: null, iconFile: null, isMainWindow: false }
+);
 
 const minimizeWindow = window.ytmd.minimizeWindow;
 const maximizeWindow = window.ytmd.maximizeWindow;
@@ -38,12 +31,12 @@ const wcoVisible = ref(window.navigator.windowControlsOverlay.visible);
 const windowMaximized = ref(false);
 const windowFullscreen = ref(false);
 
-window.ytmd.handleWindowEvents((event, state) => {
+window.ytmd.handleWindowEvents((_event, state) => {
   windowMaximized.value = state.maximized;
   windowFullscreen.value = state.fullscreen;
 });
 
-window.navigator.windowControlsOverlay.addEventListener("geometrychange", event => {
+window.navigator.windowControlsOverlay.addEventListener("geometrychange", (event) => {
   wcoVisible.value = event.visible;
 });
 
@@ -51,8 +44,8 @@ function restartApplicationForUpdate() {
   window.ytmd.restartApplicationForUpdate();
 }
 
-const ytmViewUnresponsive = ref<boolean>(false);
-const appUpdateDownloaded = ref<boolean>(false);
+const ytmViewUnresponsive = ref<boolean | undefined>(false);
+const appUpdateDownloaded = ref<boolean | undefined>(false);
 const badges = ref<AddonTitlebarBadge[]>([]);
 
 function badgeClicked(addonId: string) {
@@ -65,10 +58,10 @@ if (props.isMainWindow) {
   onBeforeMount(async () => {
     ytmViewUnresponsive.value = (await memoryStore.get("ytmViewUnresponsive")) ?? false;
     appUpdateDownloaded.value = (await memoryStore.get("appUpdateDownloaded")) ?? false;
-    badges.value = ((await memoryStore.get("addonTitlebarBadges")) as AddonTitlebarBadge[]) ?? [];
+    badges.value = (await memoryStore.get("addonTitlebarBadges")) ?? [];
   });
 
-  memoryStore.onStateChanged(newState => {
+  memoryStore.onStateChanged((newState) => {
     ytmViewUnresponsive.value = newState.ytmViewUnresponsive;
     appUpdateDownloaded.value = newState.appUpdateDownloaded;
     badges.value = newState.addonTitlebarBadges ?? [];
@@ -106,7 +99,7 @@ if (props.isMainWindow) {
           v-for="badge in isMainWindow ? badges : []"
           :key="badge.addonId"
           class="app-button badge-button"
-          :class="{ active: badge.active }"
+          :data-active="badge.active"
           tabindex="1"
           :title="badge.tooltip || badge.text"
           @click="badgeClicked(badge.addonId)"
@@ -186,7 +179,7 @@ if (props.isMainWindow) {
 .title .icon {
   margin-left: 8px;
   margin-right: 8px;
-  font-size: 13px;
+  font-size: calc(13rem / var(--font-size-reference));
   font-variation-settings:
     "FILL" 0,
     "wght" 100,
@@ -200,7 +193,7 @@ if (props.isMainWindow) {
 }
 
 .title .icon.material-symbols-outlined {
-  font-size: 18px;
+  font-size: calc(18rem / var(--font-size-reference));
 }
 
 .title-text {
@@ -209,7 +202,7 @@ if (props.isMainWindow) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 14px;
+  font-size: calc(14rem / var(--font-size-reference));
 }
 
 .app-button {
@@ -238,7 +231,7 @@ if (props.isMainWindow) {
 }
 
 .app-button > .material-symbols-outlined {
-  font-size: 20px;
+  font-size: calc(20rem / var(--font-size-reference));
   color: var(--titlebar-symbol);
 }
 
@@ -252,7 +245,7 @@ if (props.isMainWindow) {
   position: relative;
 }
 
-.app-buttons .divider:after {
+.app-buttons .divider::after {
   content: "";
   position: absolute;
   border-left: 1px solid var(--titlebar-separator);
@@ -282,7 +275,7 @@ if (props.isMainWindow) {
 }
 
 .action-button > .material-symbols-outlined {
-  font-size: 24px;
+  font-size: calc(24rem / var(--font-size-reference));
 }
 
 .windows-action-buttons {
@@ -322,13 +315,13 @@ if (props.isMainWindow) {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-title);
-  font-size: 12px;
+  font-size: calc(12rem / var(--font-size-reference));
   line-height: 1;
   color: var(--titlebar-symbol);
 }
 
-.badge-button.active > .material-symbols-outlined,
-.badge-button.active > .badge-text {
+.badge-button[data-active="true"] > .material-symbols-outlined,
+.badge-button[data-active="true"] > .badge-text {
   color: var(--success);
 }
 </style>

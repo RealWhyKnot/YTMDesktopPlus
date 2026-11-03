@@ -1,5 +1,5 @@
 @font-face {
-  font-family: "Orbitron";
+  font-family: Orbitron;
   src: url("fonts/Orbitron.woff2") format("woff2");
   font-weight: 500 800;
   font-display: swap;
@@ -21,7 +21,7 @@
   --danger: #ff6b1a;
   --danger-hover: #d4550f;
   --knob: #22d3ee;
-  --overlay: rgba(8, 3, 20, 0.72);
+  --overlay: rgb(8 3 20 / 72%);
   --scrollbar-thumb: #3a2170;
   --titlebar-symbol: #22d3ee;
   --titlebar-separator: #321c5e;

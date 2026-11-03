@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TrayDeps } from "../src/main/tray";
 
 const electron = vi.hoisted(() => {
   const trays: { image: string }[] = [];
@@ -9,9 +8,15 @@ const electron = vi.hoisted(() => {
       this.image = image;
       trays.push(this);
     }
-    setToolTip() {}
-    setContextMenu() {}
-    on() {}
+    setToolTip() {
+      return undefined;
+    }
+    setContextMenu() {
+      return undefined;
+    }
+    on() {
+      return undefined;
+    }
     setImage(image: string) {
       this.image = image;
     }
@@ -22,8 +27,13 @@ const electron = vi.hoisted(() => {
       Tray,
       Menu: { buildFromTemplate: (template: unknown) => template },
       nativeTheme: { shouldUseDarkColors: false },
-      app: { getAppPath: () => "app", quit: () => {} }
-    }
+      app: {
+        getAppPath: () => "app",
+        quit: () => {
+          return undefined;
+        },
+      },
+    },
   };
 });
 
@@ -33,10 +43,12 @@ import { createTrayController } from "../src/main/tray";
 
 function controller() {
   return createTrayController({
-    store: { get: () => ({ trayIconStyle: 0 }) } as unknown as TrayDeps["store"],
+    store: { get: () => ({ trayIconStyle: 0 }) },
     getMainWindow: () => null,
-    sendRemoteCommand: () => {},
-    addonTrayItems: () => []
+    sendRemoteCommand: () => {
+      return undefined;
+    },
+    addonTrayItems: () => [],
   });
 }
 
