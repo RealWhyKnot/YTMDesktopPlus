@@ -1,7 +1,9 @@
 import log from "electron-log";
 import { app } from "electron";
-import { type StoreSchema, UpdateChannel } from "../../shared/store/schema";
+import type { StoreSchema } from "../../shared/store/schema";
 import { createStoreDefaults } from "../../shared/store/defaults.mts";
+import { NUMERIC_SETTING_KEYS, normalizeSettingValue } from "~shared/settings-staging";
+import { isRecord } from "~shared/unknown";
 import { CachedConf } from "./cached-conf";
 
 type MigratingStoreSchema = Omit<StoreSchema, "appearance" | "playback" | "integrations" | "state"> & {
@@ -17,13 +19,32 @@ type MigratingStoreSchema = Omit<StoreSchema, "appearance" | "playback" | "integ
   state: StoreSchema["state"] & { companionServerAuthWindowEnableTime?: unknown };
 };
 
+function fillMissingFields(store: CachedConf<MigratingStoreSchema>, defaults: StoreSchema) {
+  for (const [section, fields] of Object.entries(defaults)) {
+    const stored: unknown = store.get(section);
+    if (!isRecord(stored)) continue;
+    for (const [field, value] of Object.entries<unknown>(fields)) {
+      if (stored[field] === undefined) store.set(`${section}.${field}`, value);
+    }
+  }
+}
+
+function restoreNumbers(store: CachedConf<MigratingStoreSchema>) {
+  for (const key of NUMERIC_SETTING_KEYS) {
+    const value: unknown = store.get(key);
+    const normalized = normalizeSettingValue(key, value);
+    if (typeof value === "string" && typeof normalized === "number") store.set(key, normalized);
+  }
+}
+
 export function createAppStore(): CachedConf<MigratingStoreSchema> {
+  const defaults = createStoreDefaults(app.getVersion());
   const store = new CachedConf<MigratingStoreSchema>({
     configName: "config",
     cwd: app.getPath("userData"),
     projectVersion: app.getVersion(),
     watch: true,
-    defaults: createStoreDefaults(app.getVersion()),
+    defaults,
     beforeEachMigration: (_store, context) => {
       log.info(`Performing store migration from ${context.fromVersion} to ${context.toVersion}`);
     },
@@ -49,54 +70,25 @@ export function createAppStore(): CachedConf<MigratingStoreSchema> {
     },
   });
 
-  const developer: Partial<StoreSchema["developer"]> = store.get("developer");
   const playback: Partial<MigratingStoreSchema["playback"]> = store.get("playback");
   const integrations: Partial<StoreSchema["integrations"]> = store.get("integrations");
-  const updates: unknown = store.get("updates");
-  const savedAddons: unknown = store.get("addons");
-  const themes: unknown = store.get("themes");
-
-  if (developer.debugLogging === undefined) {
-    store.set("developer.debugLogging", app.getVersion().includes("-beta"));
-  }
-  if (updates === undefined) {
-    store.set("updates", { autoUpdateEnabled: false, channel: UpdateChannel.Auto, firstRunPromptShown: false });
-  }
-  if (playback.adBlockerEnabled === undefined) {
-    store.set("playback.adBlockerEnabled", false);
-  }
 
   if (playback.loudnessNormalization !== undefined) {
     store.delete("playback.loudnessNormalization");
   }
-  if (playback.preventIdlePause === undefined) {
-    store.set("playback.preventIdlePause", false);
-  }
-  if (integrations.discordPresenceHideOnPause === undefined) {
-    store.set("integrations.discordPresenceHideOnPause", true);
-  }
   if (integrations.companionServerLANEnabled === undefined) {
     store.set("integrations.companionServerLANEnabled", integrations.companionServerEnabled);
   }
-  if (savedAddons === undefined) {
-    store.set("addons", { states: {}, settings: {} });
-  }
+  fillMissingFields(store, defaults);
+
   const addons: Partial<StoreSchema["addons"]> = store.get("addons");
-  if (addons.states === undefined) {
-    store.set("addons.states", {});
-  }
-  if (addons.settings === undefined) {
-    store.set("addons.settings", {});
-  }
   if (addons.states?.dj !== undefined) {
     store.delete("addons.states.dj");
   }
   if (addons.settings?.dj !== undefined) {
     store.delete("addons.settings.dj");
   }
-  if (themes === undefined) {
-    store.set("themes", { active: null });
-  }
+  restoreNumbers(store);
 
   return store;
 }

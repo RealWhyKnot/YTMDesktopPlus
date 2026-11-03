@@ -42,7 +42,7 @@ export const RESTART_REQUIRED_KEYS: ReadonlySet<StagedSettingKey> = new Set<Stag
   "playback.enableSpeakerFill",
 ]);
 
-const NUMERIC_KEYS: ReadonlySet<string> = new Set<StagedSettingKey>([
+export const NUMERIC_SETTING_KEYS: ReadonlySet<string> = new Set<StagedSettingKey>([
   "appearance.zoom",
   "appearance.trayIconStyle",
   "lastfm.scrobblePercent",
@@ -50,7 +50,7 @@ const NUMERIC_KEYS: ReadonlySet<string> = new Set<StagedSettingKey>([
 ]);
 
 export function normalizeSettingValue(key: string, value: unknown): unknown {
-  if (NUMERIC_KEYS.has(key) && value !== null && value !== undefined && typeof value !== "number") {
+  if (NUMERIC_SETTING_KEYS.has(key) && value !== null && value !== undefined && typeof value !== "number") {
     const numeric = Number(value);
     if (!Number.isNaN(numeric)) return numeric;
   }
