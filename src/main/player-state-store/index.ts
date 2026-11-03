@@ -13,8 +13,7 @@ import {
   type VideoDetails,
 } from "~shared/addons/sdk";
 
-import type { ProjectedQueue } from "~shared/queue-projection";
-import type { VideoDetailsPayload } from "../ipc/ytm-view-payloads";
+import type { QueueItemPayload, QueuePayload, VideoDetailsPayload } from "../ipc/ytm-view-payloads";
 import { createPlayerEventDeriver } from "./derived-events";
 
 export { LikeStatus, RepeatMode, VideoState, VideoType };
@@ -46,6 +45,18 @@ function mapYTMThumbnails(thumbnail: { url: string; width?: unknown; height?: un
       height: thumbnail.height,
     },
   ];
+}
+
+function mapQueueItem(item: QueueItemPayload): PlayerQueueItem {
+  return {
+    ...item,
+    thumbnails: item.thumbnails.flatMap(mapYTMThumbnails),
+    counterparts: item.counterparts === null ? null : item.counterparts.map(mapQueueItem),
+  };
+}
+
+function mapQueueItems(items: (QueueItemPayload | null)[]): (PlayerQueueItem | null)[] {
+  return items.map((item) => (item === null ? null : mapQueueItem(item)));
 }
 
 function transformRepeatMode(repeatMode: string | null | undefined) {
@@ -214,15 +225,15 @@ class PlayerStateStore {
     this.eventEmitter.emit("stateChanged", this.getState());
   }
 
-  public updateQueue(queue: ProjectedQueue | null) {
+  public updateQueue(queue: QueuePayload | null) {
     this.queue = queue
       ? {
-          automixItems: queue.automixItems,
+          automixItems: mapQueueItems(queue.automixItems),
           autoplay: queue.autoplay,
           isGenerating: queue.isGenerating,
 
           isInfinite: queue.isInfinite,
-          items: queue.items,
+          items: mapQueueItems(queue.items),
           repeatMode: transformRepeatMode(queue.repeatMode),
 
           selectedItemIndex: queue.items.findIndex((item) => item?.selected),

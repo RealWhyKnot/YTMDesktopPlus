@@ -102,6 +102,27 @@ const realVideoDetails = {
   thumbnail: { thumbnails: [{ url: "https://lh3.googleusercontent.com/x", width: 60, height: 60 }] },
 };
 
+const queueItem = (fields: Record<string, unknown> = {}) => ({
+  title: "Song",
+  author: "Artist",
+  duration: "3:21",
+  selected: false,
+  videoId: "a",
+  thumbnails: [{ url: "https://i.ytimg.com/a.jpg", width: 60, height: 60 }],
+  counterparts: null,
+  ...fields,
+});
+
+const queuePayload = (fields: Record<string, unknown> = {}) => ({
+  items: [queueItem()],
+  automixItems: [],
+  autoplay: true,
+  isGenerating: false,
+  isInfinite: false,
+  repeatMode: "NONE",
+  ...fields,
+});
+
 describe("ytmView payload checks", () => {
   it("accepts what the page scripts send", () => {
     expect(isVideoDetailsPayload(realVideoDetails)).toBe(true);
@@ -111,16 +132,7 @@ describe("ytmView payload checks", () => {
     expect(isAlbumPayload(null)).toBe(true);
     expect(isAlbumPayload(undefined)).toBe(true);
     expect(isQueuePayload(null)).toBe(true);
-    expect(
-      isQueuePayload({
-        items: [{ videoId: "a", title: "t", counterparts: null }, null, { videoId: "b", counterparts: [{ videoId: "c" }] }],
-        automixItems: [],
-        autoplay: true,
-        isGenerating: false,
-        isInfinite: false,
-        repeatMode: "NONE",
-      })
-    ).toBe(true);
+    expect(isQueuePayload(queuePayload({ items: [queueItem(), null, queueItem({ videoId: "b", counterparts: [queueItem({ videoId: "c" })] })] }))).toBe(true);
     expect(isStoreStatePayload("LIKE", 50, false, false)).toBe(true);
     expect(isStoreStatePayload("UNKNOWN", undefined, undefined, undefined)).toBe(true);
     expect(isFiniteNumber(12.5)).toBe(true);
@@ -158,5 +170,51 @@ describe("ytmView payload checks", () => {
     reject("ytmView:queueChanged");
     expect(warn).toHaveBeenCalledTimes(2);
     expect(warn).toHaveBeenCalledWith("Dropped a malformed ytmView:videoDataChanged message from the YTM view");
+  });
+});
+
+describe("queue payload fields", () => {
+  it.each(["title", "author", "duration", "selected", "videoId", "thumbnails", "counterparts"])("rejects invalid %s at every item level", (field) => {
+    const invalid = field === "selected" ? "yes" : field === "thumbnails" || field === "counterparts" ? {} : 42;
+    const values = field === "counterparts" ? [invalid, undefined] : [invalid, undefined, null];
+    for (const value of values) {
+      const item = queueItem({ [field]: value });
+      expect(isQueuePayload(queuePayload({ items: [item] }))).toBe(false);
+      expect(isQueuePayload(queuePayload({ automixItems: [item] }))).toBe(false);
+      expect(isQueuePayload(queuePayload({ items: [queueItem({ counterparts: [queueItem({ counterparts: [item] })] })] }))).toBe(false);
+    }
+  });
+
+  it.each(["autoplay", "isGenerating", "isInfinite", "repeatMode"])("requires the projected type of %s", (field) => {
+    for (const value of [null, undefined, 1, {}]) {
+      expect(isQueuePayload(queuePayload({ [field]: value }))).toBe(false);
+    }
+    expect(isQueuePayload(queuePayload({ [field]: field === "repeatMode" ? true : "true" }))).toBe(false);
+  });
+
+  it.each([null, undefined, {}, { url: 5 }, { url: null }])("rejects a thumbnail without a string URL: %j", (thumbnail) => {
+    const item = queueItem({ thumbnails: [thumbnail] });
+    expect(isQueuePayload(queuePayload({ items: [item] }))).toBe(false);
+    expect(isQueuePayload(queuePayload({ automixItems: [queueItem({ counterparts: [item] })] }))).toBe(false);
+  });
+
+  it("accepts missing thumbnail dimensions for the store to filter", () => {
+    const item = queueItem({ thumbnails: [{ url: "missing-both" }, { url: "missing-height", width: 60 }, { url: "missing-width", height: 60 }] });
+    expect(isQueuePayload(queuePayload({ items: [item], automixItems: [queueItem({ counterparts: [item] })] }))).toBe(true);
+  });
+
+  it("preserves null queue slots but refuses null counterparts", () => {
+    expect(isQueuePayload(queuePayload({ items: [null], automixItems: [null] }))).toBe(true);
+    for (const counterpart of [null, undefined, 1, "bad"]) {
+      expect(isQueuePayload(queuePayload({ items: [queueItem({ counterparts: [counterpart] })] }))).toBe(false);
+    }
+  });
+
+  it("checks nested counterparts without rejecting repeated references", () => {
+    const shared = queueItem();
+    expect(isQueuePayload(queuePayload({ items: [queueItem({ counterparts: [queueItem({ counterparts: [shared] }), shared] }), shared] }))).toBe(true);
+    const cycle = queueItem({ counterparts: [] });
+    Object.assign(cycle, { counterparts: [cycle] });
+    expect(isQueuePayload(queuePayload({ items: [cycle] }))).toBe(false);
   });
 });

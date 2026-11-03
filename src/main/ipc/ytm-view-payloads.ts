@@ -1,6 +1,17 @@
 import type { ProjectedQueue } from "~shared/queue-projection";
+import type { PlayerQueueItem } from "~shared/addons/sdk";
 
 type Thumbnail = { url: string; width?: unknown; height?: unknown };
+
+export type QueueItemPayload = Omit<PlayerQueueItem, "thumbnails" | "counterparts"> & {
+  thumbnails: Thumbnail[];
+  counterparts: QueueItemPayload[] | null;
+};
+
+export type QueuePayload = Omit<ProjectedQueue, "items" | "automixItems"> & {
+  items: (QueueItemPayload | null)[];
+  automixItems: (QueueItemPayload | null)[];
+};
 
 export type VideoDetailsPayload = {
   videoId: string;
@@ -28,15 +39,21 @@ function isThumbnail(value: unknown): boolean {
   return isRecord(value) && typeof value.url === "string";
 }
 
-function isQueueEntry(value: unknown): boolean {
-  if (value === null) return true;
-  if (!isRecord(value)) return false;
+function isQueueEntry(value: unknown, ancestors: Set<Record<string, unknown>>): boolean {
+  if (!isRecord(value) || ancestors.has(value)) return false;
+  for (const field of ["title", "author", "duration", "videoId"]) {
+    if (typeof value[field] !== "string") return false;
+  }
+  if (typeof value.selected !== "boolean" || !Array.isArray(value.thumbnails) || !Array.from(value.thumbnails).every(isThumbnail)) return false;
   const counterparts = value.counterparts;
-  return counterparts === undefined || counterparts === null || (Array.isArray(counterparts) && counterparts.every(isRecord));
+  ancestors.add(value);
+  const isValid = counterparts === null || (Array.isArray(counterparts) && Array.from(counterparts).every((item) => isQueueEntry(item, ancestors)));
+  ancestors.delete(value);
+  return isValid;
 }
 
 function isEntryList(value: unknown): boolean {
-  return Array.isArray(value) && value.every(isQueueEntry);
+  return Array.isArray(value) && Array.from(value).every((item) => item === null || isQueueEntry(item, new Set()));
 }
 
 export function isFiniteNumber(value: unknown): value is number {
@@ -70,16 +87,16 @@ export function isAlbumPayload(value: unknown): value is AlbumPayload | null | u
   return isRecord(value) && isOptional(value.id, "string") && isOptional(value.text, "string");
 }
 
-export function isQueuePayload(value: unknown): value is ProjectedQueue | null {
+export function isQueuePayload(value: unknown): value is QueuePayload | null {
   if (value === null) return true;
   return (
     isRecord(value) &&
     isEntryList(value.items) &&
     isEntryList(value.automixItems) &&
-    isOptional(value.autoplay, "boolean") &&
-    isOptional(value.isGenerating, "boolean") &&
-    isOptional(value.isInfinite, "boolean") &&
-    isOptional(value.repeatMode, "string")
+    typeof value.autoplay === "boolean" &&
+    typeof value.isGenerating === "boolean" &&
+    typeof value.isInfinite === "boolean" &&
+    typeof value.repeatMode === "string"
   );
 }
 
