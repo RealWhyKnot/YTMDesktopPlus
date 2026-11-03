@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- fix(linux): build rpms with rpm 6
 - fix(settings): repair settings saved by older builds
 - fix(ipc): check every field of queue payloads
 - fix(updates): skip updates in test clients
