@@ -48,6 +48,7 @@ jobs:
         run: |
           ./scripts/Test-Update-Changelog.ps1
           ./scripts/Test-Generate-ReleaseNotes.ps1
+          ./scripts/Test-ReleaseAssets.ps1
       - name: Lint
         run: yarn lint
       - name: Typecheck
@@ -71,6 +72,7 @@ jobs:
         run: |
           ./scripts/Test-Update-Changelog.ps1
           ./scripts/Test-Generate-ReleaseNotes.ps1
+          ./scripts/Test-ReleaseAssets.ps1
       - name: Unit tests
         run: yarn test
 

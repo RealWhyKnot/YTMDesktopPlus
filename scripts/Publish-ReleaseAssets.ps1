@@ -9,14 +9,6 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-function Get-AssetName {
-    [CmdletBinding()]
-    [OutputType([string])]
-    param([string]$path)
-
-    (Split-Path $path -Leaf) -replace '[^\w.@+-]+', '.' -replace '\.+', '.' -replace '^\.|\.$', ''
-}
-
 function Get-UnpublishedArtifact {
     [CmdletBinding()]
     [OutputType([string])]
@@ -42,6 +34,8 @@ function Get-UnpublishedArtifact {
         }
     }
 }
+
+Import-Module -Name (Join-Path $PSScriptRoot 'ReleaseAssets.psm1')
 
 $artifacts = @($Paths | Where-Object { $_ } | ForEach-Object { (Resolve-Path -LiteralPath $_).Path })
 if ($artifacts.Count -eq 0) { Write-Output '::error::No assets to publish'; exit 1 }
