@@ -38,7 +38,7 @@ import { VolumeRatio } from "./integrations/volume-ratio";
 import { NonStop } from "./integrations/nonstop";
 import { AdBlocker } from "./integrations/ad-blocker";
 import { ListenAlong } from "./integrations/listen-along";
-import { initializeTestSeams } from "./test-seams";
+import { initializeTestSeams, isTestClient } from "./test-seams";
 import { migrateLegacyProfile } from "./profile-migration";
 import { sendPlaybackCommand } from "./playback";
 import { createLaunchPause } from "./playback/launch-pause";
@@ -72,6 +72,7 @@ import "./startup/ipc";
 import "./startup/themes";
 import { watchSettings } from "./startup/settings-sync";
 import { installUpdateEvents } from "./startup/update-events";
+import { canSelfUpdate, canShowUpdateNotice, type UpdateClient } from "./startup/update-eligibility";
 import "./startup/addons-and-updates";
 import { initializeProtocol } from "./startup/protocol";
 import { installLifecycle } from "./startup/lifecycle";
@@ -419,19 +420,22 @@ const launchPause = createLaunchPause({
   send: (command) => sendPlaybackCommand(command),
 });
 
-function shouldDisableUpdates() {
-  if (process.platform !== "win32") return true;
-
-  if (isYtmdLocalBuild) return true;
-  return undefined;
+function updateClient(): UpdateClient {
+  return {
+    isPackaged: app.isPackaged,
+    platform: process.platform,
+    isLocalBuild: isYtmdLocalBuild,
+    isUpdatesDisabled: isYtmdDisableUpdates,
+    isTestClient: isTestClient(),
+  };
 }
 
 function updatesSupported() {
-  return app.isPackaged && !shouldDisableUpdates() && !isYtmdDisableUpdates;
+  return canSelfUpdate(updateClient());
 }
 
 function updateNoticeSupported() {
-  return app.isPackaged && process.platform === "linux" && !isYtmdLocalBuild && !isYtmdDisableUpdates;
+  return canShowUpdateNotice(updateClient());
 }
 
 async function checkUpdateNotice() {
