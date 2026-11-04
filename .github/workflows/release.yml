@@ -7,11 +7,12 @@
 # and a fourth part does not parse.
 #
 # Flow: validate the tag, then build every target and run the checks with a
-# read-only token. Only after both pass is the release created and the
+# read-only token. Only after both pass is a draft release created and the
 # installers uploaded. The Windows update feed files (RELEASES, the nupkg and
 # Setup.exe) go up last, once the installed Windows build and every Linux
-# package have been launched. Then the release notes are attached and the
-# changelog section is promoted on main through the signed-commit mutation.
+# package have been launched. Then the release notes are attached, the draft
+# is published, and the changelog section is promoted on main through the
+# signed-commit mutation.
 #
 # windows arm64 is excluded from the matrix: forge's squirrel maker produces
 # colliding artifact names for it (upstream electron/forge issue 1183 era);
@@ -228,7 +229,7 @@ jobs:
           retention-days: 7
 
   prepare:
-    name: create release shell
+    name: create draft release
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [validate, ci-gate, checks, build]
@@ -250,7 +251,7 @@ jobs:
             Write-Output "Release $env:TAG already exists"
             exit 0
           }
-          $flags = @("--title", $env:TAG, "--notes", "Build in progress; installers and notes land shortly.", "--verify-tag")
+          $flags = @("--title", $env:TAG, "--notes", "Build in progress; installers and notes land shortly.", "--verify-tag", "--draft")
           if ($env:PRERELEASE -eq 'true') { $flags += @("--prerelease", "--latest=false") }
           gh release create $env:TAG --repo $env:REPO @flags
           if ($LASTEXITCODE -ne 0) { exit 1 }
@@ -584,7 +585,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           $notes = (Get-Content whats-changed.md -Raw).TrimEnd()
-          $response = gh api "repos/$env:REPO/releases/tags/$env:TAG"
+          $response = gh release view $env:TAG --repo $env:REPO --json assets
           if ($LASTEXITCODE -ne 0) { exit 1 }
           $assets = @(($response | ConvertFrom-Json).assets | Sort-Object name)
           $setup = $assets | Where-Object { $_.name -like '*.Setup.exe' } | Select-Object -First 1

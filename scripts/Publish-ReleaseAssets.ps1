@@ -40,7 +40,11 @@ Import-Module -Name (Join-Path $PSScriptRoot 'ReleaseAssets.psm1')
 $artifacts = @($Paths | Where-Object { $_ } | ForEach-Object { (Resolve-Path -LiteralPath $_).Path })
 if ($artifacts.Count -eq 0) { Write-Output '::error::No assets to publish'; exit 1 }
 
-$pending = @($artifacts | Sort-Object { (Get-Item -LiteralPath $_).Length } -Descending)
+$pending = @(Get-UnpublishedArtifact | Sort-Object { (Get-Item -LiteralPath $_).Length } -Descending)
+if ($pending.Count -eq 0) {
+    Write-Output "All $($artifacts.Count) assets on the release already match this build"
+    exit 0
+}
 for ($attempt = 1; $attempt -le 3; $attempt++) {
     foreach ($artifact in $pending) {
         foreach ($name in (@((Split-Path $artifact -Leaf), (Get-AssetName $artifact)) | Select-Object -Unique)) {

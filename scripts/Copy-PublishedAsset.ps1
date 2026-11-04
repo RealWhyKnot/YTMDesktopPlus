@@ -18,7 +18,7 @@ if ($files.Count -eq 0) {
     Write-Output "::error::No build artifact in $Source matches $Pattern"
     exit 1
 }
-$response = gh api "repos/$Repository/releases/tags/$Tag"
+$response = gh release view $Tag --repo $Repository --json assets
 if ($LASTEXITCODE -ne 0) {
     Write-Output "::error::Could not read release $Tag of $Repository"
     exit 1
