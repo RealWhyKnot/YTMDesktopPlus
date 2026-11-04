@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- chore: refresh the shared lint files
+- ci: draft releases until the notes are attached
+
 ## [v2026.1104.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.1104.0-beta) - 2026-11-04
 
 - fix(linux): build rpms with rpm 6
