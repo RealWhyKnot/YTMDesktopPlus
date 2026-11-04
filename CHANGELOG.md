@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v2026.1104.0-beta](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/tag/v2026.1104.0-beta) - 2026-11-04
+
 - fix(linux): build rpms with rpm 6
 - fix(settings): repair settings saved by older builds
 - fix(ipc): check every field of queue payloads
