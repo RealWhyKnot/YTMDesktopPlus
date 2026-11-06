@@ -1005,15 +1005,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@fastify/rate-limit@npm:11.2.1":
-  version: 11.2.1
-  resolution: "@fastify/rate-limit@npm:11.2.1"
+"@fastify/rate-limit@npm:11.2.2":
+  version: 11.2.2
+  resolution: "@fastify/rate-limit@npm:11.2.2"
   dependencies:
     "@lukeed/ms": "npm:^2.0.2"
     fastify-plugin: "npm:^6.0.0"
     ip-address: "npm:^10.2.0"
     toad-cache: "npm:^3.7.0"
-  checksum: 10c0/a0501a7fe27b83048d54d71295d54dcbb6227599bc2506c3fd86f0f9c6d426ef45a2838aa17163353aa2973260088f6fbb24b16f29986427dac4ea9794dde922
+  checksum: 10c0/13bfd0c5f159b00b53e0c4c3c11f85d29007f8febfa1177244ebe2d7b63f4cc23d17208cd27b2dec82bd1d9ba8ab80cfc832ae71cd761c5e74056c317900f197
   languageName: node
   linkType: hard
 
@@ -9559,7 +9559,7 @@ __metadata:
     "@eslint/js": "npm:10.0.1"
     "@fastify/cors": "npm:11.4.0"
     "@fastify/error": "npm:^4.2.1"
-    "@fastify/rate-limit": "npm:11.2.1"
+    "@fastify/rate-limit": "npm:11.2.2"
     "@fastify/type-provider-typebox": "npm:^5.2.0"
     "@ghostery/adblocker-electron": "npm:^2.20.3"
     "@ghostery/adblocker-electron-preload": "npm:^2.20.3"
