@@ -30,6 +30,7 @@ updates:
       # newer majors in a stable release.
       - dependency-name: "vite"
         update-types: ["version-update:semver-major"]
+      - dependency-name: "@reforged/maker-appimage"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
