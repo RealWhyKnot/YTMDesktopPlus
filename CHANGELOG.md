@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- ci: keep Dependabot off the patched appimage maker
+- build(deps): update @fastify/rate-limit to 11.2.2
+- chore: keep .shellcheckrc on LF
+- build(deps): update electron 44 and minor releases
 - chore: refresh the shared lint files
 - ci: draft releases until the notes are attached
 
