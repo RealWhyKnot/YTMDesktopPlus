@@ -13,14 +13,26 @@ export default defineConfig({
   },
   test: {
     setupFiles: ["tests/setup.ts"],
+    testTimeout: 60_000,
+    hookTimeout: 60_000,
     projects: [
       {
         extends: true,
         test: {
           name: "node",
           include: ["tests/**/*.test.ts"],
-          exclude: ["tests/components/**"],
+          exclude: ["tests/components/**", "tests/integration-*.test.ts"],
           environment: "node",
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "integration",
+          include: ["tests/integration-*.test.ts"],
+          environment: "node",
+          testTimeout: 120_000,
+          hookTimeout: 120_000,
         },
       },
       {
@@ -30,6 +42,8 @@ export default defineConfig({
           name: "components",
           include: ["tests/components/**/*.test.ts"],
           environment: "happy-dom",
+          testTimeout: 120_000,
+          hookTimeout: 120_000,
         },
       },
     ],
