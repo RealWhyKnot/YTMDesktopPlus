@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- test: raise vitest timeouts for loaded machines
+- build: only check tracked files with prettier
 - build(deps): update stylelint to 18
 - chore: refresh the shared lint files
 - build(deps): update typescript to 6.0.3
