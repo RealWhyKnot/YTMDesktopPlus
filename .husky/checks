@@ -4,7 +4,9 @@ shopt -s inherit_errexit
 
 node .yarn/releases/yarn-4.18.0.cjs typecheck
 node .yarn/releases/yarn-4.18.0.cjs lint
-node .yarn/releases/yarn-4.18.0.cjs exec prettier --check .
+git ls-files -z --cached --others --exclude-standard \
+  | xargs -0 -r -n 150 node .yarn/releases/yarn-4.18.0.cjs exec prettier \
+    --check --ignore-unknown --no-error-on-unmatched-pattern --log-level warn
 node .yarn/releases/yarn-4.18.0.cjs lint:css
 node .yarn/releases/yarn-4.18.0.cjs test
 python -B .github/lint/style_check.py
