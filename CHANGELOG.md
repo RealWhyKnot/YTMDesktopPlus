@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- build(deps): update stylelint to 18
+- chore: refresh the shared lint files
+- build(deps): update typescript to 6.0.3
 - ci: keep Dependabot off the patched appimage maker
 - build(deps): update @fastify/rate-limit to 11.2.2
 - chore: keep .shellcheckrc on LF
