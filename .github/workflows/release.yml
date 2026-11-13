@@ -212,15 +212,22 @@ jobs:
       - name: Collect the release assets
         shell: pwsh
         run: |
+          Import-Module ./scripts/ReleaseAssets.psm1
           $artifacts = @(Get-ChildItem out/publish-dry-run -Recurse -Filter *.forge.publish | ForEach-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json).artifacts })
           if ($artifacts.Count -eq 0) { Write-Output "::error::No dry-run artifacts to publish"; exit 1 }
           $staging = New-Item -ItemType Directory -Force -Path out/release-assets
           foreach ($artifact in $artifacts) {
-            $target = Join-Path $staging.FullName (Split-Path $artifact -Leaf)
+            $target = Join-Path $staging.FullName (Get-AssetName $artifact)
             if (Test-Path -LiteralPath $target) { Write-Output "::error::Two artifacts are named $(Split-Path $artifact -Leaf)"; exit 1 }
             Copy-Item -LiteralPath $artifact -Destination $target
           }
           Get-ChildItem $staging.FullName | ForEach-Object { Write-Output "$($_.Name) $($_.Length)" }
+      - name: Checksums
+        uses: RealWhyKnot/workflows/checksums@v1
+        with:
+          archives: out/release-assets/*
+          manifest: "false"
+          sidecar: "true"
       - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.os }}-${{ matrix.arch }}
@@ -246,8 +253,9 @@ jobs:
           PRERELEASE: ${{ needs.validate.outputs.prerelease }}
           REPO: ${{ github.repository }}
         run: |
-          gh release view $env:TAG --repo $env:REPO *> $null
+          $draft = gh release view $env:TAG --repo $env:REPO --json isDraft --jq .isDraft
           if ($LASTEXITCODE -eq 0) {
+            if ($draft -cne 'true') { Write-Output "::error::Release $env:TAG is already published"; exit 1 }
             Write-Output "Release $env:TAG already exists"
             exit 0
           }
@@ -278,7 +286,9 @@ jobs:
           TAG: ${{ needs.validate.outputs.tag }}
           REPO: ${{ github.repository }}
         run: |
-          $files = @(Get-ChildItem assets -Recurse -File | Where-Object { $_.Name -ne 'RELEASES' -and $_.Extension -ne '.nupkg' -and $_.Name -notlike '*Setup.exe' } | ForEach-Object { $_.FullName })
+          $draft = gh release view $env:TAG --repo $env:REPO --json isDraft --jq .isDraft
+          if ($LASTEXITCODE -ne 0 -or $draft -cne 'true') { Write-Output "::error::Release $env:TAG must be a draft before uploading"; exit 1 }
+          $files = @(Get-ChildItem assets -Recurse -File | Where-Object { ($_.Name -creplace '\.sha256$', '') -notmatch '^(RELEASES|.*\.nupkg|.*Setup\.exe)$' } | ForEach-Object { $_.FullName })
           ./scripts/Publish-ReleaseAssets.ps1 -Tag $env:TAG -Repository $env:REPO -Paths $files
 
   windows-smoke:
@@ -513,11 +523,15 @@ jobs:
           TAG: ${{ needs.validate.outputs.tag }}
           REPO: ${{ github.repository }}
         run: |
-          $packages = @(Get-ChildItem assets -File | Where-Object { $_.Extension -eq '.nupkg' -or $_.Name -like '*Setup.exe' } | ForEach-Object { $_.FullName })
+          $draft = gh release view $env:TAG --repo $env:REPO --json isDraft --jq .isDraft
+          if ($LASTEXITCODE -ne 0 -or $draft -cne 'true') { Write-Output "::error::Release $env:TAG must be a draft before uploading"; exit 1 }
+          $packages = @(Get-ChildItem assets -File | Where-Object { ($_.Name -creplace '\.sha256$', '') -match '(\.nupkg|Setup\.exe)$' } | ForEach-Object { $_.FullName })
           if ($packages.Count -eq 0) { Write-Output "::error::No Windows installer in the build"; exit 1 }
           ./scripts/Publish-ReleaseAssets.ps1 -Tag $env:TAG -Repository $env:REPO -Paths $packages
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          ./scripts/Publish-ReleaseAssets.ps1 -Tag $env:TAG -Repository $env:REPO -Paths @((Resolve-Path assets/RELEASES).Path)
+          $draft = gh release view $env:TAG --repo $env:REPO --json isDraft --jq .isDraft
+          if ($LASTEXITCODE -ne 0 -or $draft -cne 'true') { Write-Output "::error::Release $env:TAG must be a draft before uploading"; exit 1 }
+          ./scripts/Publish-ReleaseAssets.ps1 -Tag $env:TAG -Repository $env:REPO -Paths @((Resolve-Path assets/RELEASES).Path, (Resolve-Path assets/RELEASES.sha256).Path)
 
   notes:
     name: changelog + release notes
@@ -585,9 +599,33 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           $notes = (Get-Content whats-changed.md -Raw).TrimEnd()
-          $response = gh release view $env:TAG --repo $env:REPO --json assets
+          $response = gh release view $env:TAG --repo $env:REPO --json assets,isDraft
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          $assets = @(($response | ConvertFrom-Json).assets | Sort-Object name)
+          $release = $response | ConvertFrom-Json
+          if ($release.isDraft -ne $true) { Write-Output "::error::Release $env:TAG is already published"; exit 1 }
+          $assets = @($release.assets | Sort-Object name)
+          if ($assets.Count -eq 0) { Write-Output "::error::Release $env:TAG has no assets"; exit 1 }
+          foreach ($asset in $assets) {
+            if ($asset.digest -notmatch '^sha256:[0-9a-fA-F]{64}$') { Write-Output "::error::$($asset.Name): release asset has no SHA-256 digest"; exit 1 }
+            if ($asset.name.EndsWith('.sha256')) {
+              $archiveName = $asset.name.Substring(0, $asset.name.Length - '.sha256'.Length)
+              if ($archiveName.EndsWith('.sha256') -or $archiveName -cnotin $assets.name) { Write-Output "::error::$($asset.Name): checksum has no matching asset"; exit 1 }
+            } elseif ("$($asset.name).sha256" -cnotin $assets.name) {
+              Write-Output "::error::$($asset.Name): SHA-256 sidecar is missing"
+              exit 1
+            }
+          }
+          $checksumDirectory = Join-Path $env:RUNNER_TEMP ([guid]::NewGuid().ToString('N'))
+          gh release download $env:TAG --repo $env:REPO --pattern '*.sha256' --dir $checksumDirectory
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $assets = @($assets | Where-Object { -not $_.name.EndsWith('.sha256') })
+          $hashes = @{}
+          foreach ($asset in $assets) {
+            $checksum = (Get-Content -LiteralPath (Join-Path $checksumDirectory "$($asset.name).sha256") -Raw).TrimEnd("`r", "`n")
+            $hash = $asset.digest.Substring(7).ToLowerInvariant()
+            if ($checksum -cne "$hash  $($asset.name)") { Write-Output "::error::$($asset.Name): SHA-256 sidecar does not match the release asset"; exit 1 }
+            $hashes[$asset.name] = $checksum.Substring(0, 64)
+          }
           $setup = $assets | Where-Object { $_.name -like '*.Setup.exe' } | Select-Object -First 1
           $install = ""
           if ($setup) {
@@ -603,8 +641,7 @@ jobs:
           }
           $table = "| Asset | Size | SHA-256 |`n| --- | --- | --- |"
           $assets | ForEach-Object {
-            if ($_.digest -notmatch '^sha256:[0-9a-fA-F]{64}$') { Write-Output "::error::$($_.Name): release asset has no SHA-256 digest"; exit 1 }
-            $hash = $_.digest.Substring(7).ToLowerInvariant()
+            $hash = $hashes[$_.name]
             $size = "{0:N1} MB" -f ($_.size / 1MB)
             $table += "`n| $($_.Name) | $size | ``$hash`` |"
           }
