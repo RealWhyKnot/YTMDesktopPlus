@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- ci: publish .sha256 files with release assets
 - test: raise vitest timeouts for loaded machines
 - build: only check tracked files with prettier
 - build(deps): update stylelint to 18
