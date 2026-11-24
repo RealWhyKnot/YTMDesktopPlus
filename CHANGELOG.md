@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- docs: update README and contributing guide
 - ci: publish .sha256 files with release assets
 - test: raise vitest timeouts for loaded machines
 - build: only check tracked files with prettier
