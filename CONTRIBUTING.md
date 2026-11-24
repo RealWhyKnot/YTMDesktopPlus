@@ -1,6 +1,8 @@
 # Contributing to YTMDesktop+
 
-I maintain YTMDesktop+ alone. For anything bigger than a small fix, open an issue first so we can agree on the approach before you spend time on it.
+I built YTMDesktop+ for my own use first and I maintain it solo. I'm picky about how the codebase is structured, how it's styled, and how features fit together. If you hit a bug or want something changed, please [open an issue](https://github.com/RealWhyKnot/YTMDesktopPlus/issues/new/choose) instead of sending a surprise pull request. A description of the problem, steps to reproduce, or what you're trying to do helps me far more than an unannounced PR.
+
+If you'd like to help maintain the project over time, or you have a substantial change in mind, open an issue or reach out first. I'm happy to talk through the approach and agree on code style and commit conventions before you spend time writing code.
 
 ## Setting up
 
@@ -24,7 +26,9 @@ yarn start
 
 CI runs the static checks and unit tests on every pull request, then builds the installers.
 
-## Building installers
+## Maintainer packaging notes
+
+These steps are for building the installers.
 
 `yarn make` builds the installers for your platform into `out/make`.
 
@@ -36,14 +40,13 @@ flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/fl
 
 To build one format, use `yarn make --arch x64 --targets flatpak` or `--targets AppImage`. The target must be the maker's name. Using `@electron-forge/maker-flatpak` builds with the default configuration.
 
-## Pull requests
+## If we agree on a PR
 
-1. Fork and branch off `main`.
-2. Keep the change small. A cleanup you noticed on the way goes in its own PR.
-3. Make sure the checks above pass.
-4. Open the PR and fill in the template.
-
-Commit subjects look like `type(scope): summary`, where `type` is one of `feat`, `fix`, `refactor`, `perf`, `style`, `docs`, `test`, `build`, `ci`, `chore` or `revert`.
+- Link the issue where we settled the approach.
+- Keep the change small. A cleanup you noticed on the way goes in its own PR.
+- Make sure the checks above pass.
+- Don't add code comments unless we agreed on one.
+- Commit subjects look like `type(scope): summary`, where `type` is one of `feat`, `fix`, `refactor`, `perf`, `style`, `docs`, `test`, `build`, `ci`, `chore` or `revert`.
 
 ## Themes and addons
 

@@ -8,7 +8,7 @@
   <a href="https://github.com/RealWhyKnot/YTMDesktopPlus/releases"><img alt="Downloads" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fytmdesktopplus.com%2Fdownload%2Fbadge.json&style=flat-square&labelColor=212121&color=ff0033"></a>
   <a href="https://ytmdesktopplus.com"><img alt="ytmdesktopplus.com status" src="https://img.shields.io/website?url=https%3A%2F%2Fytmdesktopplus.com%2Fhealth&label=ytmdesktopplus.com&up_message=online&down_message=offline&style=flat-square&labelColor=212121"></a>
   <img alt="Windows, macOS and Linux" src="https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-ff0033?style=flat-square&labelColor=212121">
-  <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-ff0033?style=flat-square&labelColor=212121"></a>
+  <a href="LICENSE"><img alt="License: GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-ff0033?style=flat-square&labelColor=212121"></a>
 </p>
 
 <p align="center">
@@ -40,7 +40,7 @@ Settings and sign-in from an older YouTube Music Desktop App install carry over 
 
 ## Listen Along rooms
 
-Start a room from the tray menu. Friends can join through the link, the Listen Along button on your Discord presence, or an 8 letter code. Listeners follow your playback. You can promote them to let them change tracks, skip, seek and pause for the room.
+Start a room from the tray menu. Friends can join through the link, the Listen Along button on your Discord presence, or an 8-letter code. Listeners follow your playback. You can promote them to let them change tracks, skip, seek and pause for the room.
 
 The link also opens a web player with live audio, track title and artwork, which follows you from one track to the next. Web listeners are anonymous. You see how many are there, not who they are. Your volume setting doesn't affect their audio, but muting the app mutes the stream.
 
@@ -50,7 +50,7 @@ You choose a display name before hosting or joining. It isn't taken from your ac
 
 ## Install
 
-Get the build for your system from the [latest release](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/latest). Nightly betas go on the [releases page](https://github.com/RealWhyKnot/YTMDesktopPlus/releases) whenever there are new changes. Debug logging is on by default in betas and off in stable builds.
+Get the build for your system from the [latest release](https://github.com/RealWhyKnot/YTMDesktopPlus/releases/latest). Nightly betas go on the [releases page](https://github.com/RealWhyKnot/YTMDesktopPlus/releases) whenever there are new changes.
 
 ### Windows
 
@@ -84,6 +84,10 @@ sudo cp packaging/apparmor/ytmdesktop-plus /etc/apparmor.d/ytmdesktop-plus
 sudo apparmor_parser -r /etc/apparmor.d/ytmdesktop-plus
 ```
 
+## Troubleshooting
+
+Beta builds have debug logging turned on by default. Stable builds have it off.
+
 ## Building from source
 
 ```bash
@@ -98,6 +102,8 @@ You need Git and Node.js 22.18 or later. If you're on Node 23, use 23.6 or later
 
 ## License
 
-GPL-3.0. See [LICENSE](LICENSE). Based on [ytmdesktop](https://github.com/ytmdesktop/ytmdesktop) (GPL-3.0), modified since August 2026. The original history is in that repository.
+GPL-3.0-only. See [LICENSE](LICENSE) for the full text.
+
+YTMDesktop+ is a fork of [ytmdesktop](https://github.com/ytmdesktop/ytmdesktop), which is also GPL-3.0. Its original history is in that repository, and the changes here began in August 2026.
 
 YTMDesktop+ is not affiliated with Google or YouTube.
