@@ -18,7 +18,6 @@ on:
       - .gitignore
       - .gitattributes
       - .editorconfig
-      - ".github/ISSUE_TEMPLATE/**"
   pull_request:
     branches: [main]
   workflow_dispatch:

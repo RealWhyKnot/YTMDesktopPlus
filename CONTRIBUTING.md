@@ -1,6 +1,6 @@
 # Contributing to YTMDesktop+
 
-I built YTMDesktop+ for my own use first and I maintain it solo. I'm picky about how the codebase is structured, how it's styled, and how features fit together. If you hit a bug or want something changed, please [open an issue](https://github.com/RealWhyKnot/YTMDesktopPlus/issues/new/choose) instead of sending a surprise pull request. A description of the problem, steps to reproduce, or what you're trying to do helps me far more than an unannounced PR.
+I built YTMDesktop+ for my own use first and I maintain it solo. I'm picky about how the codebase is structured, how it's styled, and how features fit together. If you hit a bug or want something changed, please [open an issue](https://github.com/RealWhyKnot/YTMDesktopPlus/issues/new) instead of sending a surprise pull request. A description of the problem, steps to reproduce, or what you're trying to do helps me far more than an unannounced PR.
 
 If you'd like to help maintain the project over time, or you have a substantial change in mind, open an issue or reach out first. I'm happy to talk through the approach and agree on code style and commit conventions before you spend time writing code.
 
