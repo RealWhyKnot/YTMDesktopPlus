@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- chore: remove issue and pull request templates
+- ci: run husky shell check natively on Windows
 - docs: update README and contributing guide
 - ci: publish .sha256 files with release assets
 - test: raise vitest timeouts for loaded machines
